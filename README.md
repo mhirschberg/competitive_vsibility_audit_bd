@@ -2,74 +2,40 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mhirschberg/competitive_vsibility_audit_bd/blob/main/competitive_visibility_audit_bd.ipynb)
 
-A Google Colab workflow for auditing how a company appears across Google Search, ChatGPT, and Gemini relative to its competitors.
+Find out what Google, ChatGPT, and Gemini tell potential customers about a brand, product, service, or organization—and which competitors appear alongside it.
 
-The notebook uses Bright Data's SERP API and AI Search scrapers to discover buyer-intent keywords, identify competitors, create competitive profiles, measure AI answer-engine visibility, and generate an executive Markdown report.
+This repository contains a no-code Google Colab notebook powered by Bright Data's SERP API and AI Search scrapers.
 
-## What it does
+## What the audit does
 
-Given a company name, domain, and country, the notebook automatically:
+Enter:
 
-1. Analyzes the company's public website with Google AI Mode.
-2. Uses ChatGPT to convert the research into structured data.
-3. Generates eight non-branded buyer-intent keywords.
-4. Runs the eight searches through Google SERP API in parallel.
-5. Aggregates ranking domains and creates a competitor shortlist.
-6. Uses Google AI Mode to select five direct competitors.
-7. Generates profiles for the target and five competitors in parallel.
-8. Queries ChatGPT and Gemini using a neutral enterprise-buyer prompt.
-9. Races three redundant snapshots per answer engine and uses the first valid result.
-10. Measures known-brand mentions and appearance order.
-11. Uses ChatGPT, with web search disabled, to synthesize the evidence into a final report.
-12. Exports Markdown, JSON, raw evidence, and a ZIP archive.
+- A company or brand name
+- Its website
+- An optional product or service focus
+- A target country
 
-## Workflow
+The notebook then:
 
-```text
-Company name + domain
-        │
-        ▼
-Google AI Mode company research
-        │
-        ▼
-ChatGPT structured profile + 8 buyer keywords
-        │
-        ▼
-8 parallel Google SERP searches
-        │
-        ▼
-Domain aggregation and competitor shortlist
-        │
-        ▼
-Google AI Mode selects 5 direct competitors
-        │
-        ▼
-6 parallel company profile analyses
-        │
-        ▼
-ChatGPT + Gemini visibility measurement
-        │
-        ▼
-ChatGPT final report synthesis
-        │
-        ▼
-Markdown + JSON + ZIP export
-```
+1. Researches the public website with Google AI Mode.
+2. Identifies the market, audience, offering, and relevant evaluation criteria.
+3. Generates eight non-branded buyer-intent searches.
+4. Runs the searches through Google SERP API in parallel.
+5. Identifies the domains competing for those searches.
+6. Selects five direct competitors.
+7. Creates profiles for the target and competitors.
+8. Measures how ChatGPT and Gemini discuss the category.
+9. Compares brand mentions and order of appearance.
+10. Produces a competitive visibility report with recommendations.
+11. Exports the full audit as Markdown, JSON, and ZIP.
 
-## Bright Data products used
+No Python knowledge is required to run the notebook.
 
-| Product | Purpose |
-|---|---|
-| [SERP API](https://brightdata.com/products/serp-api) | Runs the eight buyer-intent Google searches and returns structured organic results |
-| [Google AI Mode Scraper](https://brightdata.com/products/web-scraper/google) | Researches the target company, validates competitors, and generates company profiles |
-| [ChatGPT Scraper](https://brightdata.com/products/web-scraper/chatgpt) | Measures ChatGPT visibility, structures company research, and writes the final report |
-| Gemini Scraper | Measures how Gemini recommends and discusses the target and competitors |
+## Open the notebook
 
-## Quick start
+Click:
 
-### 1. Open the notebook
-
-Use the **Open in Colab** button at the top of this README.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mhirschberg/competitive_vsibility_audit_bd/blob/main/competitive_visibility_audit_bd.ipynb)
 
 Alternatively, open:
 
@@ -77,189 +43,287 @@ Alternatively, open:
 competitive_visibility_audit_bd.ipynb
 ```
 
-directly from the repository.
+directly in Google Colab.
 
-### 2. Create a Bright Data API token
+## Supported audit types
 
-You need a Bright Data account with access to:
+The notebook is designed to adapt its research and comparison criteria to the market being analyzed.
 
-- SERP API
-- Google AI Mode scraper
-- ChatGPT scraper
-- Gemini scraper
+Examples include:
 
-You also need an active SERP API zone.
+| Audit type | Example focus |
+|---|---|
+| Consumer product | Facial moisturizer for sensitive skin |
+| B2B product | Enterprise data collection platform |
+| Professional service | International payroll provider |
+| Local business | Family dentist in Berlin |
+| Financial product | Business checking account |
+| Education | Online data science course |
+| Hospitality | Boutique hotel in central Berlin |
+| Technology | Managed cloud database |
+| Health and beauty | Retinol night cream |
+| Retail | Sustainable running shoes |
 
-Bright Data API authentication documentation:
+The first analysis stage determines which attributes matter in the category, such as:
 
-https://docs.brightdata.com/api-reference/authentication
+- Benefits and suitability
+- Features and capabilities
+- Ingredients or materials
+- Claims and supporting evidence
+- Price and price tier
+- Availability
+- Reputation and trust signals
+- Specifications
+- Service model
+- Performance
+- Location
+- Deployment and scalability, when relevant
 
-### 3. Add the token to Colab Secrets
+Irrelevant comparison criteria are excluded.
 
-In Google Colab:
+## Requirements
 
-1. Open the key icon in the left sidebar.
-2. Add a new secret named:
+You need:
+
+1. A Google account with access to Google Colab.
+2. A Bright Data account.
+3. A Bright Data API token.
+4. An active Bright Data SERP API zone.
+5. Access to the following Bright Data scrapers:
+   - Google AI Mode
+   - ChatGPT
+   - Gemini
+
+Bright Data documentation:
+
+- [API authentication](https://docs.brightdata.com/api-reference/authentication)
+- [SERP API](https://brightdata.com/products/serp-api)
+- [Google Scraper API](https://brightdata.com/products/web-scraper/google)
+- [ChatGPT Scraper](https://brightdata.com/products/web-scraper/chatgpt)
+
+## Setup
+
+### 1. Add the API token to Colab Secrets
+
+Open the notebook in Colab.
+
+In the left sidebar:
+
+1. Click the key icon.
+2. Add a secret named:
 
    ```text
    BRIGHTDATA_API_TOKEN
    ```
 
-3. Paste your Bright Data API token as the value.
+3. Paste your Bright Data API token.
 4. Enable **Notebook access**.
 
 Do not paste the token directly into the notebook source.
 
-### 4. Configure the audit
+### 2. Configure the audit
 
-Edit the notebook's configuration form:
+Use the configuration form in the notebook:
 
 ```python
-COMPANY_NAME = "Bright Data"
-COMPANY_DOMAIN = "brightdata.com"
+COMPANY_NAME = "Your brand or organization"
+COMPANY_DOMAIN = "example.com"
+AUDIT_FOCUS = ""
 COUNTRY = "US"
 SERP_ZONE = "serp_api1"
 ```
 
-The domain field accepts any of these formats:
+### Configuration fields
+
+| Field | Required | Description |
+|---|---:|---|
+| `COMPANY_NAME` | Yes | Brand, company, product, service, or organization to audit |
+| `COMPANY_DOMAIN` | Yes | Official domain or full website URL |
+| `AUDIT_FOCUS` | No | Specific product, service, category, or customer need to analyze |
+| `COUNTRY` | Yes | Two-letter country code used for localized results |
+| `SERP_ZONE` | Yes | Name of your Bright Data SERP API zone |
+| `AUTO_DOWNLOAD_REPORT` | No | Automatically downloads the result ZIP when complete |
+| `DEBUG_MODE` | No | Shows snapshot IDs, polling, retries, and API diagnostics |
+
+The domain can be entered as:
 
 ```text
-brightdata.com
-www.brightdata.com
-https://www.brightdata.com/
+example.com
+www.example.com
+https://www.example.com/
 ```
 
-The notebook normalizes the value automatically.
+The notebook normalizes it automatically.
 
-### 5. Run the notebook
+### When to use `AUDIT_FOCUS`
 
-Select:
+Use `AUDIT_FOCUS` when a brand has multiple products or serves multiple markets.
+
+For example:
+
+```python
+COMPANY_NAME = "Example Skincare Brand"
+COMPANY_DOMAIN = "example.com"
+AUDIT_FOCUS = "Facial moisturizer for dry and sensitive skin"
+```
+
+Without a focus, the notebook analyzes the organization's primary offering as inferred from its website.
+
+## Run the audit
+
+After configuring the notebook, select:
 
 ```text
 Runtime → Run all
 ```
 
-The audit performs live requests and may take several minutes to complete.
+The audit performs live requests and can take several minutes.
 
-## User configuration
+Typical progress:
 
-| Field | Required | Description | Example |
-|---|---:|---|---|
-| `COMPANY_NAME` | Yes | Company or product brand to audit | `Bright Data` |
-| `COMPANY_DOMAIN` | Yes | Official domain or full website URL | `brightdata.com` |
-| `COUNTRY` | Yes | Two-letter country code used for localized results | `US` |
-| `SERP_ZONE` | Yes | Name of the Bright Data SERP API zone | `serp_api1` |
-| `AUTO_DOWNLOAD_REPORT` | No | Automatically download the ZIP when the audit finishes | `False` |
-| `DEBUG_MODE` | No | Display snapshot IDs, retries, and polling progress | `False` |
+```text
+[1/6] Company analysis and buyer keywords
+      ✓ Company analyzed; 8 buyer searches generated
 
-The API token is read separately from the `BRIGHTDATA_API_TOKEN` Colab secret.
+[2/6] Google search competitor discovery
+      ✓ 8/8 searches completed
 
-## Audit stages
+[3/6] Direct competitor selection
+      ✓ Five competitors selected
 
-### 1. Company analysis and keyword generation
+[4/6] Target and competitor profiles
+      ✓ 6/6 profiles available
 
-Google AI Mode researches the supplied company and website.
+[5/6] ChatGPT and Gemini visibility
+      ✓ ChatGPT completed
+      ✓ Gemini completed
 
-Because answer-engine output is not guaranteed to be valid JSON, ChatGPT is used with web search disabled to transform the research into:
+[6/6] Final report and export
+      ✓ Report generated
+      ✓ Markdown, JSON, and ZIP saved
+```
 
-- Canonical brand name
-- Official website and domain
-- Product category
-- Description and positioning
-- Target customers
-- Products
-- Key features
-- Differentiators
-- Eight buyer-intent keywords
+## How the audit works
 
-### 2. Google competitor discovery
+### Stage 1: Market research and buyer questions
 
-The notebook runs all eight buyer-intent searches in parallel through Bright Data SERP API.
+Google AI Mode analyzes the public website and determines:
 
-It records:
+- What the organization offers
+- The market category
+- The intended audience
+- The primary customer need
+- Products or services
+- Features, benefits, claims, or attributes
+- Relevant differentiators
+- Category-specific evaluation criteria
 
-- Organic result URLs
-- Domains
-- Titles and descriptions
-- Ranking positions
-- Keyword coverage
-- Best rank
-- Average rank
-- Rank-weighted score
+ChatGPT then structures this research with web search disabled.
 
-Known social networks, review sites, directories, news sites, job pages, and other non-competitor domains are filtered out.
+The result includes eight non-branded searches representing how a customer might look for, compare, or buy alternatives.
 
-### 3. Direct competitor selection
+### Stage 2: Google visibility
 
-The highest-scoring SERP domains become a shortlist.
+The notebook runs the eight buyer searches through Bright Data SERP API.
 
-Google AI Mode reviews that shortlist and selects five companies that compete most directly with the target's products and buyer-intent searches.
+Requests run in parallel and retry automatically when needed.
 
-If AI validation fails, the pipeline can continue with the strongest SERP-ranked candidates.
+The notebook initially applies a strict filter to remove obvious non-competitor domains.
 
-### 4. Company profiles
+If strict filtering removes every result, it switches to relaxed candidate collection. Google AI Mode then classifies the resulting domains rather than allowing the audit to fail.
 
-The notebook creates six independent profile jobs:
+### Stage 3: Competitor selection
 
-- One target-company profile
+Google AI Mode evaluates the candidate domains and selects five direct competitors.
+
+A direct competitor should address substantially the same:
+
+- Customer need
+- Buyer intent
+- Product or service category
+- Use case
+- Purchase decision
+
+The selection stage distinguishes competitors from:
+
+- Retailers
+- Marketplaces
+- Publishers
+- Review sites
+- Directories
+- Forums and communities
+- Distributors
+- Informational resources
+- Loosely related organizations
+
+### Stage 4: Target and competitor profiles
+
+The notebook generates six profiles in parallel:
+
+- One target profile
 - Five competitor profiles
 
-Each profile may contain:
+Depending on the category, a profile may include:
 
-- Category
-- Positioning
+- Products or services
 - Target customers
-- Relevant products
-- Key features
+- Benefits
+- Features
+- Claims
+- Ingredients
+- Materials
+- Specifications
+- Use cases
+- Pricing or price tier
+- Availability
+- Trust signals
 - Differentiators
-- Public pricing approach
-- Competitive relationship
-- Supporting evidence
 
-Profile jobs run concurrently. A failed or delayed job does not automatically terminate the other jobs.
+If a profile snapshot is delayed, the notebook continues polling it independently. A failed profile does not automatically stop the entire audit.
 
-### 5. ChatGPT and Gemini visibility
+### Stage 5: ChatGPT and Gemini visibility
 
-The notebook creates a neutral buyer prompt using the generated category and requirements.
+The notebook builds a neutral category prompt using the generated buyer searches.
 
-The prompt intentionally avoids naming the audited company or known competitors. This reduces the chance of forcing a brand mention.
+The audited brand and selected competitors are not named in the prompt. This avoids forcing the answer engines to mention them.
 
-For each engine, the notebook:
+For both ChatGPT and Gemini, the notebook:
 
 1. Triggers three redundant snapshots.
-2. Polls the snapshots concurrently.
-3. Selects the first valid completed result.
-4. Stores the answer and citations.
-5. Measures known-brand mentions and first appearance position.
+2. Waits for the first valid result.
+3. Records the answer.
+4. Records available citations.
+5. Detects audited-brand and competitor mentions.
+6. Measures order of first appearance.
 
-For ChatGPT, the output also records whether live web search was triggered.
+For ChatGPT, the audit also records whether web search was triggered.
 
-### 6. Final report
+### Stage 6: Final report
 
-ChatGPT generates the final Markdown report using a compact evidence packet.
+ChatGPT generates the final report using a compact evidence packet.
 
-Web search is disabled for the final generation request so the report synthesizes the measured audit evidence rather than initiating a second competitive research process.
+Web search is disabled for this request. The final report therefore synthesizes the measured audit data rather than launching a new research process.
 
-The final report includes:
+The report contains:
 
 - Executive summary
 - Competitive landscape
 - Google Search visibility
 - ChatGPT and Gemini visibility
-- Positioning and content gaps
+- Positioning and information gaps
 - Prioritized recommendations
 - Methodology and limitations
 - Observed AI sources
 
 ## Output files
 
-Each run creates a timestamped output directory:
+Each run creates a timestamped directory:
 
 ```text
-competitive-visibility-<company>-<timestamp>/
+competitive-visibility-<name>-<timestamp>/
 ```
 
-The directory contains files similar to:
+Example contents:
 
 ```text
 01_company_analysis.json
@@ -277,11 +341,27 @@ raw/
     06_final_report_record.json
 ```
 
-A ZIP archive containing the complete audit is also created in `/content`.
+A ZIP archive containing the complete audit is created separately in:
+
+```text
+/content/
+```
+
+Enable automatic download with:
+
+```python
+AUTO_DOWNLOAD_REPORT = True
+```
 
 ## Debug mode
 
-Enable detailed logging while developing or troubleshooting:
+For normal use:
+
+```python
+DEBUG_MODE = False
+```
+
+For development and troubleshooting:
 
 ```python
 DEBUG_MODE = True
@@ -290,110 +370,148 @@ DEBUG_MODE = True
 Debug mode displays:
 
 - Snapshot IDs
-- Snapshot status approximately every 30 seconds
-- Retry attempts
-- Temporary API-response errors
+- Snapshot status
+- Polling progress
+- Prompt sizes
+- API retries
+- SERP result domains
+- Strict or relaxed filtering
+- Temporary response errors
+- Profile recovery
+- JSON parsing problems
+
+## Reliability features
+
+The notebook handles:
+
+- Synchronous and asynchronous scraper responses
+- Snapshot polling
+- Late snapshots
+- Temporarily empty API responses
+- JSON and NDJSON responses
+- Markdown-escaped JSON
+- Malformed AI output
+- Oversized AI Markdown captures
 - SERP retries
-- JSON parsing errors
-- Fallback behavior
-
-For normal use, keep:
-
-```python
-DEBUG_MODE = False
-```
-
-## Reliability behavior
-
-The notebook includes handling for:
-
-- Synchronous scraper results
-- Requests that continue asynchronously
-- Snapshot polling and downloading
-- Temporarily empty snapshot responses
-- JSON and NDJSON API responses
-- Malformed or Markdown-escaped AI JSON
-- SERP retries
-- Late profile snapshots
-- Partial results and profile fallbacks
-- Duplicate source URLs
-- AI interface boilerplate
+- Different SERP result URL formats
+- Relative and redirect URLs
+- Strict and relaxed candidate filtering
+- Partial profile failures
+- Duplicate citations
+- Conversational AI boilerplate
 
 ## Internal scraper configuration
 
-The notebook currently uses these Bright Data scraper dataset IDs:
+The notebook currently contains the following Bright Data dataset IDs:
 
 | Scraper | Dataset ID |
 |---|---|
 | Google AI Mode | `gd_mcswdt6z2elth3zqr2` |
-| ChatGPT Search | `gd_m7aof0k82r803d5bjm` |
+| ChatGPT | `gd_m7aof0k82r803d5bjm` |
 | Gemini | `gd_mbz66arm2mf9cu856y` |
 
-These values are internal implementation details and normally do not need to be changed.
+These are implementation details and normally do not need to be edited.
 
-If a scraper template or dataset ID changes, update the constants in the core engine cell.
+## Approximate request volume
 
-## Request volume
-
-A normal audit may trigger approximately:
+A complete run normally includes:
 
 - 8 Google SERP requests
-- 1 Google AI Mode company-research request
+- 1 Google AI Mode market-research request
+- 1 ChatGPT structuring request
 - 1 Google AI Mode competitor-selection request
 - 6 Google AI Mode profile requests
-- 1 ChatGPT structuring request
 - 3 ChatGPT visibility snapshots
 - 3 Gemini visibility snapshots
 - 1 ChatGPT final-report snapshot
 
-Retries or keyword-completion requests may increase this total.
+Retries or keyword-completion requests may increase the total.
 
-Three redundant visibility snapshots are a latency and resilience strategy. They may increase usage because all three jobs are triggered even though only the first valid result is used.
+Redundant visibility snapshots improve the chance of receiving a result quickly, but all triggered snapshots may contribute to usage.
+
+## Understanding the metrics
+
+### SERP coverage
+
+```text
+4/8 SERPs
+```
+
+means the domain appeared in four of the eight Google result sets.
+
+### Best rank
+
+The highest organic position observed across the measured searches.
+
+### Average rank
+
+The average organic position for searches where the domain appeared.
+
+A domain that appears once at position 1 does not necessarily have stronger overall visibility than a domain appearing in six searches at positions 3–6.
+
+### AI mention count
+
+The number of non-overlapping known-brand references found in an answer.
+
+Mention counts should not be interpreted as market share.
+
+### First mention offset
+
+The character position where a known brand first appears in an answer.
+
+The notebook uses first appearance to describe the order of known audited brands. This is not necessarily the same as a formal recommendation ranking.
+
+### Absent
+
+The known brand did not appear in the measured answer.
+
+It does not mean that the brand can never appear in that answer engine.
 
 ## Methodology limitations
 
-This notebook is intended as a competitive research and visibility-audit tool, not as a statistically significant measurement system.
+This is a directional competitive research tool, not a statistically significant measurement platform.
 
 Important limitations:
 
-- Buyer-intent keywords are generated by an AI answer engine.
-- SERP results vary by country, time, personalization, and Google behavior.
-- ChatGPT and Gemini answers can vary between otherwise identical requests.
-- One neutral buyer prompt does not represent every possible buyer journey.
-- First text position is not necessarily the same as a formal recommendation rank.
-- Mention counts use conservative text matching and may not capture every product alias.
-- A brand missing from one result should not be interpreted as universally absent from that answer engine.
-- AI-generated company profiles should be treated as research summaries, not verified product specifications.
-- The final recommendations are evidence-based inferences, not proof of causation or business impact.
+- Buyer searches are AI-generated.
+- Google results vary by date, country, query, and Google behavior.
+- AI answers vary between requests.
+- A single AI prompt does not represent every customer journey.
+- Competitor selection is partly AI-generated.
+- Company profiles are research summaries, not verified specifications.
+- Mention detection depends on known names and aliases.
+- First appearance is not always recommendation rank.
+- Citation presence does not prove that every statement came from that source.
+- The audit does not establish causation between content and visibility.
+- Expected impact in recommendations is an inference, not a measured forecast.
 
-For recurring monitoring, run the same configuration on a schedule and compare results across multiple dates.
+For recurring monitoring, rerun the same configuration on a regular schedule and compare results over time.
 
 ## Security
 
-- Never commit a Bright Data API token to this repository.
+- Never commit a Bright Data API token.
 - Store the token only in the `BRIGHTDATA_API_TOKEN` Colab secret.
-- Clear notebook outputs before committing example runs.
-- Review generated JSON and raw evidence before sharing it externally.
+- Clear notebook outputs before committing changes.
+- Review generated reports before sharing them externally.
 - Use the workflow only for permitted collection and analysis of publicly accessible information.
 
 ## Troubleshooting
 
-### `BRIGHTDATA_API_TOKEN` is missing
+### API token missing
 
-Add the token through the Colab Secrets panel and enable notebook access.
+Confirm the Colab secret is named exactly:
 
-### SERP requests fail
+```text
+BRIGHTDATA_API_TOKEN
+```
 
-Verify:
+and that notebook access is enabled.
 
-- The SERP zone name
-- API-token permissions
-- Zone status
-- Country configuration
+### SERP zone error
 
-Individual SERP requests are retried, and the audit can continue when some searches fail.
+Confirm that `SERP_ZONE` matches the zone name in your Bright Data account.
 
-### A snapshot takes several minutes
+### Snapshot appears stuck
 
 Enable:
 
@@ -401,56 +519,49 @@ Enable:
 DEBUG_MODE = True
 ```
 
-Long-running scraper requests can continue asynchronously. The notebook polls their snapshot status until completion or timeout.
+Some answer-engine requests take several minutes. The notebook displays snapshot status approximately every 30 seconds.
 
-### AI output cannot be parsed
+### SERP results have no domains
 
-The notebook uses several recovery layers:
+The notebook supports multiple parsed-result URL formats and includes fallbacks for display domains and redirect URLs.
 
-1. Markdown-escape cleanup
-2. Standard JSON parsing
+Use debug mode to inspect fields returned for unrecognized records.
+
+### No competitors remain after filtering
+
+The notebook automatically switches from strict to relaxed filtering and asks Google AI Mode to classify the broader candidate list.
+
+### AI response is not valid JSON
+
+The notebook uses:
+
+1. Standard JSON parsing
+2. Markdown cleanup
 3. `json-repair`
-4. ChatGPT no-web structuring for company research
-5. Graceful fallback where appropriate
+4. ChatGPT structuring with web search disabled
+5. A second formatting attempt when necessary
 
-### The final report omits data
+## Workshop use
 
-Inspect:
+For a workshop, participants only need to:
 
-```text
-06_competitive_visibility_audit.json
-```
+1. Add their Bright Data token to Colab Secrets.
+2. Enter their name, domain, country, and optional audit focus.
+3. Click **Runtime → Run all**.
+4. Review and download the report.
 
-and review the `final_report.evidence` field. It contains the compact evidence packet supplied to the final ChatGPT synthesis request.
-
-### The notebook works only after rerunning cells
-
-Start a fresh runtime and select:
-
-```text
-Runtime → Run all
-```
-
-The notebook should not depend on variables from a previous Colab session.
-
-## Repository structure
-
-```text
-competitive_vsibility_audit_bd/
-├── README.md
-└── competitive_visibility_audit_bd.ipynb
-```
+For a shorter group discussion, focus on the target and the first two selected competitors even though the full audit retains five competitors.
 
 ## Project status
 
-This repository is a working reference implementation and demo workflow.
+This repository is a working reference implementation and workshop tool.
 
-It is not an official Bright Data SLA, benchmark, or production monitoring service. Review request volume, error handling, data retention, and reporting requirements before adapting it for production use.
+It is not an official Bright Data SLA, benchmark, or production monitoring product. Review request volume, retention, retry behavior, and reporting requirements before adapting it for production use.
 
 ## Inspiration
 
-The staged competitive-audit concept was inspired by:
+The original staged competitive-audit concept was inspired by:
 
 https://github.com/ScrapeAlchemist/Competitive-Visibility-Audit
 
-This implementation was rebuilt as a Python Google Colab workflow using Google AI Mode as the primary research engine and Bright Data for live web and answer-engine collection.
+This implementation was rebuilt as a category-neutral Python Google Colab notebook using Bright Data for live Google and AI answer-engine collection.
