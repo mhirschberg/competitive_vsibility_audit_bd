@@ -54,7 +54,7 @@ Enter:
 - An optional audit focus
 - A target country
 - A traditional search-engine preference
-- A Bright Data SERP API zone
+- A Bright Data SERP API zone configured for `markdown`
 
 The notebook then:
 
