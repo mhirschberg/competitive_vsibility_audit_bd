@@ -137,6 +137,11 @@ def _build_runner_script(company_name, company_domain, audit_focus, country, sea
             source,
             flags=re.MULTILINE,
         )
+        # The notebook targets Colab's writable /content directory. Each web
+        # run already has an isolated working directory, so keep its outputs
+        # there when executing on Render (or any other host).
+        source = source.replace('Path("/content")', "Path.cwd()")
+        source = source.replace("Path('/content')", "Path.cwd()")
         chunks.append("\n# ---- notebook cell ----\n")
         chunks.append(source)
         if not source.endswith("\n"):
