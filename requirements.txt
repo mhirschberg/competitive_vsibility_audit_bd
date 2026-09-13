@@ -1,0 +1,10 @@
+gradio>=5.0,<7
+markdown
+weasyprint
+requests
+pydantic
+pandas
+rich
+tldextract
+json-repair
+nest_asyncio
