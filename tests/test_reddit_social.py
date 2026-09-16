@@ -199,6 +199,14 @@ class RedditUrlTests(unittest.TestCase):
             "Shark FlexStyle 4-in-1 Air Styler",
         )
 
+    def test_offering_label_removes_embedded_shopping_link(self):
+        self.assertEqual(
+            social._clean_reddit_offering(
+                "[BaByliss Air Wand](/search?ibp=oshop&product=123)"
+            ),
+            "BaByliss Air Wand",
+        )
+
     def test_native_snapshot_race_uses_first_ready_result(self):
         native = {
             "queries": ["Acme review"],

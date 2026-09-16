@@ -151,9 +151,9 @@ def build_reddit_queries(target_profile, keywords, audit_focus=""):
     """Build category-neutral discovery queries for a product, service, or platform."""
     brand = str(getattr(target_profile, "brand_name", "") or "").strip()
     offerings = [
-        str(item).strip()
+        _clean_reddit_offering(item)
         for item in (getattr(target_profile, "relevant_products", None) or [])
-        if str(item).strip()
+        if _clean_reddit_offering(item)
     ]
     buyer_terms = [str(item).strip() for item in (keywords or []) if str(item).strip()]
 
@@ -198,6 +198,14 @@ def _compact_reddit_term(value, max_words):
     while words and words[-1].casefold() in {"&", "and", "or", "with"}:
         words.pop()
     return " ".join(words)
+
+
+def _clean_reddit_offering(value):
+    text = " ".join(str(value or "").split()).strip()
+    markdown_link = re.fullmatch(r"\[([^\]]+)\]\([^)]*\)", text)
+    if markdown_link:
+        text = markdown_link.group(1).strip()
+    return text.strip(" []")
 
 
 def _trigger_native_reddit_discovery(queries, race_width=None):
@@ -1025,10 +1033,27 @@ def _profile_name(profile):
 def _profile_offerings(profile):
     """Read audited offerings from the existing BrandProfile field."""
     return [
-        str(item).strip()
+        _clean_reddit_offering(item)
         for item in (getattr(profile, "relevant_products", None) or [])
-        if str(item).strip()
+        if _clean_reddit_offering(item)
     ]
+
+
+def normalize_reddit_result_offerings(result):
+    """Clean display labels in stored or newly produced Reddit results."""
+    result = dict(result or {})
+    cohorts = [dict(item) for item in (result.get("cohorts") or [])]
+    for cohort in cohorts:
+        cohort["focus"] = _clean_reddit_offering(cohort.get("focus"))
+    result["cohorts"] = cohorts
+    result["comparison"] = [
+        {
+            **item,
+            "focus": _clean_reddit_offering(item.get("focus")),
+        }
+        for item in (result.get("comparison") or [])
+    ]
+    return result
 
 
 def _fallback_competitor_offering(profile):

@@ -101,6 +101,7 @@ def main(argv=None):
             target,
             competitors,
         )
+    result = namespace["normalize_reddit_result_offerings"](result)
     output_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
