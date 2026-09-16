@@ -66,7 +66,7 @@ The notebook then:
 5. Asks Google AI Mode three neutral customer questions using three-way races.
 6. Identifies ten likely direct competitors using a three-way Google AI Mode race.
 7. Selects the two strongest direct competitors.
-8. Immediately starts Reddit discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends the same three-query package to three snapshots and keeps the first successful result.
+8. Immediately starts Reddit discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends its strongest early query to three identical snapshots and keeps the first successful result; the wider query set is still searched through SERP discovery.
 9. Creates profiles for the target and both competitors using three-way Google AI Mode races.
 10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while the early Reddit discovery continues.
 11. Classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type Reddit comparison offering for each competitor.
@@ -148,7 +148,7 @@ The notebook uses:
 - Reddit posts dataset
 - Reddit comments dataset
 
-Reddit discovery deliberately races three identical snapshot packages per cohort to reduce slow-tail latency. This increases dataset usage; set `REDDIT_NATIVE_RACE_WIDTH=1` to prefer minimum usage over speed.
+Reddit discovery deliberately races three identical snapshots per cohort to reduce slow-tail latency. This increases dataset usage; set `REDDIT_NATIVE_RACE_WIDTH=1` to prefer minimum usage over speed.
 
 ---
 

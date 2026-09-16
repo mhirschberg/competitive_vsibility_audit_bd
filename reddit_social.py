@@ -56,10 +56,10 @@ REDDIT_NATIVE_POLL_SECONDS = max(
 )
 REDDIT_DISCOVERY_DATE = os.getenv("REDDIT_DISCOVERY_DATE", "Past year").strip()
 REDDIT_AI_RACE_SLOTS = max(
-    1, min(4, int(os.getenv("REDDIT_AI_RACE_SLOTS", "2")))
+    1, min(4, int(os.getenv("REDDIT_AI_RACE_SLOTS", "4")))
 )
 REDDIT_ANALYSIS_BATCH_SIZE = max(
-    1, min(5, int(os.getenv("REDDIT_ANALYSIS_BATCH_SIZE", "3")))
+    1, min(5, int(os.getenv("REDDIT_ANALYSIS_BATCH_SIZE", "5")))
 )
 REDDIT_AI_RACE_SEMAPHORE = RedditSemaphore(REDDIT_AI_RACE_SLOTS)
 if REDDIT_DISCOVERY_DATE not in {
@@ -191,9 +191,13 @@ def build_reddit_queries(target_profile, keywords, audit_focus=""):
 
 def _compact_reddit_term(value, max_words):
     text = re.sub(r"\([^)]*\)", " ", str(value or ""))
+    text = re.sub(r"[\[\]{}*_`]", " ", text)
     text = re.split(r"\s+(?:family|range|portfolio)\s+of\s+", text, maxsplit=1, flags=re.IGNORECASE)[0]
     text = " ".join(text.split())
-    return " ".join(text.split()[:max_words])
+    words = text.split()[:max_words]
+    while words and words[-1].casefold() in {"&", "and", "or", "with"}:
+        words.pop()
+    return " ".join(words)
 
 
 def _trigger_native_reddit_discovery(queries, race_width=None):
@@ -202,14 +206,14 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
         return {"records": [], "snapshots": [], "warnings": []}
 
     race_width = REDDIT_NATIVE_RACE_WIDTH if race_width is None else max(1, race_width)
+    race_query = str(queries[0]).strip()
     payload = {
         "input": [
             {
-                "keyword": query,
+                "keyword": race_query,
                 "date": REDDIT_DISCOVERY_DATE,
                 "num_of_posts": REDDIT_DISCOVERY_PER_QUERY,
             }
-            for query in queries
         ]
     }
 
@@ -243,7 +247,7 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
         records = [] if snapshot_id else bd_client.normalize_records(data)
         return {
             "race_index": race_index,
-            "queries": list(queries),
+            "queries": [race_query],
             "snapshot_id": snapshot_id,
             "records": records,
         }
@@ -275,7 +279,7 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
                     f"{type(exc).__name__}: {exc}"
                 )
     return {
-        "queries": list(queries),
+        "queries": [race_query],
         "records": records,
         "snapshots": snapshots,
         "race_width": race_width,
@@ -724,6 +728,60 @@ def _analysis_text(post):
     )
 
 
+def _normalize_reddit_enum(value, allowed, aliases):
+    normalized = re.sub(
+        r"_+",
+        "_",
+        re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().casefold()),
+    ).strip("_")
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in allowed else ""
+
+
+REDDIT_CONTENT_TYPE_ALIASES = {
+    "first_hand_experience": "firsthand_experience",
+    "personal_experience": "firsthand_experience",
+    "user_experience": "firsthand_experience",
+    "review": "firsthand_experience",
+    "advice": "question",
+    "advice_request": "question",
+    "request_for_advice": "question",
+    "inquiry": "question",
+    "recommend": "recommendation",
+    "comparative_review": "comparison",
+    "versus": "comparison",
+    "conversation": "discussion",
+    "commentary": "discussion",
+    "opinion": "discussion",
+}
+REDDIT_EXPERIENCE_TYPE_ALIASES = {
+    "first_hand": "firsthand",
+    "personal": "firsthand",
+    "personal_experience": "firsthand",
+    "direct_experience": "firsthand",
+    "second_hand": "secondhand",
+    "indirect": "secondhand",
+    "reported_experience": "secondhand",
+    "anecdotal": "secondhand",
+    "not_applicable": "none",
+    "n_a": "none",
+    "no_experience": "none",
+    "not_stated": "none",
+    "none_stated": "none",
+    "unknown": "unclear",
+    "ambiguous": "unclear",
+}
+REDDIT_STANCE_ALIASES = {
+    "positive": "favorable",
+    "negative": "critical",
+    "balanced": "mixed",
+    "ambivalent": "mixed",
+    "objective": "neutral",
+    "non_evaluative": "neutral",
+    "unknown": "unclear",
+}
+
+
 def _reddit_analysis_validator(expected_posts):
     expected = {post["post_id"]: _analysis_text(post) for post in expected_posts}
 
@@ -742,11 +800,26 @@ def _reddit_analysis_validator(expected_posts):
             post_id = str(item.get("post_id") or "").lower()
             if post_id not in expected or post_id in by_id:
                 return {"valid": False, "reason": f"Unexpected or duplicate post_id: {post_id}"}
-            if item.get("content_type") not in REDDIT_CONTENT_TYPES:
+            content_type = _normalize_reddit_enum(
+                item.get("content_type"),
+                REDDIT_CONTENT_TYPES,
+                REDDIT_CONTENT_TYPE_ALIASES,
+            )
+            experience_type = _normalize_reddit_enum(
+                item.get("experience_type"),
+                REDDIT_EXPERIENCE_TYPES,
+                REDDIT_EXPERIENCE_TYPE_ALIASES,
+            )
+            stance = _normalize_reddit_enum(
+                item.get("stance"),
+                REDDIT_STANCES,
+                REDDIT_STANCE_ALIASES,
+            )
+            if not content_type:
                 return {"valid": False, "reason": f"Invalid content_type for {post_id}."}
-            if item.get("experience_type") not in REDDIT_EXPERIENCE_TYPES:
+            if not experience_type:
                 return {"valid": False, "reason": f"Invalid experience_type for {post_id}."}
-            if item.get("stance") not in REDDIT_STANCES:
+            if not stance:
                 return {"valid": False, "reason": f"Invalid stance for {post_id}."}
             if not isinstance(item.get("relevant"), bool):
                 return {"valid": False, "reason": f"Invalid relevant flag for {post_id}."}
@@ -756,6 +829,9 @@ def _reddit_analysis_validator(expected_posts):
             normalized = dict(item)
             normalized["post_id"] = post_id
             normalized["relevant"] = bool(item.get("relevant"))
+            normalized["content_type"] = content_type
+            normalized["experience_type"] = experience_type
+            normalized["stance"] = stance
             normalized["themes"] = _normalized_labels(item.get("themes"), 3)
             normalized["pain_points"] = _normalized_labels(item.get("pain_points"), 2)
             normalized["desired_outcomes"] = _normalized_labels(
@@ -1242,15 +1318,14 @@ def _run_reddit_profile_cohort(
     queries = list(queries_override or build_reddit_queries(profile, keywords, audit_focus))
     native = {"records": [], "snapshots": [], "warnings": []}
     serp_discovery = {"records": [], "warnings": []}
-    prefetched = bool(native_prefetch and native_prefetch.get("records"))
-    if native_prefetch and not prefetched:
-        warnings.extend(native_prefetch.get("warnings", []))
-    if prefetched:
+    prefetch_attempted = native_prefetch is not None
+    prefetch_succeeded = bool(native_prefetch and native_prefetch.get("records"))
+    if prefetch_attempted:
         native = dict(native_prefetch)
 
-    with RedditExecutor(max_workers=1 if prefetched else 2) as executor:
+    with RedditExecutor(max_workers=1 if prefetch_attempted else 2) as executor:
         futures = {executor.submit(_discover_reddit_with_serp, queries): "serp"}
-        if not prefetched:
+        if not prefetch_attempted:
             futures[executor.submit(_trigger_native_reddit_discovery, queries)] = "native"
         for future in reddit_as_completed(futures):
             source = futures[future]
@@ -1268,8 +1343,8 @@ def _run_reddit_profile_cohort(
 
     warnings.extend(serp_discovery.get("warnings", []))
     serp_candidates = serp_discovery.get("records", [])
-    native_waited = prefetched
-    if native.get("snapshots") and not prefetched:
+    native_waited = prefetch_attempted
+    if native.get("snapshots") and not prefetch_attempted:
         native_waited = True
         try:
             native = _wait_for_native_reddit_discovery(native)
@@ -1342,8 +1417,11 @@ def _run_reddit_profile_cohort(
             "native_winner_snapshot_id": native.get("winner_snapshot_id"),
             "native_race_width": native.get("race_width", 1),
             "native_snapshot_waited": native_waited,
-            "native_prefetched": prefetched,
-            "native_prefetch_queries": native.get("queries", []) if prefetched else [],
+            "native_prefetched": prefetch_attempted,
+            "native_prefetch_succeeded": prefetch_succeeded,
+            "native_prefetch_queries": (
+                native.get("queries", []) if prefetch_attempted else []
+            ),
             "native_records": len(native.get("records", [])),
             "serp_records": len(serp_candidates),
             "unique_candidates": len(candidates),

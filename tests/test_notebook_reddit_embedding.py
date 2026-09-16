@@ -2,6 +2,7 @@ import json
 import re
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,25 @@ class NotebookEmbeddingTests(unittest.TestCase):
             flags=re.MULTILINE,
         )
         compile(web_run_cell, "notebook-web-run-cell", "exec")
+
+    def test_locked_scope_recognizes_generic_physical_product_signals(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def locked_scope_normalize_text")
+        end = runtime.index("def infer_locked_business_model")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            description="Premium hair styling solutions",
+            positioning="Home and professional styling",
+            products=["Multi-styler barrels", "Smoothing brushes"],
+        )
+
+        role = namespace["infer_locked_target_role"](
+            brand,
+            "Health and beauty / Premium consumer electronics / Hair care appliances",
+        )
+
+        self.assertEqual(role, "manufacturer")
 
 
 if __name__ == "__main__":

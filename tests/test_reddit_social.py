@@ -174,7 +174,7 @@ class RedditUrlTests(unittest.TestCase):
         self.assertEqual(
             result,
             {
-                "queries": ["Acme review", "Acme pricing"],
+                "queries": ["Acme review"],
                 "records": [],
                 "snapshots": [],
                 "race_width": 3,
@@ -187,7 +187,16 @@ class RedditUrlTests(unittest.TestCase):
         self.assertEqual(request["json"]["input"][0]["date"], "Past year")
         self.assertEqual(
             [item["keyword"] for item in request["json"]["input"]],
-            ["Acme review", "Acme pricing"],
+            ["Acme review"],
+        )
+
+    def test_compact_term_removes_profile_markup_and_dangling_conjunction(self):
+        self.assertEqual(
+            social._compact_reddit_term(
+                "[Shark FlexStyle 4-in-1 Air Styler & Hair Dryer]",
+                6,
+            ),
+            "Shark FlexStyle 4-in-1 Air Styler",
         )
 
     def test_native_snapshot_race_uses_first_ready_result(self):
@@ -460,6 +469,44 @@ class RedditAnalysisTests(unittest.TestCase):
         invalid_payload["items"][0]["evidence_excerpt"] = "invented quote"
         self.assertFalse(validator(json.dumps(invalid_payload))["valid"])
 
+    def test_validator_normalizes_equivalent_enum_labels(self):
+        posts = [
+            {
+                "post_id": "abc123",
+                "title": "I used this for a year",
+                "description": "It worked well.",
+                "comments": [],
+            }
+        ]
+        validator = social._reddit_analysis_validator(posts)
+        result = validator(
+            json.dumps(
+                {
+                    "items": [
+                        {
+                            "post_id": "abc123",
+                            "relevant": True,
+                            "content_type": "personal experience",
+                            "experience_type": "first-hand",
+                            "stance": "positive",
+                            "themes": [],
+                            "pain_points": [],
+                            "desired_outcomes": [],
+                            "compared_brands": [],
+                            "evidence_excerpt": "used this for a year",
+                            "confidence": 0.8,
+                        }
+                    ]
+                }
+            )
+        )
+
+        self.assertTrue(result["valid"])
+        cleaned = json.loads(result["cleaned_answer"])["items"][0]
+        self.assertEqual(cleaned["content_type"], "firsthand_experience")
+        self.assertEqual(cleaned["experience_type"], "firsthand")
+        self.assertEqual(cleaned["stance"], "favorable")
+
     def test_aggregation_and_report_are_deterministic(self):
         posts = [
             {
@@ -653,6 +700,38 @@ class RedditAnalysisTests(unittest.TestCase):
         wait.assert_called_once()
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["discovery"]["native_snapshot_waited"])
+
+    def test_failed_prefetch_does_not_repeat_native_race(self):
+        prefetch = {
+            "queries": ["Acme Widget"],
+            "records": [],
+            "snapshots": [{"snapshot_id": "timed-out"}],
+            "winner_snapshot_id": None,
+            "race_width": 3,
+            "warnings": ["prefetch timed out"],
+        }
+        with (
+            mock.patch.object(
+                social,
+                "_trigger_native_reddit_discovery",
+            ) as trigger,
+            mock.patch.object(
+                social,
+                "_discover_reddit_with_serp",
+                return_value={"records": [], "warnings": []},
+            ),
+        ):
+            result = social._run_reddit_profile_cohort(
+                profile(),
+                [],
+                ["widget"],
+                {},
+                native_prefetch=prefetch,
+            )
+
+        trigger.assert_not_called()
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("prefetch timed out", result["warnings"])
 
     def test_competitive_mode_builds_equal_brand_and_category_cohorts(self):
         target = profile("Acme", ["Widget Pro"])
