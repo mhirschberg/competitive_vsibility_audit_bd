@@ -74,6 +74,51 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertEqual(role, "manufacturer")
 
+    def test_zero_search_appearances_do_not_recommend_rank_optimization(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def deterministic_number")
+        end = runtime.index("def deterministic_ai_recommendation")
+        namespace = {}
+        exec(runtime[start:end], namespace)
+        target = SimpleNamespace(brand_name="Notion", domain="notion.com")
+
+        _, second = namespace["deterministic_search_recommendations"](
+            target,
+            [],
+            {
+                "notion.com": {
+                    "appearances": 0,
+                    "total_keywords": 8,
+                    "best_rank": None,
+                    "average_rank": None,
+                }
+            },
+            8,
+            True,
+        )
+
+        self.assertIn("no observed ranking", second["evidence"])
+        self.assertNotIn("lower observed positions", second["action"])
+        self.assertNotIn("—", second["evidence"])
+
+    def test_recommendation_number_is_not_a_restartable_markdown_list(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def deterministic_recommendation")
+        end = runtime.index("def deterministic_search_recommendations")
+        namespace = {}
+        exec(runtime[start:end], namespace)
+
+        rendered = namespace["deterministic_recommendation"](
+            2,
+            "Medium",
+            "Do the work.",
+            "The evidence.",
+            "The impact.",
+        )
+
+        self.assertTrue(rendered.startswith("**Recommendation 2 - Priority:**"))
+        self.assertFalse(rendered.startswith("2. "))
+
 
 if __name__ == "__main__":
     unittest.main()

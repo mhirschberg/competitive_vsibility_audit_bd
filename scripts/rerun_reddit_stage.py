@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -30,6 +31,20 @@ def find_audit_json(path):
     return matches[0]
 
 
+def find_existing_reddit_result(audit_path, retry_path):
+    """Prefer a retry artifact, then reuse the canonical full-run result."""
+    retry_path = Path(retry_path)
+    if retry_path.is_file():
+        return retry_path
+    canonical_path = Path(audit_path).parent / "05_reddit_social.json"
+    if canonical_path.is_file():
+        return canonical_path
+    raise FileNotFoundError(
+        "Reddit result not found: "
+        f"{retry_path} or {canonical_path}"
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--from-run", required=True, type=Path)
@@ -54,6 +69,9 @@ def main(argv=None):
     load_env_file(args.env_file)
     require_local_settings()
     audit_path = find_audit_json(args.from_run)
+    cache_directory = audit_path.parent / ".cache"
+    cache_directory.mkdir(exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", str(cache_directory))
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
     configuration = audit["configuration"]
     audit_focus = args.focus.strip() or str(
@@ -79,12 +97,22 @@ def main(argv=None):
     ]
     keywords = [item["keyword"] for item in audit["buyer_intent_keywords"]]
     keyword_serp_results = audit["serp"]["keyword_results"]
+    measured_engines = [
+        str(item.get("engine") or "").strip().lower()
+        for item in keyword_serp_results
+        if item.get("success") and str(item.get("engine") or "").strip()
+    ]
+    namespace["ACTIVE_SEARCH_ENGINE"] = (
+        measured_engines[0] if measured_engines else None
+    )
+    namespace["ACTIVE_SEARCH_STATUS"] = (
+        "available" if measured_engines else "unavailable"
+    )
 
     output_path = audit_path.parent / "05_reddit_social.retry.json"
     if args.reuse_result or args.reclassify_fallbacks:
-        if not output_path.is_file():
-            raise FileNotFoundError(f"Reddit retry result not found: {output_path}")
-        result = json.loads(output_path.read_text(encoding="utf-8"))
+        source_path = find_existing_reddit_result(audit_path, output_path)
+        result = json.loads(source_path.read_text(encoding="utf-8"))
     else:
         result = asyncio.run(
             namespace["run_reddit_social_stage"](
@@ -136,26 +164,54 @@ def main(argv=None):
     audit["warnings"] = list(
         dict.fromkeys(retained_warnings + list(result.get("warnings") or []))
     )
+
+    markdown_path = audit_path.parent / "06_competitive_visibility_audit.md"
+    pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
+    visibility = dict(audit["ai_visibility"])
+    visibility["audited_domains"] = {
+        profile.domain: profile.brand_name
+        for profile in (target, *competitors)
+    }
+    report_result = namespace["generate_report_stage"](
+        target,
+        competitors,
+        keywords,
+        keyword_serp_results,
+        visibility,
+    )
+    finalized = namespace["finalize_report"](
+        report=report_result["report"],
+        visibility=visibility,
+    )
+    updated_report = namespace["insert_reddit_report_section"](
+        finalized["report"],
+        result,
+    )
+    updated_report = namespace["clean_competitive_landscape_profile_links"](
+        updated_report
+    )
+    markdown_path.write_text(updated_report.rstrip() + "\n", encoding="utf-8")
+    namespace["create_styled_pdf_report"](
+        updated_report,
+        pdf_path,
+        configuration["company_name"],
+        configuration.get("company_url", ""),
+        configuration.get("country", ""),
+    )
+    audit["final_report"] = {
+        "generator": report_result.get("generator"),
+        "snapshot_id": report_result.get("snapshot_id"),
+        "web_search": False,
+        "prompt": report_result.get("prompt"),
+        "evidence": report_result.get("evidence"),
+        "sources": finalized.get("sources", []),
+        "markdown": updated_report,
+    }
     audit_path.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-
-    markdown_path = audit_path.parent / "06_competitive_visibility_audit.md"
-    pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
-    if markdown_path.is_file():
-        report = markdown_path.read_text(encoding="utf-8")
-        report = namespace["clean_competitive_landscape_profile_links"](report)
-        updated_report = namespace["insert_reddit_report_section"](report, result)
-        markdown_path.write_text(updated_report.rstrip() + "\n", encoding="utf-8")
-        namespace["create_styled_pdf_report"](
-            updated_report,
-            pdf_path,
-            configuration["company_name"],
-            configuration.get("company_url", ""),
-            configuration.get("country", ""),
-        )
-        namespace["create_audit_zip"](audit_path.parent)
+    namespace["create_audit_zip"](audit_path.parent)
 
     print(f"status={result.get('status')}")
     print(f"threads={len(result.get('sample', []))}")
