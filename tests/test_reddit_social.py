@@ -30,8 +30,44 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Rayner RayOne Galaxy",
-                "RayOne Galaxy IOL",
+                "RayOne Galaxy review",
                 "Rayner presbyopia-correcting intraocular lenses",
+            ],
+        )
+
+    def test_skincare_queries_do_not_inherit_industry_terms(self):
+        target = profile("CeraVe", ["Moisturizing Cream"])
+
+        queries = social.build_reddit_queries(
+            target,
+            ["moisturizer for dry sensitive skin"],
+            "Moisturizing Cream",
+        )
+
+        self.assertEqual(
+            queries,
+            [
+                "CeraVe Moisturizing Cream",
+                "Moisturizing Cream review",
+                "CeraVe moisturizer for dry sensitive skin",
+            ],
+        )
+
+    def test_marketplace_queries_use_the_same_neutral_template(self):
+        target = profile("Auto Trader", ["Used-car marketplace"])
+
+        queries = social.build_reddit_queries(
+            target,
+            ["buy used cars online uk"],
+            "Used-car marketplace",
+        )
+
+        self.assertEqual(
+            queries,
+            [
+                "Auto Trader Used-car marketplace",
+                "Used-car marketplace review",
+                "Auto Trader buy used cars online uk",
             ],
         )
 
@@ -119,6 +155,42 @@ class RedditUrlTests(unittest.TestCase):
         request = post.call_args.kwargs
         self.assertEqual(request["params"]["discover_by"], "keyword")
         self.assertEqual(request["json"]["input"][0]["date"], "Past year")
+
+    def test_comparable_offering_validator_requires_same_typed_scope(self):
+        social.parse_ai_json = json.loads
+        validator = social._competitor_focus_validator(
+            {"Dealer B": ["Used-car marketplace"]}
+        )
+
+        valid = validator(
+            json.dumps(
+                {
+                    "comparison_type": "marketplace",
+                    "selections": [
+                        {
+                            "brand": "Dealer B",
+                            "offering": "Used-car marketplace",
+                        }
+                    ],
+                }
+            )
+        )
+        invalid = validator(
+            json.dumps(
+                {
+                    "comparison_type": "automotive",
+                    "selections": [
+                        {
+                            "brand": "Dealer B",
+                            "offering": "Used-car marketplace",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertTrue(valid["valid"])
+        self.assertFalse(invalid["valid"])
 
 
 class RedditSelectionTests(unittest.TestCase):
@@ -508,7 +580,7 @@ class RedditAnalysisTests(unittest.TestCase):
         with (
             mock.patch.object(
                 social,
-                "choose_competitor_reddit_focuses",
+                "choose_competitor_reddit_offerings",
                 return_value=({"Other": "Other Plus"}, None, []),
             ),
             mock.patch.object(

@@ -68,7 +68,7 @@ The notebook then:
 7. Selects the two strongest direct competitors.
 8. Creates profiles for the target and both competitors using three-way Google AI Mode races.
 9. Measures visibility in Google AI Mode, ChatGPT, and Gemini.
-10. Selects one comparable Reddit search focus for each competitor from its audited product profile.
+10. Classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type Reddit comparison offering for each competitor.
 11. Applies the same Reddit collection method to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
 12. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
 13. Analyzes which sources shape the AI answers.
@@ -118,7 +118,7 @@ Company name + website + optional audit focus
                       ▼
   Google AI Mode + ChatGPT + Gemini visibility
                       +
- comparable-product selection for Reddit cohorts
+ same-type comparable-offering selection
                       │
                       ▼
  target + 2 competitors + neutral category sample
