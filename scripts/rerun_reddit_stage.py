@@ -43,6 +43,11 @@ def main(argv=None):
         action="store_true",
         help="Reuse 05_reddit_social.retry.json and only rebuild report artifacts",
     )
+    parser.add_argument(
+        "--reclassify-fallbacks",
+        action="store_true",
+        help="Reuse collected cohorts and rerun only failed AI classifications",
+    )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     args = parser.parse_args(argv)
 
@@ -76,7 +81,7 @@ def main(argv=None):
     keyword_serp_results = audit["serp"]["keyword_results"]
 
     output_path = audit_path.parent / "05_reddit_social.retry.json"
-    if args.reuse_result:
+    if args.reuse_result or args.reclassify_fallbacks:
         if not output_path.is_file():
             raise FileNotFoundError(f"Reddit retry result not found: {output_path}")
         result = json.loads(output_path.read_text(encoding="utf-8"))
@@ -90,10 +95,16 @@ def main(argv=None):
                 audit_focus,
             )
         )
-        output_path.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+    if args.reclassify_fallbacks:
+        result = namespace["reanalyze_reddit_fallback_cohorts"](
+            result,
+            target,
+            competitors,
         )
+    output_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     canonical_reddit_path = audit_path.parent / "05_reddit_social.json"
     canonical_reddit_path.write_text(
@@ -103,14 +114,27 @@ def main(argv=None):
     audit["reddit_social"] = result
     configuration["audit_focus"] = audit_focus
     old_warnings = audit.get("warnings") or []
-    audit["warnings"] = [
+    cohort_labels = {
+        str(cohort.get("brand") or "").strip()
+        for reddit_result in (audit.get("reddit_social") or {}, result)
+        for cohort in (reddit_result.get("cohorts") or [])
+        if str(cohort.get("brand") or "").strip()
+    }
+    retained_warnings = [
         warning
         for warning in old_warnings
         if not (
             str(warning).startswith("Reddit ")
             or str(warning).startswith("No Reddit ")
+            or any(
+                str(warning).startswith(f"{label}: Reddit ")
+                for label in cohort_labels
+            )
         )
-    ] + list(result.get("warnings") or [])
+    ]
+    audit["warnings"] = list(
+        dict.fromkeys(retained_warnings + list(result.get("warnings") or []))
+    )
     audit_path.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

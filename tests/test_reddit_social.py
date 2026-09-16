@@ -470,6 +470,72 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["discovery"]["native_snapshot_waited"])
 
+    def test_competitive_mode_builds_equal_brand_and_category_cohorts(self):
+        target = profile("Acme", ["Widget Pro"])
+        target.category = "Widgets"
+        competitor = profile("Other", ["Other Basic", "Other Plus"])
+
+        def cohort_result(
+            cohort_profile,
+            peers,
+            keywords,
+            serp,
+            focus,
+            queries,
+            require_match,
+            role,
+        ):
+            post_id = "shared1" if role != "category" else "category1"
+            sample = [
+                {
+                    "post_id": post_id,
+                    "title": f"{cohort_profile.brand_name} thread",
+                    "analysis": {"relevant": True},
+                }
+            ]
+            return {
+                "status": "success",
+                "role": role,
+                "brand": cohort_profile.brand_name,
+                "focus": focus,
+                "queries": queries or [focus],
+                "sample": sample,
+                "metrics": social.aggregate_reddit_analysis(sample),
+                "warnings": [],
+                "duration_seconds": 1,
+            }
+
+        with (
+            mock.patch.object(
+                social,
+                "choose_competitor_reddit_focuses",
+                return_value=({"Other": "Other Plus"}, None, []),
+            ),
+            mock.patch.object(
+                social,
+                "_run_reddit_profile_cohort",
+                side_effect=cohort_result,
+            ),
+        ):
+            result = social.run_reddit_social_sync(
+                target,
+                [competitor],
+                ["best widgets"],
+                {},
+                "Widget Pro",
+            )
+
+        self.assertEqual(result["mode"], "competitive")
+        self.assertEqual(len(result["cohorts"]), 3)
+        self.assertEqual(len(result["comparison"]), 2)
+        self.assertEqual(result["comparison"][1]["focus"], "Other Plus")
+        self.assertEqual(result["unique_thread_count"], 2)
+
+        report = social.build_reddit_report_section(result)
+        self.assertIn("| Acme | target | Widget Pro |", report)
+        self.assertIn("| Other | competitor | Other Plus |", report)
+        self.assertIn("### Neutral Category Sample", report)
+
 
 if __name__ == "__main__":
     unittest.main()

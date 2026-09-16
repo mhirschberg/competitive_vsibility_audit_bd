@@ -90,10 +90,23 @@ stage6_marker = '''    # -------------------------------------------------------
 '''
 reddit_output = '''    reddit_status = reddit_social_result.get("status", "failed")
     if reddit_status in {"success", "partial"}:
-        print_stage_success(
-            f"Reddit sample: {len(reddit_social_result.get('sample', []))} thread(s) "
-            f"in {format_duration(reddit_social_result.get('duration_seconds', 0))}"
-        )
+        if reddit_social_result.get("mode") == "competitive":
+            comparison = reddit_social_result.get("comparison", [])
+            cohort_summary = ", ".join(
+                f"{item.get('brand')}: {item.get('relevant_posts', 0)}/"
+                f"{item.get('sample_size', 0)} relevant"
+                for item in comparison
+            )
+            print_stage_success(
+                f"Reddit competitive sample: {cohort_summary}; "
+                f"{reddit_social_result.get('unique_thread_count', 0)} unique thread(s) "
+                f"in {format_duration(reddit_social_result.get('duration_seconds', 0))}"
+            )
+        else:
+            print_stage_success(
+                f"Reddit sample: {len(reddit_social_result.get('sample', []))} thread(s) "
+                f"in {format_duration(reddit_social_result.get('duration_seconds', 0))}"
+            )
     elif reddit_status != "disabled":
         warning = "Reddit conversation collection was unavailable"
         warnings.append(warning)
@@ -111,12 +124,20 @@ reddit_output = '''    reddit_status = reddit_social_result.get("status", "faile
     )
 
 '''
-source = replace_or_verify(
-    source,
-    stage6_marker,
-    reddit_output + stage6_marker,
-    "Reddit stage output",
-)
+reddit_output_start = '    reddit_status = reddit_social_result.get("status", "failed")\n'
+if reddit_output_start in source:
+    before, remainder = source.split(reddit_output_start, 1)
+    if stage6_marker not in remainder:
+        raise RuntimeError("Could not find Stage 6 after Reddit stage output")
+    _, after = remainder.split(stage6_marker, 1)
+    source = before + reddit_output + stage6_marker + after
+else:
+    source = replace_once(
+        source,
+        stage6_marker,
+        reddit_output + stage6_marker,
+        "Reddit stage output",
+    )
 
 old_final_report = '''    final_report = (
         finalized_report["report"]
