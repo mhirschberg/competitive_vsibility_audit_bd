@@ -179,6 +179,7 @@ def main(argv=None):
         keyword_serp_results,
         visibility,
     )
+    audit["serp"]["metrics"] = report_result["serp_metrics"]
     finalized = namespace["finalize_report"](
         report=report_result["report"],
         visibility=visibility,

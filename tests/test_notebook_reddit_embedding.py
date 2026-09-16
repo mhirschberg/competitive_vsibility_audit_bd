@@ -3,6 +3,7 @@ import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +119,60 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertTrue(rendered.startswith("**Recommendation 2 - Priority:**"))
         self.assertFalse(rendered.startswith("2. "))
+
+    def test_shared_corporate_domain_requires_product_brand_evidence(self):
+        runtime = "".join(self.notebook["cells"][5]["source"])
+        start = runtime.index("def serp_distinctive_brand_tokens")
+        end = runtime.index("def format_serp_metric")
+
+        def root_domain(value):
+            parsed = urlparse(value if "://" in value else f"https://{value}")
+            hostname = (parsed.hostname or "").removeprefix("www.")
+            return ".".join(hostname.split(".")[-2:])
+
+        namespace = {"re": re, "get_root_domain": root_domain}
+        exec(runtime[start:end], namespace)
+        keyword_results = [
+            {
+                "success": True,
+                "keyword": "project management software",
+                "results": [
+                    {
+                        "rank": 3,
+                        "domain": "microsoft.com",
+                        "url": "https://microsoft.com/microsoft-365/planner",
+                        "title": "Microsoft Planner",
+                        "description": "Project management templates",
+                    }
+                ],
+            },
+            {
+                "success": True,
+                "keyword": "collaborative workspace components",
+                "results": [
+                    {
+                        "rank": 2,
+                        "domain": "microsoft.com",
+                        "url": "https://microsoft.com/microsoft-loop",
+                        "title": "Microsoft Loop",
+                        "description": "Collaborative Loop workspaces",
+                    }
+                ],
+            },
+        ]
+
+        metric = namespace["calculate_serp_metrics"](
+            "microsoft.com",
+            keyword_results,
+            brand_name="Microsoft Loop",
+        )
+
+        self.assertEqual(metric["appearances"], 1)
+        self.assertEqual(metric["best_rank"], 2)
+        self.assertEqual(
+            metric["details"][0]["keyword"],
+            "collaborative workspace components",
+        )
 
 
 if __name__ == "__main__":
