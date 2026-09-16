@@ -1056,6 +1056,24 @@ def normalize_reddit_result_offerings(result):
     return result
 
 
+def clean_competitive_landscape_profile_links(report):
+    """Remove transient search links from profile offerings, but keep source links."""
+    report = str(report or "")
+    heading = "## Competitive Landscape"
+    if heading not in report:
+        return report
+    before, remainder = report.split(heading, 1)
+    next_heading = re.search(r"\n##\s+", remainder)
+    if next_heading:
+        section = remainder[: next_heading.start()]
+        after = remainder[next_heading.start() :]
+    else:
+        section = remainder
+        after = ""
+    section = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", section)
+    return before + heading + section + after
+
+
 def _fallback_competitor_offering(profile):
     offerings = _profile_offerings(profile)
     if len(offerings) >= 2:

@@ -207,6 +207,26 @@ class RedditUrlTests(unittest.TestCase):
             "BaByliss Air Wand",
         )
 
+    def test_only_competitive_landscape_profile_links_are_cleaned(self):
+        report = """# Audit
+
+## Competitive Landscape
+
+- Relevant offerings: [BaByliss Air Wand](/search?product=123)
+
+## Observed AI Sources
+
+- [Publisher article](https://example.com/article)
+"""
+
+        cleaned = social.clean_competitive_landscape_profile_links(report)
+
+        self.assertIn("Relevant offerings: BaByliss Air Wand", cleaned)
+        self.assertIn(
+            "[Publisher article](https://example.com/article)",
+            cleaned,
+        )
+
     def test_native_snapshot_race_uses_first_ready_result(self):
         native = {
             "queries": ["Acme review"],

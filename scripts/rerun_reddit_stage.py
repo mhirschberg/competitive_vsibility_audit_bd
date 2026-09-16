@@ -145,6 +145,7 @@ def main(argv=None):
     pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
     if markdown_path.is_file():
         report = markdown_path.read_text(encoding="utf-8")
+        report = namespace["clean_competitive_landscape_profile_links"](report)
         updated_report = namespace["insert_reddit_report_section"](report, result)
         markdown_path.write_text(updated_report.rstrip() + "\n", encoding="utf-8")
         namespace["create_styled_pdf_report"](
