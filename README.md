@@ -66,14 +66,15 @@ The notebook then:
 5. Asks Google AI Mode three neutral customer questions using three-way races.
 6. Identifies ten likely direct competitors using a three-way Google AI Mode race.
 7. Selects the two strongest direct competitors.
-8. Creates profiles for the target and both competitors using three-way Google AI Mode races.
-9. Measures visibility in Google AI Mode, ChatGPT, and Gemini.
-10. Classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type Reddit comparison offering for each competitor.
-11. Applies the same Reddit collection method to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
-12. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
-13. Analyzes which sources shape the AI answers.
-14. Builds a deterministic report with a side-by-side Reddit comparison.
-15. Exports the report as Markdown, PDF, JSON, and ZIP.
+8. Immediately starts Reddit discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends the same three-query package to three snapshots and keeps the first successful result.
+9. Creates profiles for the target and both competitors using three-way Google AI Mode races.
+10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while the early Reddit discovery continues.
+11. Classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type Reddit comparison offering for each competitor.
+12. Applies the prefetched Reddit results to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
+13. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
+14. Analyzes which sources shape the AI answers.
+15. Builds a deterministic report with a side-by-side Reddit comparison.
+16. Exports the report as Markdown, PDF, JSON, and ZIP.
 
 ---
 
@@ -111,18 +112,20 @@ Company name + website + optional audit focus
                       │
                       ▼
         2 selected direct competitors
-                      │
+             ┌────────┴────────┐
+             ▼                 ▼
+ Target + 2 profiles    early Reddit discovery
+   × 3 snapshots         4 cohorts × 3 races
+             │                 │
+             ▼                 │
+ Google AI Mode +              │
+ ChatGPT + Gemini              │
+ visibility                    │
+             └────────┬────────┘
                       ▼
- Target + 2 competitor profiles × 3 snapshots
-                      │
-                      ▼
-  Google AI Mode + ChatGPT + Gemini visibility
-                      +
  same-type comparable-offering selection
-                      │
-                      ▼
- target + 2 competitors + neutral category sample
-       parallel Reddit discovery and collection
+                      +
+ prefetched target + 2 competitors + category
                       │
                       ▼
         Gemini ───────────── ChatGPT
@@ -144,6 +147,8 @@ The notebook uses:
 - Gemini
 - Reddit posts dataset
 - Reddit comments dataset
+
+Reddit discovery deliberately races three identical snapshot packages per cohort to reduce slow-tail latency. This increases dataset usage; set `REDDIT_NATIVE_RACE_WIDTH=1` to prefer minimum usage over speed.
 
 ---
 

@@ -48,6 +48,12 @@ REDDIT_COMMENT_DAYS_BACK = max(
 REDDIT_DISCOVERY_TIMEOUT_SECONDS = max(
     60, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "180"))
 )
+REDDIT_NATIVE_RACE_WIDTH = max(
+    1, min(5, int(os.getenv("REDDIT_NATIVE_RACE_WIDTH", "3")))
+)
+REDDIT_NATIVE_POLL_SECONDS = max(
+    1, int(os.getenv("REDDIT_NATIVE_POLL_SECONDS", "5"))
+)
 REDDIT_DISCOVERY_DATE = os.getenv("REDDIT_DISCOVERY_DATE", "Past year").strip()
 REDDIT_AI_RACE_SLOTS = max(
     1, min(4, int(os.getenv("REDDIT_AI_RACE_SLOTS", "2")))
@@ -190,12 +196,24 @@ def _compact_reddit_term(value, max_words):
     return " ".join(text.split()[:max_words])
 
 
-def _trigger_native_reddit_discovery(queries):
-    """Trigger one asynchronous snapshot per query so slow queries cannot block fast ones."""
+def _trigger_native_reddit_discovery(queries, race_width=None):
+    """Trigger identical multi-query snapshots for a first-success race."""
     if not queries:
         return {"records": [], "snapshots": [], "warnings": []}
 
-    def trigger_one(query):
+    race_width = REDDIT_NATIVE_RACE_WIDTH if race_width is None else max(1, race_width)
+    payload = {
+        "input": [
+            {
+                "keyword": query,
+                "date": REDDIT_DISCOVERY_DATE,
+                "num_of_posts": REDDIT_DISCOVERY_PER_QUERY,
+            }
+            for query in queries
+        ]
+    }
+
+    def trigger_one(race_index):
         response = reddit_requests.post(
             BD_TRIGGER_URL,
             headers=bd_client.headers,
@@ -207,15 +225,7 @@ def _trigger_native_reddit_discovery(queries):
                 "notify": "false",
                 "include_errors": "true",
             },
-            json={
-                "input": [
-                    {
-                        "keyword": query,
-                        "date": REDDIT_DISCOVERY_DATE,
-                        "num_of_posts": REDDIT_DISCOVERY_PER_QUERY,
-                    }
-                ]
-            },
+            json=payload,
             timeout=60,
         )
         if not response.ok:
@@ -231,56 +241,132 @@ def _trigger_native_reddit_discovery(queries):
             ) from exc
         snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
         records = [] if snapshot_id else bd_client.normalize_records(data)
-        return {"query": query, "snapshot_id": snapshot_id, "records": records}
+        return {
+            "race_index": race_index,
+            "queries": list(queries),
+            "snapshot_id": snapshot_id,
+            "records": records,
+        }
 
     snapshots = []
     records = []
     warnings = []
-    with RedditExecutor(max_workers=len(queries)) as executor:
-        futures = {executor.submit(trigger_one, query): query for query in queries}
+    with RedditExecutor(max_workers=race_width) as executor:
+        futures = {
+            executor.submit(trigger_one, race_index): race_index
+            for race_index in range(1, race_width + 1)
+        }
         for future in reddit_as_completed(futures):
-            query = futures[future]
+            race_index = futures[future]
             try:
                 result = future.result()
                 records.extend(result["records"])
                 if result["snapshot_id"]:
                     snapshots.append(
-                        {"query": query, "snapshot_id": result["snapshot_id"]}
+                        {
+                            "race_index": result["race_index"],
+                            "queries": result["queries"],
+                            "snapshot_id": result["snapshot_id"],
+                        }
                     )
             except Exception as exc:
                 warnings.append(
-                    f"Reddit native query trigger failed for {query!r}: "
+                    f"Reddit native race trigger {race_index} failed: "
                     f"{type(exc).__name__}: {exc}"
                 )
-    return {"records": records, "snapshots": snapshots, "warnings": warnings}
+    return {
+        "queries": list(queries),
+        "records": records,
+        "snapshots": snapshots,
+        "race_width": race_width,
+        "warnings": warnings,
+    }
 
 
 def _wait_for_native_reddit_discovery(native):
+    """Poll a snapshot race and download only the first successful result."""
     snapshots = native.get("snapshots") or []
     if not snapshots:
         return native
 
     records = list(native.get("records") or [])
     warnings = list(native.get("warnings") or [])
-    with RedditExecutor(max_workers=len(snapshots)) as executor:
-        futures = {
-            executor.submit(
-                bd_client.wait_for_snapshot,
-                item["snapshot_id"],
-                REDDIT_DISCOVERY_TIMEOUT_SECONDS,
-            ): item
-            for item in snapshots
-        }
-        for future in reddit_as_completed(futures):
-            item = futures[future]
+    active = {item["snapshot_id"]: item for item in snapshots}
+    started_at = time.monotonic()
+    failed_statuses = {
+        "failed",
+        "error",
+        "cancelled",
+        "canceled",
+        "expired",
+        "stopped",
+    }
+
+    while active and time.monotonic() - started_at < REDDIT_DISCOVERY_TIMEOUT_SECONDS:
+        ready_ids = []
+        failed_ids = []
+        with RedditExecutor(max_workers=len(active)) as executor:
+            futures = {
+                executor.submit(bd_client.snapshot_status, snapshot_id): snapshot_id
+                for snapshot_id in active
+            }
+            for future in reddit_as_completed(futures):
+                snapshot_id = futures[future]
+                try:
+                    status = str(future.result().get("status") or "unknown").lower()
+                except Exception as exc:
+                    warnings.append(
+                        f"Reddit snapshot status failed for {snapshot_id}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    continue
+                if status == "ready":
+                    ready_ids.append(snapshot_id)
+                elif status in failed_statuses:
+                    failed_ids.append(snapshot_id)
+
+        for snapshot_id in failed_ids:
+            active.pop(snapshot_id, None)
+        for snapshot_id in ready_ids:
             try:
-                records.extend(future.result())
+                downloaded = bd_client.download_snapshot(snapshot_id)
+                materializing = (
+                    len(downloaded) == 1
+                    and isinstance(downloaded[0], dict)
+                    and str(downloaded[0].get("status") or "").lower()
+                    in {"building", "collecting", "digesting", "running"}
+                )
+                if materializing:
+                    continue
+                records.extend(downloaded)
+                return {
+                    **native,
+                    "records": records,
+                    "winner_snapshot_id": snapshot_id,
+                    "warnings": warnings,
+                }
             except Exception as exc:
                 warnings.append(
-                    f"Reddit native query failed for {item['query']!r}: "
+                    f"Reddit snapshot download failed for {snapshot_id}: "
                     f"{type(exc).__name__}: {exc}"
                 )
-    return {**native, "records": records, "warnings": warnings}
+                active.pop(snapshot_id, None)
+        if active:
+            time.sleep(REDDIT_NATIVE_POLL_SECONDS)
+
+    if active:
+        warnings.append(
+            "Reddit native snapshot race did not produce a ready result within "
+            f"{REDDIT_DISCOVERY_TIMEOUT_SECONDS} seconds."
+        )
+    elif not records:
+        warnings.append("Every Reddit native snapshot in the race failed.")
+    return {
+        **native,
+        "records": records,
+        "winner_snapshot_id": None,
+        "warnings": warnings,
+    }
 
 
 def _discover_reddit_with_serp(queries):
@@ -855,6 +941,8 @@ def aggregate_reddit_analysis(posts):
 
 
 def _profile_name(profile):
+    if isinstance(profile, str):
+        return profile.strip()
     return str(getattr(profile, "brand_name", "") or "").strip()
 
 
@@ -1009,6 +1097,135 @@ def build_category_reddit_queries(keywords, target_profile):
     return deduped[:3]
 
 
+def build_early_reddit_queries(brand, keywords, audit_focus=""):
+    """Build discovery queries before detailed brand profiles are available."""
+    brand = str(brand or "").strip()
+    focus = _compact_reddit_term(audit_focus, 6)
+    buyer_terms = [
+        _compact_reddit_term(item, 8)
+        for item in (keywords or [])
+        if str(item).strip()
+    ]
+    queries = []
+    if brand and focus:
+        focus_has_brand = bool(
+            re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", focus, re.IGNORECASE)
+        )
+        queries.append(focus if focus_has_brand else f"{brand} {focus}")
+    for buyer_term in buyer_terms:
+        if brand and buyer_term:
+            queries.append(f"{brand} {buyer_term}")
+    if brand:
+        queries.append(f"{brand} review")
+
+    deduped = []
+    seen = set()
+    for query in queries:
+        key = query.casefold()
+        if query and key not in seen:
+            seen.add(key)
+            deduped.append(query)
+    return deduped[:3]
+
+
+def _reddit_prefetch_key(role, brand=""):
+    return role if role == "category" else f"{role}:{str(brand).strip().casefold()}"
+
+
+def run_reddit_discovery_prefetch_sync(
+    target_brand,
+    selected_competitors,
+    keywords,
+    audit_focus="",
+):
+    """Start native Reddit races as soon as the competitor set is locked."""
+    started_at = time.monotonic()
+    target_name = _profile_name(target_brand)
+    specs = [
+        {
+            "role": "target",
+            "brand": target_name,
+            "queries": build_early_reddit_queries(
+                target_name,
+                keywords,
+                audit_focus,
+            ),
+        }
+    ]
+    for competitor in selected_competitors or []:
+        brand = _profile_name(competitor)
+        specs.append(
+            {
+                "role": "competitor",
+                "brand": brand,
+                "queries": build_early_reddit_queries(brand, keywords),
+            }
+        )
+    specs.append(
+        {
+            "role": "category",
+            "brand": "",
+            "queries": build_category_reddit_queries(keywords, target_brand),
+        }
+    )
+
+    def prefetch_one(spec):
+        native = _trigger_native_reddit_discovery(spec["queries"])
+        return _wait_for_native_reddit_discovery(native)
+
+    cohorts = {}
+    warnings = []
+    with RedditExecutor(max_workers=len(specs)) as executor:
+        futures = {
+            executor.submit(prefetch_one, spec): spec
+            for spec in specs
+        }
+        for future in reddit_as_completed(futures):
+            spec = futures[future]
+            key = _reddit_prefetch_key(spec["role"], spec["brand"])
+            try:
+                result = future.result()
+            except Exception as exc:
+                result = {
+                    "queries": spec["queries"],
+                    "records": [],
+                    "snapshots": [],
+                    "winner_snapshot_id": None,
+                    "warnings": [f"{type(exc).__name__}: {exc}"],
+                }
+            cohorts[key] = result
+            label = spec["brand"] or "neutral category"
+            warnings.extend(
+                f"{label}: {warning}" for warning in result.get("warnings", [])
+            )
+
+    return {
+        "status": "success" if all(
+            item.get("records") for item in cohorts.values()
+        ) else "partial",
+        "cohorts": cohorts,
+        "warnings": warnings,
+        "duration_seconds": round(time.monotonic() - started_at, 2),
+    }
+
+
+async def start_reddit_discovery_prefetch(
+    target_brand,
+    selected_competitors,
+    keywords,
+    audit_focus="",
+):
+    if not REDDIT_SOCIAL_ENABLED:
+        return {"status": "disabled", "cohorts": {}, "warnings": []}
+    return await asyncio.to_thread(
+        run_reddit_discovery_prefetch_sync,
+        target_brand,
+        selected_competitors,
+        keywords,
+        audit_focus,
+    )
+
+
 def _run_reddit_profile_cohort(
     profile,
     peer_profiles,
@@ -1018,18 +1235,23 @@ def _run_reddit_profile_cohort(
     queries_override=None,
     require_profile_match=True,
     role="target",
+    native_prefetch=None,
 ):
     started_at = time.monotonic()
     warnings = []
     queries = list(queries_override or build_reddit_queries(profile, keywords, audit_focus))
     native = {"records": [], "snapshots": [], "warnings": []}
     serp_discovery = {"records": [], "warnings": []}
+    prefetched = bool(native_prefetch and native_prefetch.get("records"))
+    if native_prefetch and not prefetched:
+        warnings.extend(native_prefetch.get("warnings", []))
+    if prefetched:
+        native = dict(native_prefetch)
 
-    with RedditExecutor(max_workers=2) as executor:
-        futures = {
-            executor.submit(_trigger_native_reddit_discovery, queries): "native",
-            executor.submit(_discover_reddit_with_serp, queries): "serp",
-        }
+    with RedditExecutor(max_workers=1 if prefetched else 2) as executor:
+        futures = {executor.submit(_discover_reddit_with_serp, queries): "serp"}
+        if not prefetched:
+            futures[executor.submit(_trigger_native_reddit_discovery, queries)] = "native"
         for future in reddit_as_completed(futures):
             source = futures[future]
             try:
@@ -1046,8 +1268,8 @@ def _run_reddit_profile_cohort(
 
     warnings.extend(serp_discovery.get("warnings", []))
     serp_candidates = serp_discovery.get("records", [])
-    native_waited = False
-    if native.get("snapshots"):
+    native_waited = prefetched
+    if native.get("snapshots") and not prefetched:
         native_waited = True
         try:
             native = _wait_for_native_reddit_discovery(native)
@@ -1117,7 +1339,11 @@ def _run_reddit_profile_cohort(
             "native_snapshot_ids": [
                 item["snapshot_id"] for item in native.get("snapshots", [])
             ],
+            "native_winner_snapshot_id": native.get("winner_snapshot_id"),
+            "native_race_width": native.get("race_width", 1),
             "native_snapshot_waited": native_waited,
+            "native_prefetched": prefetched,
+            "native_prefetch_queries": native.get("queries", []) if prefetched else [],
             "native_records": len(native.get("records", [])),
             "serp_records": len(serp_candidates),
             "unique_candidates": len(candidates),
@@ -1136,17 +1362,22 @@ def run_reddit_social_sync(
     keywords,
     keyword_serp_results,
     audit_focus="",
+    discovery_prefetch=None,
 ):
     """Build equal Reddit cohorts for the target, competitors, and category."""
     started_at = time.monotonic()
     competitor_profiles = list(competitor_profiles or [])
     if not competitor_profiles:
+        prefetch_cohorts = (discovery_prefetch or {}).get("cohorts", {})
         return _run_reddit_profile_cohort(
             target_profile,
             [],
             keywords,
             keyword_serp_results,
             audit_focus,
+            native_prefetch=prefetch_cohorts.get(
+                _reddit_prefetch_key("target", _profile_name(target_profile))
+            ),
         )
 
     offerings, offering_race, warnings = choose_competitor_reddit_offerings(
@@ -1155,6 +1386,7 @@ def run_reddit_social_sync(
         audit_focus,
         keywords,
     )
+    prefetch_cohorts = (discovery_prefetch or {}).get("cohorts", {})
     all_brand_profiles = [target_profile, *competitor_profiles]
     specs = [
         {
@@ -1165,6 +1397,9 @@ def run_reddit_social_sync(
             "match": True,
             "role": "target",
             "serp": {},
+            "native": prefetch_cohorts.get(
+                _reddit_prefetch_key("target", _profile_name(target_profile))
+            ),
         }
     ]
     for competitor in competitor_profiles:
@@ -1178,6 +1413,9 @@ def run_reddit_social_sync(
                 "match": True,
                 "role": "competitor",
                 "serp": {},
+                "native": prefetch_cohorts.get(
+                    _reddit_prefetch_key("competitor", brand)
+                ),
             }
         )
 
@@ -1198,6 +1436,7 @@ def run_reddit_social_sync(
             "match": False,
             "role": "category",
             "serp": keyword_serp_results,
+            "native": prefetch_cohorts.get(_reddit_prefetch_key("category")),
         }
     )
 
@@ -1214,6 +1453,7 @@ def run_reddit_social_sync(
                 spec["queries"],
                 spec["match"],
                 spec["role"],
+                spec["native"],
             ): index
             for index, spec in enumerate(specs)
         }
@@ -1377,6 +1617,7 @@ async def run_reddit_social_stage(
     keywords,
     keyword_serp_results,
     audit_focus="",
+    discovery_prefetch_task=None,
 ):
     if not REDDIT_SOCIAL_ENABLED:
         return {
@@ -1387,15 +1628,42 @@ async def run_reddit_social_stage(
             "warnings": [],
             "duration_seconds": 0.0,
         }
+    discovery_prefetch = None
+    prefetch_warning = ""
+    if discovery_prefetch_task is not None:
+        try:
+            discovery_prefetch = await discovery_prefetch_task
+        except Exception as exc:
+            prefetch_warning = (
+                "Early Reddit discovery failed; regular discovery was used: "
+                f"{type(exc).__name__}: {exc}"
+            )
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             run_reddit_social_sync,
             target_profile,
             competitor_profiles,
             keywords,
             keyword_serp_results,
             audit_focus,
+            discovery_prefetch,
         )
+        if discovery_prefetch:
+            processing_duration = float(result.get("duration_seconds") or 0)
+            prefetch_duration = float(
+                discovery_prefetch.get("duration_seconds") or 0
+            )
+            result["processing_duration_seconds"] = processing_duration
+            result["prefetch_duration_seconds"] = prefetch_duration
+            result["duration_seconds"] = round(
+                prefetch_duration + processing_duration,
+                2,
+            )
+        if prefetch_warning:
+            result.setdefault("warnings", []).append(prefetch_warning)
+            if result.get("status") == "success":
+                result["status"] = "partial"
+        return result
     except Exception as exc:
         return {
             "status": "failed",

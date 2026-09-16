@@ -71,6 +71,24 @@ class RedditUrlTests(unittest.TestCase):
             ],
         )
 
+    def test_early_queries_are_available_before_profiles(self):
+        queries = social.build_early_reddit_queries(
+            "AutoScout24",
+            [
+                "gebrauchte autos online kaufen",
+                "gebrauchtwagen mit finanzierung suchen",
+            ],
+        )
+
+        self.assertEqual(
+            queries,
+            [
+                "AutoScout24 gebrauchte autos online kaufen",
+                "AutoScout24 gebrauchtwagen mit finanzierung suchen",
+                "AutoScout24 review",
+            ],
+        )
+
     def test_queries_use_specific_product_and_category_terms(self):
         target = profile(
             "Rayner",
@@ -149,12 +167,106 @@ class RedditUrlTests(unittest.TestCase):
             mock.patch.object(social, "bd_client", client, create=True),
             mock.patch.object(social.reddit_requests, "post", return_value=response) as post,
         ):
-            result = social._trigger_native_reddit_discovery(["Acme review"])
+            result = social._trigger_native_reddit_discovery(
+                ["Acme review", "Acme pricing"]
+            )
 
-        self.assertEqual(result, {"records": [], "snapshots": [], "warnings": []})
+        self.assertEqual(
+            result,
+            {
+                "queries": ["Acme review", "Acme pricing"],
+                "records": [],
+                "snapshots": [],
+                "race_width": 3,
+                "warnings": [],
+            },
+        )
+        self.assertEqual(post.call_count, 3)
         request = post.call_args.kwargs
         self.assertEqual(request["params"]["discover_by"], "keyword")
         self.assertEqual(request["json"]["input"][0]["date"], "Past year")
+        self.assertEqual(
+            [item["keyword"] for item in request["json"]["input"]],
+            ["Acme review", "Acme pricing"],
+        )
+
+    def test_native_snapshot_race_uses_first_ready_result(self):
+        native = {
+            "queries": ["Acme review"],
+            "records": [],
+            "snapshots": [
+                {"snapshot_id": "slow-1"},
+                {"snapshot_id": "winner"},
+                {"snapshot_id": "slow-2"},
+            ],
+            "race_width": 3,
+            "warnings": [],
+        }
+        client = SimpleNamespace(
+            snapshot_status=lambda snapshot_id: {
+                "status": "ready" if snapshot_id == "winner" else "running"
+            },
+            download_snapshot=lambda snapshot_id: [
+                {"post_id": "abc123", "snapshot": snapshot_id}
+            ],
+        )
+        with mock.patch.object(social, "bd_client", client, create=True):
+            result = social._wait_for_native_reddit_discovery(native)
+
+        self.assertEqual(result["winner_snapshot_id"], "winner")
+        self.assertEqual(result["records"][0]["snapshot"], "winner")
+
+    def test_prefetch_starts_target_competitors_and_category_together(self):
+        target = profile("Acme")
+        target.category = "Widgets"
+        competitors = [profile("Other"), profile("Third")]
+
+        def trigger(queries):
+            return {
+                "queries": queries,
+                "records": [],
+                "snapshots": [{"snapshot_id": queries[0]}],
+                "race_width": 3,
+                "warnings": [],
+            }
+
+        def wait(native):
+            return {
+                **native,
+                "records": [{"post_id": native["queries"][0]}],
+                "winner_snapshot_id": native["snapshots"][0]["snapshot_id"],
+            }
+
+        with (
+            mock.patch.object(
+                social,
+                "_trigger_native_reddit_discovery",
+                side_effect=trigger,
+            ) as trigger_mock,
+            mock.patch.object(
+                social,
+                "_wait_for_native_reddit_discovery",
+                side_effect=wait,
+            ),
+        ):
+            result = social.run_reddit_discovery_prefetch_sync(
+                target,
+                competitors,
+                ["best widgets", "cheap widgets"],
+                "Widget Pro",
+            )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(trigger_mock.call_count, 4)
+        self.assertEqual(
+            set(result["cohorts"]),
+            {
+                "target:acme",
+                "competitor:other",
+                "competitor:third",
+                "category",
+            },
+        )
 
     def test_comparable_offering_validator_requires_same_typed_scope(self):
         social.parse_ai_json = json.loads
@@ -556,6 +668,7 @@ class RedditAnalysisTests(unittest.TestCase):
             queries,
             require_match,
             role,
+            native_prefetch,
         ):
             post_id = "shared1" if role != "category" else "category1"
             sample = [

@@ -44,6 +44,27 @@ runtime_cell["source"] = runtime_source.splitlines(keepends=True)
 orchestration_cell = notebook["cells"][5]
 source = "".join(orchestration_cell["source"])
 
+stage4_marker = '''    # --------------------------------------------------------
+    # Stage 4: profiles
+    # --------------------------------------------------------
+'''
+prefetch_before_stage4 = '''    reddit_prefetch_task = asyncio.create_task(
+        start_reddit_discovery_prefetch(
+            target_brand=target_brand,
+            selected_competitors=selected_competitors,
+            keywords=keywords,
+            audit_focus=settings.get("audit_focus", ""),
+        )
+    )
+
+''' + stage4_marker
+source = replace_or_verify(
+    source,
+    stage4_marker,
+    prefetch_before_stage4,
+    "early Reddit discovery prefetch",
+)
+
 old_visibility = '''    visibility_result = (
         await run_visibility_stage(
             target_profile=(
@@ -69,6 +90,7 @@ new_visibility = '''    visibility_task = asyncio.create_task(
             keywords=keywords,
             keyword_serp_results=keyword_serp_results,
             audit_focus=settings.get("audit_focus", ""),
+            discovery_prefetch_task=reddit_prefetch_task,
         )
     )
 
@@ -77,6 +99,12 @@ new_visibility = '''    visibility_task = asyncio.create_task(
         reddit_task,
     )
 '''
+previous_visibility = new_visibility.replace(
+    '            discovery_prefetch_task=reddit_prefetch_task,\n',
+    '',
+)
+if previous_visibility in source:
+    source = source.replace(previous_visibility, new_visibility, 1)
 source = replace_or_verify(
     source,
     old_visibility,
