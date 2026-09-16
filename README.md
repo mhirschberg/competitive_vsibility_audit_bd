@@ -289,6 +289,27 @@ A typical run displays:
 
 A live audit can take several minutes. Runtime depends on snapshot availability, search-engine retries, and which concurrent research or utility result finishes first.
 
+### Local headless runs
+
+For local development, create an uncommitted `.env.local` file in the repository root:
+
+```text
+BRIGHTDATA_API_TOKEN=...
+SERP_ZONE=...
+```
+
+Create a virtual environment and install the project requirements, then run:
+
+```text
+.venv/bin/python scripts/run_local_audit.py \
+  --company "Rayner" \
+  --domain "rayner.com" \
+  --focus "presbyopia-correcting intraocular lenses" \
+  --country "GB"
+```
+
+Use `--dry-run` to validate the local settings and generated notebook runner without making Bright Data calls. Live runs are written to separate timestamped directories under `local-runs/`, including `audit.log` and all generated report artifacts. Both `.env.local` and `local-runs/` are excluded from Git.
+
 ---
 
 ## Methodology

@@ -13,6 +13,7 @@ import time
 from collections import Counter as RedditCounter
 from concurrent.futures import ThreadPoolExecutor as RedditExecutor
 from concurrent.futures import as_completed as reddit_as_completed
+from urllib.parse import quote_plus as reddit_quote_plus
 from urllib.parse import urlparse as reddit_urlparse
 
 import requests as reddit_requests
@@ -34,7 +35,7 @@ REDDIT_DISCOVERY_PER_QUERY = max(
 )
 REDDIT_HYDRATE_LIMIT = max(
     REDDIT_SAMPLE_SIZE,
-    min(20, int(os.getenv("REDDIT_HYDRATE_LIMIT", "20"))),
+    min(20, int(os.getenv("REDDIT_HYDRATE_LIMIT", "12"))),
 )
 REDDIT_COMMENTS_PER_POST = max(
     0, int(os.getenv("REDDIT_COMMENTS_PER_POST", "3"))
@@ -43,7 +44,7 @@ REDDIT_COMMENT_DAYS_BACK = max(
     1, int(os.getenv("REDDIT_COMMENT_DAYS_BACK", "365"))
 )
 REDDIT_DISCOVERY_TIMEOUT_SECONDS = max(
-    60, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "420"))
+    60, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "180"))
 )
 REDDIT_DISCOVERY_DATE = os.getenv("REDDIT_DISCOVERY_DATE", "Past year").strip()
 if REDDIT_DISCOVERY_DATE not in {
@@ -132,13 +133,16 @@ def build_reddit_queries(target_profile, keywords):
     ]
     buyer_terms = [str(item).strip() for item in (keywords or []) if str(item).strip()]
 
+    product = _compact_reddit_term(products[0], 4) if products else ""
+    buyer_term = _compact_reddit_term(buyer_terms[0], 6) if buyer_terms else ""
+
     queries = []
-    if brand and products:
-        queries.append(f'"{brand}" "{products[0]}"')
-    if brand:
-        queries.append(f'"{brand}" review')
-    if brand and buyer_terms:
-        queries.append(f'"{brand}" {buyer_terms[0]}')
+    if brand and product:
+        queries.append(f"{brand} {product}")
+    if product:
+        queries.append(f"{product} review")
+    if brand and buyer_term:
+        queries.append(f"{brand} {buyer_term}")
 
     deduped = []
     seen = set()
@@ -150,73 +154,164 @@ def build_reddit_queries(target_profile, keywords):
     return deduped[:3]
 
 
+def _compact_reddit_term(value, max_words):
+    text = re.sub(r"\([^)]*\)", " ", str(value or ""))
+    text = re.split(r"\s+(?:family|range|portfolio)\s+of\s+", text, maxsplit=1, flags=re.IGNORECASE)[0]
+    text = " ".join(text.split())
+    return " ".join(text.split()[:max_words])
+
+
 def _trigger_native_reddit_discovery(queries):
-    """Trigger keyword discovery and wait for its snapshot."""
+    """Trigger one asynchronous snapshot per query so slow queries cannot block fast ones."""
     if not queries:
-        return {"records": [], "snapshot_id": None}
-    response = reddit_requests.post(
-        BD_SCRAPE_URL,
-        headers=bd_client.headers,
-        params={
-            "dataset_id": REDDIT_POSTS_DATASET_ID,
-            "type": "discover_new",
-            "discover_by": "keyword",
-            "format": "json",
-            "notify": "false",
-            "include_errors": "true",
-        },
-        json={
-            "input": [
-                {
-                    "keyword": query,
-                    "date": REDDIT_DISCOVERY_DATE,
-                    "num_of_posts": REDDIT_DISCOVERY_PER_QUERY,
-                }
-                for query in queries
-            ]
-        },
-        timeout=60,
-    )
-    if not response.ok:
-        raise BrightDataAPIError(
-            "Reddit keyword discovery trigger failed. "
-            f"HTTP {response.status_code}: {response.text[:1500]}"
+        return {"records": [], "snapshots": [], "warnings": []}
+
+    def trigger_one(query):
+        response = reddit_requests.post(
+            BD_TRIGGER_URL,
+            headers=bd_client.headers,
+            params={
+                "dataset_id": REDDIT_POSTS_DATASET_ID,
+                "type": "discover_new",
+                "discover_by": "keyword",
+                "format": "json",
+                "notify": "false",
+                "include_errors": "true",
+            },
+            json={
+                "input": [
+                    {
+                        "keyword": query,
+                        "date": REDDIT_DISCOVERY_DATE,
+                        "num_of_posts": REDDIT_DISCOVERY_PER_QUERY,
+                    }
+                ]
+            },
+            timeout=60,
         )
-    try:
-        data = response.json()
-    except Exception as exc:
-        raise BrightDataAPIError(
-            "Reddit discovery response was not valid JSON."
-        ) from exc
-    snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
-    if snapshot_id:
-        records = bd_client.wait_for_snapshot(
-            snapshot_id,
-            timeout_seconds=REDDIT_DISCOVERY_TIMEOUT_SECONDS,
-        )
-    else:
-        records = bd_client.normalize_records(data)
-    return {"records": records, "snapshot_id": snapshot_id}
+        if not response.ok:
+            raise BrightDataAPIError(
+                "Reddit keyword discovery trigger failed. "
+                f"HTTP {response.status_code}: {response.text[:1500]}"
+            )
+        try:
+            data = response.json()
+        except Exception as exc:
+            raise BrightDataAPIError(
+                "Reddit discovery response was not valid JSON."
+            ) from exc
+        snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
+        records = [] if snapshot_id else bd_client.normalize_records(data)
+        return {"query": query, "snapshot_id": snapshot_id, "records": records}
+
+    snapshots = []
+    records = []
+    warnings = []
+    with RedditExecutor(max_workers=len(queries)) as executor:
+        futures = {executor.submit(trigger_one, query): query for query in queries}
+        for future in reddit_as_completed(futures):
+            query = futures[future]
+            try:
+                result = future.result()
+                records.extend(result["records"])
+                if result["snapshot_id"]:
+                    snapshots.append(
+                        {"query": query, "snapshot_id": result["snapshot_id"]}
+                    )
+            except Exception as exc:
+                warnings.append(
+                    f"Reddit native query trigger failed for {query!r}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+    return {"records": records, "snapshots": snapshots, "warnings": warnings}
+
+
+def _wait_for_native_reddit_discovery(native):
+    snapshots = native.get("snapshots") or []
+    if not snapshots:
+        return native
+
+    records = list(native.get("records") or [])
+    warnings = list(native.get("warnings") or [])
+    with RedditExecutor(max_workers=len(snapshots)) as executor:
+        futures = {
+            executor.submit(
+                bd_client.wait_for_snapshot,
+                item["snapshot_id"],
+                REDDIT_DISCOVERY_TIMEOUT_SECONDS,
+            ): item
+            for item in snapshots
+        }
+        for future in reddit_as_completed(futures):
+            item = futures[future]
+            try:
+                records.extend(future.result())
+            except Exception as exc:
+                warnings.append(
+                    f"Reddit native query failed for {item['query']!r}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+    return {**native, "records": records, "warnings": warnings}
 
 
 def _discover_reddit_with_serp(queries):
     """Discover Reddit post URLs through fast site-restricted Google SERPs."""
     results = []
+    warnings = []
 
     def search_one(query):
-        return query, bd_client.google_serp(
-            query=f"site:reddit.com {query}",
-            num_results=10,
+        search_query = f"site:reddit.com {query}"
+        search_url = (
+            "https://www.google.com/search"
+            f"?q={reddit_quote_plus(search_query)}"
+            f"&gl={bd_client.country.lower()}&hl=en&num=10"
         )
+        response = reddit_requests.post(
+            BD_REQUEST_URL,
+            headers=bd_client.headers,
+            json={
+                "zone": bd_client.serp_zone,
+                "url": search_url,
+                "format": "raw",
+                "data_format": "parsed_light",
+            },
+            timeout=90,
+        )
+        if not response.ok:
+            raise BrightDataAPIError(
+                f"Reddit SERP discovery failed for {query!r}. "
+                f"HTTP {response.status_code}: {response.text[:1000]}"
+            )
+        data = decode_bright_data_response(
+            response,
+            context=f"Reddit SERP discovery for {query!r}",
+        )
+        organic = []
+        if isinstance(data, dict):
+            organic = data.get("organic") or data.get("results") or data.get("organic_results") or []
+        return query, organic if isinstance(organic, list) else []
 
     if not queries:
-        return results
+        return {"records": results, "warnings": warnings}
     with RedditExecutor(max_workers=len(queries)) as executor:
         futures = [executor.submit(search_one, query) for query in queries]
         for future in reddit_as_completed(futures):
-            query, response = future.result()
-            for rank, item in enumerate(response.get("results", []), start=1):
-                url = canonical_reddit_url(item.get("url"))
+            try:
+                query, organic = future.result()
+            except Exception as exc:
+                warnings.append(
+                    f"Reddit SERP query failed: {type(exc).__name__}: {exc}"
+                )
+                continue
+            for rank, item in enumerate(organic, start=1):
+                if not isinstance(item, dict):
+                    continue
+                raw_url = str(item.get("url") or item.get("link") or "").strip()
+                if raw_url.startswith("/"):
+                    raw_url = "https://www.google.com" + raw_url
+                if raw_url and is_google_goto_url(raw_url):
+                    raw_url = resolve_google_goto_url(raw_url) or raw_url
+                url = canonical_reddit_url(raw_url)
                 if not url:
                     continue
                 results.append(
@@ -230,7 +325,7 @@ def _discover_reddit_with_serp(queries):
                         "query": query,
                     }
                 )
-    return results
+    return {"records": results, "warnings": warnings}
 
 
 def _candidate_from_native(record):
@@ -314,25 +409,75 @@ def _discovery_score(candidate):
     )
 
 
-def _sorted_reddit_candidates(candidates):
+def _target_relevance_score_text(text, target_profile):
+    """Score explicit target mentions without fuzzy-matching similar brand names."""
+    haystack = str(text or "").casefold()
+    brand = str(getattr(target_profile, "brand_name", "") or "").strip().casefold()
+    score = 0
+    if brand and re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", haystack):
+        score += 40
+
+    ignored = {
+        "family", "range", "portfolio", "with", "from", "preloaded",
+        "lens", "lenses", "product", "products", "system", "systems",
+    }
+    for product_index, product in enumerate(
+        getattr(target_profile, "relevant_products", None) or []
+    ):
+        compact = _compact_reddit_term(product, 5).casefold()
+        tokens = [
+            token
+            for token in re.findall(r"[a-z0-9]+", compact)
+            if len(token) >= 4 and token not in ignored
+        ]
+        if compact and re.search(rf"(?<!\w){re.escape(compact)}(?!\w)", haystack):
+            score += 30
+        for token_index, token in enumerate(tokens):
+            if re.search(rf"(?<!\w){re.escape(token)}(?!\w)", haystack):
+                score += 24 if product_index == 0 and token_index == 0 else 6
+    return score
+
+
+def _candidate_target_relevance(candidate, target_profile):
+    return _target_relevance_score_text(
+        f"{candidate.get('title', '')} {candidate.get('description', '')}",
+        target_profile,
+    )
+
+
+def _sorted_reddit_candidates(candidates, target_profile=None):
     return sorted(
         candidates,
         key=lambda candidate: (
+            -(
+                _candidate_target_relevance(candidate, target_profile)
+                if target_profile is not None
+                else 0
+            ),
             -_discovery_score(candidate),
             candidate.get("url", ""),
         ),
     )
 
 
-def _collect_reddit_posts(candidates):
-    shortlist = _sorted_reddit_candidates(candidates)[:REDDIT_HYDRATE_LIMIT]
+def _collect_reddit_posts(candidates, target_profile=None):
+    shortlist = _sorted_reddit_candidates(candidates, target_profile)[
+        :REDDIT_HYDRATE_LIMIT
+    ]
     if not shortlist:
         return []
-    records = bd_client.scrape_dataset(
-        dataset_id=REDDIT_POSTS_DATASET_ID,
-        payload={"input": [{"url": item["url"]} for item in shortlist]},
-        timeout_seconds=360,
-    )
+    native_count = sum(1 for item in shortlist if item.get("native_record"))
+    scrape_limit = max(0, min(len(shortlist), REDDIT_SAMPLE_SIZE + 2 - native_count))
+    to_scrape = [item for item in shortlist if not item.get("native_record")][
+        :scrape_limit
+    ]
+    records = []
+    if to_scrape:
+        records = bd_client.scrape_dataset(
+            dataset_id=REDDIT_POSTS_DATASET_ID,
+            payload={"input": [{"url": item["url"]} for item in to_scrape]},
+            timeout_seconds=300,
+        )
     by_id = {
         reddit_post_id(record.get("post_id") or record.get("url")): record
         for record in records
@@ -368,13 +513,7 @@ def normalize_reddit_post(record, candidate=None):
 
 def _post_selection_score(post, target_profile):
     haystack = f"{post.get('title', '')} {post.get('description', '')}".casefold()
-    brand = str(getattr(target_profile, "brand_name", "") or "").casefold()
-    products = [
-        str(item).casefold()
-        for item in (getattr(target_profile, "relevant_products", None) or [])[:3]
-    ]
-    relevance = 20 if brand and brand in haystack else 0
-    relevance += 8 * sum(1 for product in products if product and product in haystack)
+    relevance = _target_relevance_score_text(haystack, target_profile)
     engagement = min(12, math.log1p(max(0, post.get("num_upvotes", 0))) * 2)
     engagement += min(8, math.log1p(max(0, post.get("num_comments", 0))) * 1.5)
     diversity = len(post.get("sources", [])) * 5
@@ -384,6 +523,15 @@ def _post_selection_score(post, target_profile):
 
 def select_reddit_sample(posts, target_profile):
     """Select a deterministic, community-diverse ten-post sample."""
+    posts = [
+        post
+        for post in posts
+        if _target_relevance_score_text(
+            f"{post.get('title', '')} {post.get('description', '')}",
+            target_profile,
+        )
+        > 0
+    ]
     ranked = sorted(
         posts,
         key=lambda post: _post_selection_score(post, target_profile),
@@ -672,8 +820,8 @@ def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keywor
     started_at = time.monotonic()
     warnings = []
     queries = build_reddit_queries(target_profile, keywords)
-    native = {"records": [], "snapshot_id": None}
-    serp_candidates = []
+    native = {"records": [], "snapshots": [], "warnings": []}
+    serp_discovery = {"records": [], "warnings": []}
 
     with RedditExecutor(max_workers=2) as executor:
         futures = {
@@ -687,9 +835,25 @@ def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keywor
                 if source == "native":
                     native = result
                 else:
-                    serp_candidates = result
+                    if isinstance(result, dict):
+                        serp_discovery = result
+                    else:
+                        serp_discovery = {"records": result or [], "warnings": []}
             except Exception as exc:
                 warnings.append(f"Reddit {source} discovery failed: {type(exc).__name__}: {exc}")
+
+    warnings.extend(serp_discovery.get("warnings", []))
+    serp_candidates = serp_discovery.get("records", [])
+    native_waited = False
+    if native.get("snapshots"):
+        native_waited = True
+        try:
+            native = _wait_for_native_reddit_discovery(native)
+        except Exception as exc:
+            warnings.append(
+                f"Reddit native discovery failed: {type(exc).__name__}: {exc}"
+            )
+    warnings.extend(native.get("warnings", []))
 
     candidates = merge_reddit_candidates(
         native.get("records", []), serp_candidates, keyword_serp_results
@@ -705,12 +869,14 @@ def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keywor
         }
 
     try:
-        posts = _collect_reddit_posts(candidates)
+        posts = _collect_reddit_posts(candidates, target_profile)
     except Exception as exc:
         warnings.append(f"Reddit post hydration failed: {type(exc).__name__}: {exc}")
         posts = [
             normalize_reddit_post(candidate.get("native_record") or {}, candidate)
-            for candidate in _sorted_reddit_candidates(candidates)[:REDDIT_HYDRATE_LIMIT]
+            for candidate in _sorted_reddit_candidates(candidates, target_profile)[
+                :REDDIT_HYDRATE_LIMIT
+            ]
         ]
     sample = select_reddit_sample(posts, target_profile)
     try:
@@ -734,7 +900,10 @@ def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keywor
         "status": status,
         "queries": queries,
         "discovery": {
-            "native_snapshot_id": native.get("snapshot_id"),
+            "native_snapshot_ids": [
+                item["snapshot_id"] for item in native.get("snapshots", [])
+            ],
+            "native_snapshot_waited": native_waited,
             "native_records": len(native.get("records", [])),
             "serp_records": len(serp_candidates),
             "unique_candidates": len(candidates),

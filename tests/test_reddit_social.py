@@ -14,6 +14,24 @@ def profile(name="Acme", products=None):
 
 
 class RedditUrlTests(unittest.TestCase):
+    def test_queries_use_specific_product_and_category_terms(self):
+        target = profile(
+            "Rayner",
+            ["RayOne family of preloaded intraocular lenses (IOLs)"],
+        )
+        queries = social.build_reddit_queries(
+            target,
+            ["presbyopia-correcting intraocular lenses for cataract surgery"],
+        )
+        self.assertEqual(
+            queries,
+            [
+                "Rayner RayOne",
+                "RayOne review",
+                "Rayner presbyopia-correcting intraocular lenses for cataract surgery",
+            ],
+        )
+
     def test_extracts_and_canonicalizes_post_urls(self):
         self.assertEqual(social.reddit_post_id("t3_AbC123"), "abc123")
         self.assertEqual(
@@ -70,19 +88,81 @@ class RedditUrlTests(unittest.TestCase):
             normalize_records=lambda value: value,
         )
         with (
-            mock.patch.object(social, "BD_SCRAPE_URL", "https://example.test/scrape", create=True),
+            mock.patch.object(social, "BD_TRIGGER_URL", "https://example.test/trigger", create=True),
             mock.patch.object(social, "bd_client", client, create=True),
             mock.patch.object(social.reddit_requests, "post", return_value=response) as post,
         ):
             result = social._trigger_native_reddit_discovery(["Acme review"])
 
-        self.assertEqual(result, {"records": [], "snapshot_id": None})
+        self.assertEqual(result, {"records": [], "snapshots": [], "warnings": []})
         request = post.call_args.kwargs
         self.assertEqual(request["params"]["discover_by"], "keyword")
         self.assertEqual(request["json"]["input"][0]["date"], "Past year")
 
 
 class RedditSelectionTests(unittest.TestCase):
+    def test_selection_excludes_similar_but_different_product_names(self):
+        target = profile(
+            "Rayner",
+            ["RayOne family of preloaded intraocular lenses (IOLs)"],
+        )
+        posts = [
+            {
+                "post_id": "right1",
+                "url": "https://www.reddit.com/comments/right1/",
+                "title": "RayOne Galaxy after cataract surgery",
+                "description": "",
+                "community_name": "CataractSurgery",
+                "num_upvotes": 1,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": 2,
+            },
+            {
+                "post_id": "wrong1",
+                "url": "https://www.reddit.com/comments/wrong1/",
+                "title": "RayNeo GT glasses review",
+                "description": "",
+                "community_name": "RayNeo",
+                "num_upvotes": 500,
+                "num_comments": 200,
+                "sources": ["serp", "native_reddit"],
+                "best_rank": 1,
+            },
+        ]
+
+        selected = social.select_reddit_sample(posts, target)
+
+        self.assertEqual([item["post_id"] for item in selected], ["right1"])
+
+    def test_candidate_sorting_prioritizes_explicit_target_match(self):
+        target = profile(
+            "Rayner",
+            ["RayOne family of preloaded intraocular lenses (IOLs)"],
+        )
+        candidates = [
+            {
+                "post_id": "wrong1",
+                "url": "https://www.reddit.com/comments/wrong1/",
+                "title": "RayNeo GT review",
+                "description": "",
+                "sources": ["serp", "native_reddit"],
+                "best_rank": 1,
+            },
+            {
+                "post_id": "right1",
+                "url": "https://www.reddit.com/comments/right1/",
+                "title": "RayOne Galaxy experience",
+                "description": "",
+                "sources": ["serp"],
+                "best_rank": 8,
+            },
+        ]
+
+        ordered = social._sorted_reddit_candidates(candidates, target)
+
+        self.assertEqual(ordered[0]["post_id"], "right1")
+
     def test_selection_caps_each_community_before_filling_remainder(self):
         posts = []
         for index in range(12):
@@ -256,6 +336,91 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["relevant_posts"], 1)
         self.assertTrue(any("hydration failed" in item for item in result["warnings"]))
         self.assertTrue(any("comment collection failed" in item for item in result["warnings"]))
+
+    def test_native_snapshot_monitor_runs_alongside_fast_serp_sample(self):
+        candidates = [
+            {
+                "post_id": f"post{index}",
+                "url": f"https://www.reddit.com/r/widgets/comments/post{index}/thread/",
+                "title": f"Acme experience {index}",
+                "description": "Useful experience",
+                "source": "serp",
+                "source_rank": index + 1,
+                "query": "Acme Widget",
+            }
+            for index in range(10)
+        ]
+        posts = [
+            {
+                "post_id": item["post_id"],
+                "url": item["url"],
+                "title": item["title"],
+                "description": item["description"],
+                "community_name": f"group{index}",
+                "num_upvotes": 10,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": index + 1,
+            }
+            for index, item in enumerate(candidates)
+        ]
+        analyses = [
+            {
+                "post_id": post["post_id"],
+                "relevant": True,
+                "content_type": "discussion",
+                "experience_type": "unclear",
+                "stance": "neutral",
+                "themes": [],
+                "pain_points": [],
+                "desired_outcomes": [],
+                "compared_brands": [],
+                "evidence_excerpt": "Useful experience",
+                "confidence": 0.8,
+            }
+            for post in posts
+        ]
+        with (
+            mock.patch.object(
+                social,
+                "_trigger_native_reddit_discovery",
+                return_value={
+                    "records": [],
+                    "snapshots": [
+                        {"query": "Acme Widget", "snapshot_id": "snapshot-running"}
+                    ],
+                    "warnings": [],
+                },
+            ),
+            mock.patch.object(
+                social,
+                "_discover_reddit_with_serp",
+                return_value={"records": candidates, "warnings": []},
+            ),
+            mock.patch.object(
+                social,
+                "_wait_for_native_reddit_discovery",
+                return_value={
+                    "records": [],
+                    "snapshots": [
+                        {"query": "Acme Widget", "snapshot_id": "snapshot-running"}
+                    ],
+                    "warnings": [],
+                },
+            ) as wait,
+            mock.patch.object(social, "_collect_reddit_posts", return_value=posts),
+            mock.patch.object(social, "_collect_reddit_comments", return_value={}),
+            mock.patch.object(
+                social,
+                "analyze_reddit_posts",
+                return_value=(analyses, [], []),
+            ),
+        ):
+            result = social.run_reddit_social_sync(profile(), [], ["widget"], {})
+
+        wait.assert_called_once()
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["discovery"]["native_snapshot_waited"])
 
 
 if __name__ == "__main__":
