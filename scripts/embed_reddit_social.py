@@ -68,6 +68,7 @@ new_visibility = '''    visibility_task = asyncio.create_task(
             competitor_profiles=competitor_profiles,
             keywords=keywords,
             keyword_serp_results=keyword_serp_results,
+            audit_focus=settings.get("audit_focus", ""),
         )
     )
 

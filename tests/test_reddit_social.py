@@ -14,6 +14,27 @@ def profile(name="Acme", products=None):
 
 
 class RedditUrlTests(unittest.TestCase):
+    def test_explicit_audit_focus_drives_first_queries(self):
+        target = profile(
+            "Rayner",
+            ["RayOne family of preloaded intraocular lenses (IOLs)"],
+        )
+
+        queries = social.build_reddit_queries(
+            target,
+            ["presbyopia-correcting intraocular lenses"],
+            "RayOne Galaxy",
+        )
+
+        self.assertEqual(
+            queries,
+            [
+                "Rayner RayOne Galaxy",
+                "RayOne Galaxy IOL",
+                "Rayner presbyopia-correcting intraocular lenses",
+            ],
+        )
+
     def test_queries_use_specific_product_and_category_terms(self):
         target = profile(
             "Rayner",
@@ -273,7 +294,24 @@ class RedditAnalysisTests(unittest.TestCase):
                     "compared_brands": ["Other"],
                     "evidence_excerpt": "A useful thread",
                 },
-            }
+            },
+            {
+                "post_id": "irrelevant1",
+                "url": "https://www.reddit.com/comments/irrelevant1/",
+                "title": "Unrelated thread",
+                "community_name": "widgets",
+                "analysis": {
+                    "relevant": False,
+                    "content_type": "other",
+                    "experience_type": "none",
+                    "stance": "unclear",
+                    "themes": [],
+                    "pain_points": [],
+                    "desired_outcomes": [],
+                    "compared_brands": [],
+                    "evidence_excerpt": "",
+                },
+            },
         ]
         metrics = social.aggregate_reddit_analysis(posts)
         result = {"status": "success", "sample": posts, "metrics": metrics}
@@ -290,7 +328,17 @@ class RedditAnalysisTests(unittest.TestCase):
             report.index("## Methodology and Limitations"),
         )
         self.assertEqual(report.count("## Reddit Conversation Snapshot"), 1)
+        self.assertNotIn("Unrelated thread", report)
         self.assertEqual(social.insert_reddit_report_section(report, result), report)
+
+        empty_report = social.insert_reddit_report_section(
+            "# Audit\n\n## Methodology and Limitations\n\nNotes.",
+            {"status": "failed", "sample": [], "metrics": {}},
+        )
+        replaced = social.insert_reddit_report_section(empty_report, result)
+        self.assertEqual(replaced.count("## Reddit Conversation Snapshot"), 1)
+        self.assertIn("A useful thread", replaced)
+        self.assertNotIn("No usable Reddit threads", replaced)
 
     def test_collection_failures_degrade_to_candidate_evidence(self):
         native = {

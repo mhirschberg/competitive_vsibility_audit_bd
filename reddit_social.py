@@ -123,7 +123,7 @@ def _walk_reddit_urls(value):
             yield from _walk_reddit_urls(item)
 
 
-def build_reddit_queries(target_profile, keywords):
+def build_reddit_queries(target_profile, keywords, audit_focus=""):
     """Build a small, deterministic query set for discovery."""
     brand = str(getattr(target_profile, "brand_name", "") or "").strip()
     products = [
@@ -135,11 +135,17 @@ def build_reddit_queries(target_profile, keywords):
 
     product = _compact_reddit_term(products[0], 4) if products else ""
     buyer_term = _compact_reddit_term(buyer_terms[0], 6) if buyer_terms else ""
+    focus = _compact_reddit_term(audit_focus, 6)
 
     queries = []
-    if brand and product:
+    if brand and focus:
+        queries.append(f"{brand} {focus}")
+    if focus:
+        focus_has_iol = bool(re.search(r"\biols?\b", focus, re.IGNORECASE))
+        queries.append(f"{focus}{'' if focus_has_iol else ' IOL'}")
+    if brand and product and not focus:
         queries.append(f"{brand} {product}")
-    if product:
+    if product and not focus:
         queries.append(f"{product} review")
     if brand and buyer_term:
         queries.append(f"{brand} {buyer_term}")
@@ -816,10 +822,16 @@ def aggregate_reddit_analysis(posts):
     }
 
 
-def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keyword_serp_results):
+def run_reddit_social_sync(
+    target_profile,
+    competitor_profiles,
+    keywords,
+    keyword_serp_results,
+    audit_focus="",
+):
     started_at = time.monotonic()
     warnings = []
-    queries = build_reddit_queries(target_profile, keywords)
+    queries = build_reddit_queries(target_profile, keywords, audit_focus)
     native = {"records": [], "snapshots": [], "warnings": []}
     serp_discovery = {"records": [], "warnings": []}
 
@@ -916,7 +928,13 @@ def run_reddit_social_sync(target_profile, competitor_profiles, keywords, keywor
     }
 
 
-async def run_reddit_social_stage(target_profile, competitor_profiles, keywords, keyword_serp_results):
+async def run_reddit_social_stage(
+    target_profile,
+    competitor_profiles,
+    keywords,
+    keyword_serp_results,
+    audit_focus="",
+):
     if not REDDIT_SOCIAL_ENABLED:
         return {
             "status": "disabled",
@@ -933,6 +951,7 @@ async def run_reddit_social_stage(target_profile, competitor_profiles, keywords,
             competitor_profiles,
             keywords,
             keyword_serp_results,
+            audit_focus,
         )
     except Exception as exc:
         return {
@@ -998,8 +1017,13 @@ def build_reddit_report_section(result):
         lines.extend(f"- {name}: {count} thread(s)" for name, count in comparisons)
         lines.append("")
 
+    representative = [
+        post
+        for post in sample
+        if (post.get("analysis") or {}).get("relevant") is True
+    ]
     lines.extend(["### Representative Threads", ""])
-    for index, post in enumerate(sample[:10], start=1):
+    for index, post in enumerate(representative[:10], start=1):
         analysis = post.get("analysis") or {}
         title = (post.get("title") or "Untitled Reddit thread").replace("[", "").replace("]", "")
         labels = ", ".join(
@@ -1020,8 +1044,14 @@ def build_reddit_report_section(result):
 
 def insert_reddit_report_section(report, reddit_result):
     section = build_reddit_report_section(reddit_result)
-    if not section or "## Reddit Conversation Snapshot" in report:
+    if not section:
         return report
+    existing = re.compile(
+        r"^## Reddit Conversation Snapshot\n.*?(?=^## |\Z)",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if existing.search(report):
+        return existing.sub(section.rstrip() + "\n\n", report, count=1).rstrip()
     marker = "## Methodology and Limitations"
     if marker in report:
         return report.replace(marker, section + "\n\n" + marker, 1)

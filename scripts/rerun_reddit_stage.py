@@ -33,6 +33,16 @@ def find_audit_json(path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--from-run", required=True, type=Path)
+    parser.add_argument(
+        "--focus",
+        default="",
+        help="Audit focus override for runs created before focus was stored in JSON",
+    )
+    parser.add_argument(
+        "--reuse-result",
+        action="store_true",
+        help="Reuse 05_reddit_social.retry.json and only rebuild report artifacts",
+    )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     args = parser.parse_args(argv)
 
@@ -41,11 +51,14 @@ def main(argv=None):
     audit_path = find_audit_json(args.from_run)
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
     configuration = audit["configuration"]
+    audit_focus = args.focus.strip() or str(
+        configuration.get("audit_focus") or ""
+    ).strip()
 
     runner_source = _build_runner_script(
         configuration["company_name"],
         configuration["company_domain"],
-        "",
+        audit_focus,
         configuration["country"],
         "auto",
         bool(configuration.get("debug")),
@@ -62,19 +75,62 @@ def main(argv=None):
     keywords = [item["keyword"] for item in audit["buyer_intent_keywords"]]
     keyword_serp_results = audit["serp"]["keyword_results"]
 
-    result = asyncio.run(
-        namespace["run_reddit_social_stage"](
-            target,
-            competitors,
-            keywords,
-            keyword_serp_results,
-        )
-    )
     output_path = audit_path.parent / "05_reddit_social.retry.json"
-    output_path.write_text(
+    if args.reuse_result:
+        if not output_path.is_file():
+            raise FileNotFoundError(f"Reddit retry result not found: {output_path}")
+        result = json.loads(output_path.read_text(encoding="utf-8"))
+    else:
+        result = asyncio.run(
+            namespace["run_reddit_social_stage"](
+                target,
+                competitors,
+                keywords,
+                keyword_serp_results,
+                audit_focus,
+            )
+        )
+        output_path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    canonical_reddit_path = audit_path.parent / "05_reddit_social.json"
+    canonical_reddit_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    audit["reddit_social"] = result
+    configuration["audit_focus"] = audit_focus
+    old_warnings = audit.get("warnings") or []
+    audit["warnings"] = [
+        warning
+        for warning in old_warnings
+        if not (
+            str(warning).startswith("Reddit ")
+            or str(warning).startswith("No Reddit ")
+        )
+    ] + list(result.get("warnings") or [])
+    audit_path.write_text(
+        json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    markdown_path = audit_path.parent / "06_competitive_visibility_audit.md"
+    pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
+    if markdown_path.is_file():
+        report = markdown_path.read_text(encoding="utf-8")
+        updated_report = namespace["insert_reddit_report_section"](report, result)
+        markdown_path.write_text(updated_report.rstrip() + "\n", encoding="utf-8")
+        namespace["create_styled_pdf_report"](
+            updated_report,
+            pdf_path,
+            configuration["company_name"],
+            configuration.get("company_url", ""),
+            configuration.get("country", ""),
+        )
+        namespace["create_audit_zip"](audit_path.parent)
+
     print(f"status={result.get('status')}")
     print(f"threads={len(result.get('sample', []))}")
     for warning in result.get("warnings", []):
