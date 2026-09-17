@@ -156,13 +156,12 @@ reddit_output = '''    reddit_status = reddit_social_result.get("status", "faile
                 f"Reddit sample: {len(reddit_social_result.get('sample', []))} thread(s) "
                 f"in {format_duration(reddit_social_result.get('duration_seconds', 0))}"
             )
-    elif reddit_status != "disabled":
-        warning = "Reddit conversation collection was unavailable"
-        warnings.append(warning)
-        print_stage_warning(warning)
-
-    for reddit_warning in reddit_social_result.get("warnings", []):
-        warnings.append(reddit_warning)
+    reddit_summary_warning = summarize_reddit_audit_warning(
+        reddit_social_result
+    )
+    if reddit_summary_warning:
+        warnings.append(reddit_summary_warning)
+        print_stage_warning(reddit_summary_warning)
 
     write_json(
         output_directory / "05_reddit_social.json",

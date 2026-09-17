@@ -30,8 +30,8 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Rayner RayOne Galaxy",
-                "RayOne Galaxy review",
                 "Rayner presbyopia-correcting intraocular lenses",
+                "Rayner review",
             ],
         )
 
@@ -48,8 +48,8 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "CeraVe Moisturizing Cream",
-                "Moisturizing Cream review",
                 "CeraVe moisturizer for dry sensitive skin",
+                "CeraVe review",
             ],
         )
 
@@ -66,9 +66,34 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Auto Trader Used-car marketplace",
-                "Used-car marketplace review",
                 "Auto Trader buy used cars online uk",
+                "Auto Trader review",
             ],
+        )
+
+    def test_market_suffix_is_not_required_for_brand_discovery(self):
+        target = profile("Carwow Germany", ["Online automotive marketplace"])
+
+        queries = social.build_reddit_queries(
+            target,
+            ["Gebrauchtwagen online kaufen"],
+            "Online-Fahrzeugmarkt",
+        )
+
+        self.assertEqual(
+            queries,
+            [
+                "Carwow Online-Fahrzeugmarkt",
+                "Carwow Gebrauchtwagen online kaufen",
+                "Carwow review",
+            ],
+        )
+        self.assertGreater(
+            social._target_relevance_score_text(
+                "Has anyone bought a car through Carwow?",
+                target,
+            ),
+            0,
         )
 
     def test_early_queries_are_available_before_profiles(self):
@@ -102,10 +127,26 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Rayner RayOne",
-                "RayOne review",
                 "Rayner presbyopia-correcting intraocular lenses for cataract surgery",
+                "Rayner review",
             ],
         )
+
+    def test_empty_reddit_serp_response_is_a_normal_zero_result(self):
+        response = mock.Mock(ok=True, status_code=200, text="")
+        client = SimpleNamespace(
+            headers={"Authorization": "Bearer test"},
+            country="DE",
+            serp_zone="serp",
+        )
+        with (
+            mock.patch.object(social, "BD_REQUEST_URL", "https://example.test/request", create=True),
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(social.reddit_requests, "post", return_value=response),
+        ):
+            result = social._discover_reddit_with_serp(["AutoScout24 Gebrauchtwagen"])
+
+        self.assertEqual(result, {"records": [], "warnings": []})
 
     def test_extracts_and_canonicalizes_post_urls(self):
         self.assertEqual(social.reddit_post_id("t3_AbC123"), "abc123")
@@ -456,7 +497,7 @@ class RedditAnalysisTests(unittest.TestCase):
         compact = json.loads(prompt_text.split("\nPosts: ", 1)[1])
         self.assertEqual([item["post_id"] for item in compact], [f"p{i}" for i in range(5)])
 
-    def test_validator_requires_verbatim_evidence_and_normalizes_labels(self):
+    def test_validator_sanitizes_non_verbatim_evidence_and_normalizes_labels(self):
         posts = [
             {
                 "post_id": "abc123",
@@ -495,7 +536,12 @@ class RedditAnalysisTests(unittest.TestCase):
 
         invalid_payload = json.loads(valid["cleaned_answer"])
         invalid_payload["items"][0]["evidence_excerpt"] = "invented quote"
-        self.assertFalse(validator(json.dumps(invalid_payload))["valid"])
+        sanitized = validator(json.dumps(invalid_payload))
+        self.assertTrue(sanitized["valid"])
+        self.assertEqual(
+            json.loads(sanitized["cleaned_answer"])["items"][0]["evidence_excerpt"],
+            "",
+        )
 
     def test_validator_normalizes_equivalent_enum_labels(self):
         posts = [
@@ -827,6 +873,84 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertIn("| Acme | target | Widget Pro |", report)
         self.assertIn("| Other | competitor | Other Plus |", report)
         self.assertIn("### Neutral Category Sample", report)
+
+    def test_no_explicit_focus_uses_one_shared_category_scope(self):
+        target = profile("mobile.de", ["Vehicle listings", "Financing"])
+        target.category = "Online-Fahrzeugmarkt"
+        competitor = profile("AutoScout24", ["Used cars", "Leasing"])
+        observed = []
+
+        def cohort_result(
+            cohort_profile,
+            peers,
+            keywords,
+            serp,
+            focus,
+            queries,
+            require_match,
+            role,
+            native_prefetch,
+        ):
+            observed.append((role, cohort_profile.brand_name, focus))
+            return {
+                "status": "success",
+                "role": role,
+                "brand": cohort_profile.brand_name,
+                "focus": focus,
+                "queries": queries or [focus],
+                "sample": [],
+                "metrics": social.aggregate_reddit_analysis([]),
+                "warnings": [],
+                "duration_seconds": 0,
+            }
+
+        with (
+            mock.patch.object(
+                social,
+                "choose_competitor_reddit_offerings",
+            ) as choose_offerings,
+            mock.patch.object(
+                social,
+                "_run_reddit_profile_cohort",
+                side_effect=cohort_result,
+            ),
+        ):
+            result = social.run_reddit_social_sync(
+                target,
+                [competitor],
+                ["Gebrauchtwagen kaufen"],
+                {},
+                "",
+            )
+
+        choose_offerings.assert_not_called()
+        self.assertIn(("target", "mobile.de", "Online-Fahrzeugmarkt"), observed)
+        self.assertIn(("competitor", "AutoScout24", "Online-Fahrzeugmarkt"), observed)
+        self.assertEqual(result["comparison_type"], "marketplace")
+
+    def test_partial_reddit_warnings_are_summarized_once(self):
+        result = {
+            "status": "partial",
+            "cohorts": [
+                {
+                    "role": "target",
+                    "brand": "mobile.de",
+                    "metrics": {"relevant_posts": 8},
+                },
+                {
+                    "role": "competitor",
+                    "brand": "AutoScout24",
+                    "metrics": {"relevant_posts": 0},
+                },
+            ],
+            "warnings": ["technical warning one", "technical warning two"],
+        }
+
+        warning = social.summarize_reddit_audit_warning(result)
+
+        self.assertIn("1/2 brand cohorts", warning)
+        self.assertIn("AutoScout24", warning)
+        self.assertNotIn("technical warning", warning)
 
 
 if __name__ == "__main__":
