@@ -100,6 +100,69 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertEqual(role, "manufacturer")
 
+    def test_locked_scope_recognizes_consumer_product_brand(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def locked_scope_normalize_text")
+        end = runtime.index("def infer_locked_business_model")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            description=(
+                "Mass-market dermatological skincare products formulated "
+                "for dry and sensitive skin"
+            ),
+            positioning="Dermatologist-developed skincare",
+            products=["Moisturizing Cream"],
+        )
+
+        role = namespace["infer_locked_target_role"](
+            brand,
+            "Health/beauty product / mass-market dermatological skincare",
+        )
+
+        self.assertEqual(role, "manufacturer")
+
+    def test_locked_scope_keeps_service_provider_without_product_signal(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def locked_scope_normalize_text")
+        end = runtime.index("def infer_locked_business_model")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            description="Independent strategy consultancy for enterprise teams",
+            positioning="Professional advisory services",
+            products=["Transformation advisory"],
+        )
+
+        role = namespace["infer_locked_target_role"](
+            brand,
+            "Management consulting",
+        )
+
+        self.assertEqual(role, "service_provider")
+
+    def test_profile_label_removes_google_shopping_markup(self):
+        runtime = "".join(self.notebook["cells"][4]["source"])
+        start = runtime.index("def clean_profile_label")
+        end = runtime.index("def normalize_brand_profile")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+
+        clean = namespace["clean_profile_label"]
+        self.assertEqual(
+            clean(
+                "[CeraVe Moisturizing Cream](/search?ibp=oshop&prds=pvt:hg"
+            ),
+            "CeraVe Moisturizing Cream",
+        )
+        self.assertEqual(
+            clean(
+                "[Aveeno Daily Moisturizing Lotion](/search?id=123) "
+                "Go to product viewer dialog for this item."
+            ),
+            "Aveeno Daily Moisturizing Lotion",
+        )
+
     def test_zero_search_appearances_do_not_recommend_rank_optimization(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
         start = runtime.index("def deterministic_number")

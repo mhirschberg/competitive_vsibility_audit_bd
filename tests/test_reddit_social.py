@@ -971,7 +971,10 @@ class RedditAnalysisTests(unittest.TestCase):
         report = social.build_competitive_reddit_report_section(result)
 
         self.assertIn("Classification note", report)
+        self.assertIn("### Cohort Coverage", report)
+        self.assertIn("### Conversation Signals", report)
         self.assertIn("| Acme | target | Marketplace | 1 | 0 | 1 | 0 |", report)
+        self.assertNotIn("| Brand | Role | Comparable offering | Sampled | Classified | Unclassified | Relevant | First-hand", report)
         self.assertNotIn("[Unclassified thread]", report)
 
     def test_aggregation_and_report_are_deterministic(self):
@@ -1167,6 +1170,90 @@ class RedditAnalysisTests(unittest.TestCase):
         wait.assert_called_once()
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["discovery"]["native_snapshot_waited"])
+
+    def test_recovered_discovery_warning_keeps_complete_cohort_successful(self):
+        candidates = [
+            {
+                "post_id": f"post{index}",
+                "url": f"https://www.reddit.com/r/widgets/comments/post{index}/thread/",
+                "title": f"Acme experience {index}",
+                "description": "Useful experience",
+                "source": "native_reddit",
+            }
+            for index in range(10)
+        ]
+        analyses = [
+            {
+                "post_id": item["post_id"],
+                "relevant": True,
+                "classification_status": "classified",
+            }
+            for item in candidates
+        ]
+        with (
+            mock.patch.object(
+                social,
+                "_trigger_native_reddit_discovery",
+                return_value={"records": candidates, "warnings": []},
+            ),
+            mock.patch.object(
+                social,
+                "_discover_reddit_with_serp",
+                return_value={
+                    "records": [],
+                    "warnings": ["Reddit SERP query failed: HTTP 502"],
+                },
+            ),
+            mock.patch.object(social, "_collect_reddit_posts", return_value=candidates),
+            mock.patch.object(social, "_collect_reddit_comments", return_value={}),
+            mock.patch.object(
+                social,
+                "analyze_reddit_posts",
+                return_value=(analyses, [], []),
+            ),
+        ):
+            result = social.run_reddit_social_sync(profile(), [], ["widget"], {})
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["warnings"])
+
+    def test_normalize_result_status_keeps_recovered_warnings_as_diagnostics(self):
+        sample = [
+            {
+                "post_id": f"post{index}",
+                "analysis": {"classification_status": "classified"},
+            }
+            for index in range(10)
+        ]
+        result = social.normalize_reddit_result_status(
+            {
+                "status": "partial",
+                "cohorts": [
+                    {
+                        "role": "target",
+                        "brand": "Acme",
+                        "status": "partial",
+                        "sample": sample,
+                        "warnings": ["Reddit SERP query failed: HTTP 502"],
+                    },
+                    {
+                        "role": "competitor",
+                        "brand": "Other",
+                        "status": "partial",
+                        "sample": sample,
+                        "warnings": [
+                            "Reddit AI classification batch failed; "
+                            "retrying each post"
+                        ],
+                    },
+                ],
+                "warnings": ["diagnostic only"],
+            }
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(all(item["status"] == "success" for item in result["cohorts"]))
+        self.assertEqual(result["warnings"], ["diagnostic only"])
 
     def test_failed_prefetch_does_not_repeat_native_race(self):
         prefetch = {
