@@ -69,7 +69,7 @@ The notebook then:
 8. When the optional Reddit analysis is enabled, immediately starts discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends its strongest early query to three identical snapshots and keeps the first successful result; the wider query set is still searched through SERP discovery.
 9. Creates profiles for the target and both competitors using three-way Google AI Mode races.
 10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while any enabled Reddit discovery continues.
-11. For Reddit-enabled runs, classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type comparison offering for each competitor.
+11. For Reddit-enabled runs without an explicit audit focus, applies the same audited category to all three brands. With an explicit focus, it selects one same-type comparison offering for each competitor.
 12. Applies the prefetched Reddit results to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
 13. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
 14. Analyzes which sources shape the AI answers.
@@ -123,7 +123,7 @@ Company name + website + optional audit focus
  visibility                    │
              └────────┬────────┘
                       ▼
- same-type comparable-offering selection
+ shared category or same-type offering selection
                       +
  prefetched target + 2 competitors + category
                       │
@@ -507,9 +507,9 @@ The strongest candidates are hydrated with the Reddit posts dataset. The noteboo
 
 Native discovery and comment collection use a one-year lookback by default.
 
-The selected threads are classified in small batches. Gemini and ChatGPT race on each batch, but a response is accepted only when it returns the complete schema and every quoted evidence excerpt exists verbatim in the supplied thread text. Aggregation into stance, experience, theme, pain-point, desired-outcome, and comparison counts is deterministic.
+The selected threads are classified in small batches. Gemini and ChatGPT race on each batch; a response must return the complete schema, and only evidence excerpts that exist verbatim in the supplied thread text are retained. Aggregation into stance, experience, theme, pain-point, desired-outcome, and comparison counts is deterministic.
 
-If a discovery path, post hydration, comment collection, or AI classifier is unavailable, the stage degrades to the remaining evidence and records a warning instead of terminating the complete audit.
+If a discovery path, post hydration, comment collection, or AI classifier is unavailable, the stage degrades to the remaining evidence instead of terminating the complete audit. The final audit shows one concise completeness warning; detailed diagnostics remain in `05_reddit_social.json`.
 
 ### Stage 6: Final report
 

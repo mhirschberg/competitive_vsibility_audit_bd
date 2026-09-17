@@ -46,7 +46,7 @@ REDDIT_COMMENT_DAYS_BACK = max(
     1, int(os.getenv("REDDIT_COMMENT_DAYS_BACK", "365"))
 )
 REDDIT_DISCOVERY_TIMEOUT_SECONDS = max(
-    60, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "180"))
+    60, min(300, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "120")))
 )
 REDDIT_NATIVE_RACE_WIDTH = max(
     1, min(5, int(os.getenv("REDDIT_NATIVE_RACE_WIDTH", "3")))
@@ -58,10 +58,23 @@ REDDIT_DISCOVERY_DATE = os.getenv("REDDIT_DISCOVERY_DATE", "Past year").strip()
 REDDIT_AI_RACE_SLOTS = max(
     1, min(4, int(os.getenv("REDDIT_AI_RACE_SLOTS", "4")))
 )
+REDDIT_SERP_SLOTS = max(
+    1, min(8, int(os.getenv("REDDIT_SERP_SLOTS", "4")))
+)
 REDDIT_ANALYSIS_BATCH_SIZE = max(
     1, min(5, int(os.getenv("REDDIT_ANALYSIS_BATCH_SIZE", "5")))
 )
+REDDIT_AI_TIMEOUT_SECONDS = max(
+    60, min(300, int(os.getenv("REDDIT_AI_TIMEOUT_SECONDS", "120")))
+)
+REDDIT_POST_TIMEOUT_SECONDS = max(
+    60, min(300, int(os.getenv("REDDIT_POST_TIMEOUT_SECONDS", "120")))
+)
+REDDIT_COMMENT_TIMEOUT_SECONDS = max(
+    60, min(360, int(os.getenv("REDDIT_COMMENT_TIMEOUT_SECONDS", "120")))
+)
 REDDIT_AI_RACE_SEMAPHORE = RedditSemaphore(REDDIT_AI_RACE_SLOTS)
+REDDIT_SERP_SEMAPHORE = RedditSemaphore(REDDIT_SERP_SLOTS)
 if REDDIT_DISCOVERY_DATE not in {
     "Past hour",
     "Past day",
@@ -93,6 +106,49 @@ REDDIT_OFFERING_TYPES = {
     "platform",
     "other",
 }
+REDDIT_GEOGRAPHIC_BRAND_SUFFIXES = (
+    "united kingdom",
+    "deutschland",
+    "switzerland",
+    "netherlands",
+    "österreich",
+    "germany",
+    "belgium",
+    "austria",
+    "france",
+    "italia",
+    "italy",
+    "spain",
+    "españa",
+    "nederland",
+    "usa",
+    "uk",
+    "us",
+    "de",
+)
+
+
+def _reddit_search_brand_name(value):
+    """Remove an appended market label while preserving the audited brand."""
+    brand = (
+        str(value).strip()
+        if isinstance(value, str)
+        else str(getattr(value, "brand_name", "") or "").strip()
+    )
+    lowered = brand.casefold()
+    for suffix in REDDIT_GEOGRAPHIC_BRAND_SUFFIXES:
+        marker = f" {suffix}"
+        if lowered.endswith(marker):
+            base = brand[: -len(marker)].strip(" -–—,/")
+            if len(base) >= 3:
+                return base
+    return brand
+
+
+def _reddit_brand_aliases(profile):
+    brand = str(getattr(profile, "brand_name", "") or "").strip()
+    aliases = [brand, _reddit_search_brand_name(profile)]
+    return list(dict.fromkeys(alias for alias in aliases if alias))
 
 
 def reddit_post_id(value):
@@ -149,7 +205,7 @@ def _walk_reddit_urls(value):
 
 def build_reddit_queries(target_profile, keywords, audit_focus=""):
     """Build category-neutral discovery queries for a product, service, or platform."""
-    brand = str(getattr(target_profile, "brand_name", "") or "").strip()
+    brand = _reddit_search_brand_name(target_profile)
     offerings = [
         _clean_reddit_offering(item)
         for item in (getattr(target_profile, "relevant_products", None) or [])
@@ -168,16 +224,16 @@ def build_reddit_queries(target_profile, keywords, audit_focus=""):
             re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", anchor, re.IGNORECASE)
         )
         queries.append(anchor if anchor_has_brand else f"{brand} {anchor}")
-    elif brand:
+    if brand and buyer_term:
+        queries.append(f"{brand} {buyer_term}")
+    if brand:
         queries.append(f"{brand} review")
-    if anchor:
+    elif anchor:
         queries.append(
             anchor
             if re.search(r"\breviews?\b", anchor, re.IGNORECASE)
             else f"{anchor} review"
         )
-    if brand and buyer_term:
-        queries.append(f"{brand} {buyer_term}")
 
     deduped = []
     seen = set()
@@ -393,22 +449,25 @@ def _discover_reddit_with_serp(queries):
             f"?q={reddit_quote_plus(search_query)}"
             f"&gl={bd_client.country.lower()}&hl=en&num=10"
         )
-        response = reddit_requests.post(
-            BD_REQUEST_URL,
-            headers=bd_client.headers,
-            json={
-                "zone": bd_client.serp_zone,
-                "url": search_url,
-                "format": "raw",
-                "data_format": "parsed_light",
-            },
-            timeout=90,
-        )
+        with REDDIT_SERP_SEMAPHORE:
+            response = reddit_requests.post(
+                BD_REQUEST_URL,
+                headers=bd_client.headers,
+                json={
+                    "zone": bd_client.serp_zone,
+                    "url": search_url,
+                    "format": "raw",
+                    "data_format": "parsed_light",
+                },
+                timeout=90,
+            )
         if not response.ok:
             raise BrightDataAPIError(
                 f"Reddit SERP discovery failed for {query!r}. "
                 f"HTTP {response.status_code}: {response.text[:1000]}"
             )
+        if not str(response.text or "").strip():
+            return query, []
         data = decode_bright_data_response(
             response,
             context=f"Reddit SERP discovery for {query!r}",
@@ -539,10 +598,12 @@ def _discovery_score(candidate):
 def _target_relevance_score_text(text, target_profile):
     """Score explicit target mentions without fuzzy-matching similar brand names."""
     haystack = str(text or "").casefold()
-    brand = str(getattr(target_profile, "brand_name", "") or "").strip().casefold()
     score = 0
-    if brand and re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", haystack):
-        score += 40
+    for brand in _reddit_brand_aliases(target_profile):
+        brand = brand.casefold()
+        if brand and re.search(rf"(?<!\w){re.escape(brand)}(?!\w)", haystack):
+            score += 40
+            break
 
     ignored = {
         "and", "for", "from", "with", "the", "family", "range", "portfolio",
@@ -604,7 +665,7 @@ def _collect_reddit_posts(candidates, target_profile=None):
         records = bd_client.scrape_dataset(
             dataset_id=REDDIT_POSTS_DATASET_ID,
             payload={"input": [{"url": item["url"]} for item in to_scrape]},
-            timeout_seconds=300,
+            timeout_seconds=REDDIT_POST_TIMEOUT_SECONDS,
         )
     by_id = {
         reddit_post_id(record.get("post_id") or record.get("url")): record
@@ -697,7 +758,7 @@ def _collect_reddit_comments(posts):
                 for post in posts
             ]
         },
-        timeout_seconds=360,
+        timeout_seconds=REDDIT_COMMENT_TIMEOUT_SECONDS,
     )
     grouped = {}
     for record in records:
@@ -833,13 +894,14 @@ def _reddit_analysis_validator(expected_posts):
                 return {"valid": False, "reason": f"Invalid relevant flag for {post_id}."}
             excerpt = str(item.get("evidence_excerpt") or "").strip()
             if excerpt and excerpt not in expected[post_id]:
-                return {"valid": False, "reason": f"Evidence excerpt is not verbatim for {post_id}."}
+                excerpt = ""
             normalized = dict(item)
             normalized["post_id"] = post_id
             normalized["relevant"] = bool(item.get("relevant"))
             normalized["content_type"] = content_type
             normalized["experience_type"] = experience_type
             normalized["stance"] = stance
+            normalized["evidence_excerpt"] = excerpt
             normalized["themes"] = _normalized_labels(item.get("themes"), 3)
             normalized["pain_points"] = _normalized_labels(item.get("pain_points"), 2)
             normalized["desired_outcomes"] = _normalized_labels(
@@ -947,7 +1009,7 @@ def analyze_reddit_posts(posts, target_profile, competitor_profiles):
             result = race_utility_ai(
                 prompt=_reddit_analysis_prompt(batch, target_profile, competitor_profiles),
                 validator=_reddit_analysis_validator(batch),
-                timeout_seconds=420,
+                timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
                 task_name="Reddit conversation classification",
             )
         parsed = json.loads(result["answer"])
@@ -1037,6 +1099,37 @@ def _profile_offerings(profile):
         for item in (getattr(profile, "relevant_products", None) or [])
         if _clean_reddit_offering(item)
     ]
+
+
+def _default_reddit_scope(profile, keywords):
+    """Use the audited category when no narrower focus was requested."""
+    category = " ".join(
+        str(getattr(profile, "category", "") or "").split()
+    ).strip()
+    if category:
+        return category
+    buyer_terms = [str(item).strip() for item in (keywords or []) if str(item).strip()]
+    if buyer_terms:
+        return _compact_reddit_term(buyer_terms[0], 8)
+    offerings = _profile_offerings(profile)
+    if offerings:
+        return _compact_reddit_term(offerings[0], 8)
+    return _profile_name(profile)
+
+
+def _infer_reddit_comparison_type(scope):
+    text = str(scope or "").casefold()
+    rules = (
+        ("marketplace", ("marketplace", "marktplatz", "fahrzeugmarkt", "classified")),
+        ("retailer", ("retailer", "retail", "shop", "store", "händler")),
+        ("software_product", ("software", "app", "saas")),
+        ("platform", ("platform", "portal")),
+        ("service", ("service", "beratung", "consult")),
+    )
+    for comparison_type, tokens in rules:
+        if any(token in text for token in tokens):
+            return comparison_type
+    return "other"
 
 
 def normalize_reddit_result_offerings(result):
@@ -1167,7 +1260,7 @@ Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand
         race = race_utility_ai(
             prompt=prompt,
             validator=_competitor_focus_validator(options_by_brand),
-            timeout_seconds=420,
+            timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
             task_name="Reddit comparable-offering selection",
         )
         parsed = json.loads(race["answer"])
@@ -1218,7 +1311,7 @@ def build_category_reddit_queries(keywords, target_profile):
 
 def build_early_reddit_queries(brand, keywords, audit_focus=""):
     """Build discovery queries before detailed brand profiles are available."""
-    brand = str(brand or "").strip()
+    brand = _reddit_search_brand_name(str(brand or "").strip())
     focus = _compact_reddit_term(audit_focus, 6)
     buyer_terms = [
         _compact_reddit_term(item, 8)
@@ -1490,30 +1583,51 @@ def run_reddit_social_sync(
     competitor_profiles = list(competitor_profiles or [])
     if not competitor_profiles:
         prefetch_cohorts = (discovery_prefetch or {}).get("cohorts", {})
+        target_focus = str(audit_focus or "").strip() or _default_reddit_scope(
+            target_profile,
+            keywords,
+        )
         return _run_reddit_profile_cohort(
             target_profile,
             [],
             keywords,
             keyword_serp_results,
-            audit_focus,
+            target_focus,
             native_prefetch=prefetch_cohorts.get(
                 _reddit_prefetch_key("target", _profile_name(target_profile))
             ),
         )
 
-    offerings, offering_race, warnings = choose_competitor_reddit_offerings(
-        target_profile,
-        competitor_profiles,
-        audit_focus,
-        keywords,
-    )
+    requested_focus = str(audit_focus or "").strip()
+    if requested_focus:
+        offerings, offering_race, warnings = choose_competitor_reddit_offerings(
+            target_profile,
+            competitor_profiles,
+            requested_focus,
+            keywords,
+        )
+        target_focus = requested_focus
+    else:
+        target_focus = _default_reddit_scope(target_profile, keywords)
+        offerings = {
+            _profile_name(profile): target_focus
+            for profile in competitor_profiles
+            if _profile_name(profile)
+        }
+        offering_race = {
+            "engine": "deterministic",
+            "snapshot_id": None,
+            "duration_seconds": 0.0,
+            "comparison_type": _infer_reddit_comparison_type(target_focus),
+        }
+        warnings = []
     prefetch_cohorts = (discovery_prefetch or {}).get("cohorts", {})
     all_brand_profiles = [target_profile, *competitor_profiles]
     specs = [
         {
             "profile": target_profile,
             "peers": competitor_profiles,
-            "focus": audit_focus or _fallback_competitor_offering(target_profile),
+            "focus": target_focus,
             "queries": None,
             "match": True,
             "role": "target",
@@ -1644,6 +1758,47 @@ def run_reddit_social_sync(
         "warnings": warnings,
         "duration_seconds": round(time.monotonic() - started_at, 2),
     }
+
+
+def summarize_reddit_audit_warning(result):
+    """Return one user-facing warning while retaining diagnostics in Reddit JSON."""
+    result = result or {}
+    status = result.get("status")
+    if status in {None, "success", "disabled"}:
+        return ""
+    brand_cohorts = [
+        cohort
+        for cohort in (result.get("cohorts") or [])
+        if cohort.get("role") != "category"
+    ]
+    usable = [
+        cohort
+        for cohort in brand_cohorts
+        if int((cohort.get("metrics") or {}).get("relevant_posts") or 0) > 0
+    ]
+    if brand_cohorts:
+        missing = [
+            str(cohort.get("brand") or "unknown")
+            for cohort in brand_cohorts
+            if cohort not in usable
+        ]
+        if not missing:
+            return (
+                "Reddit conversation analysis completed for all "
+                f"{len(brand_cohorts)} brand cohorts, but one or more "
+                "collection or classification fallbacks were used. "
+                "Technical details are saved in 05_reddit_social.json."
+            )
+        detail = f"{len(usable)}/{len(brand_cohorts)} brand cohorts returned relevant threads"
+        detail += f"; no relevant sample for {', '.join(missing)}"
+        return (
+            f"Reddit conversation analysis was partial: {detail}. "
+            "Technical details are saved in 05_reddit_social.json."
+        )
+    return (
+        "Reddit conversation analysis was unavailable. "
+        "Technical details are saved in 05_reddit_social.json."
+    )
 
 
 def reanalyze_reddit_fallback_cohorts(result, target_profile, competitor_profiles):
