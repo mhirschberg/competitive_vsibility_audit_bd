@@ -218,6 +218,7 @@ class RedditUrlTests(unittest.TestCase):
                 "queries": ["Acme review"],
                 "records": [],
                 "snapshots": [],
+                "snapshot_manifest": [],
                 "race_width": 3,
                 "warnings": [],
             },
@@ -299,16 +300,17 @@ class RedditUrlTests(unittest.TestCase):
         target.category = "Widgets"
         competitors = [profile("Other"), profile("Third")]
 
-        def trigger(queries):
+        def trigger(queries, race_width=None, context="Reddit discovery"):
             return {
                 "queries": queries,
                 "records": [],
                 "snapshots": [{"snapshot_id": queries[0]}],
+                "snapshot_manifest": [],
                 "race_width": 3,
                 "warnings": [],
             }
 
-        def wait(native):
+        def wait(native, context="Reddit discovery"):
             return {
                 **native,
                 "records": [{"post_id": native["queries"][0]}],
@@ -453,7 +455,7 @@ class RedditSelectionTests(unittest.TestCase):
                 {
                     "post_id": f"post{index}",
                     "url": f"https://www.reddit.com/comments/post{index}/",
-                    "title": "Acme Widget Pro review",
+                    "title": f"Acme Widget Pro review {index}",
                     "description": "",
                     "community_name": "widgets" if index < 8 else f"group{index}",
                     "num_upvotes": 100 - index,
@@ -470,6 +472,36 @@ class RedditSelectionTests(unittest.TestCase):
             item for item in selected[:7] if item["community_name"] == "widgets"
         ]
         self.assertLessEqual(len(first_pass_widgets), 3)
+
+    def test_selection_removes_same_title_crossposts(self):
+        posts = [
+            {
+                "post_id": "crosspost1",
+                "url": "https://www.reddit.com/comments/crosspost1/",
+                "title": "Is this Acme deal too good to be true?",
+                "description": "",
+                "community_name": "group-one",
+                "num_upvotes": 20,
+                "num_comments": 5,
+                "sources": ["serp"],
+                "best_rank": 1,
+            },
+            {
+                "post_id": "crosspost2",
+                "url": "https://www.reddit.com/comments/crosspost2/",
+                "title": "Is this Acme deal too good to be true?",
+                "description": "",
+                "community_name": "group-two",
+                "num_upvotes": 10,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": 2,
+            },
+        ]
+
+        selected = social.select_reddit_sample(posts, profile())
+
+        self.assertEqual([item["post_id"] for item in selected], ["crosspost1"])
 
 
 class RedditAnalysisTests(unittest.TestCase):
@@ -580,6 +612,205 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertEqual(cleaned["content_type"], "firsthand_experience")
         self.assertEqual(cleaned["experience_type"], "firsthand")
         self.assertEqual(cleaned["stance"], "favorable")
+
+    def test_failed_batch_retries_individually_and_stays_unclassified(self):
+        posts = [
+            {
+                "post_id": f"post{index}",
+                "title": f"Acme discussion {index}",
+                "description": "",
+                "comments": [],
+            }
+            for index in range(2)
+        ]
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            side_effect=RuntimeError("classification unavailable"),
+            create=True,
+        ) as race:
+            analyses, races, warnings = social.analyze_reddit_posts(
+                posts,
+                profile(),
+                [profile("Other")],
+                "Acme",
+            )
+
+        self.assertEqual(race.call_count, 3)
+        self.assertEqual(races, [])
+        self.assertEqual(len(warnings), 3)
+        self.assertTrue(
+            all(item["classification_status"] == "unclassified" for item in analyses)
+        )
+        self.assertTrue(all(item["relevant"] is None for item in analyses))
+
+        sample = [
+            {"post_id": item["post_id"], "analysis": item}
+            for item in analyses
+        ]
+        metrics = social.aggregate_reddit_analysis(sample)
+        self.assertEqual(metrics["classified_posts"], 0)
+        self.assertEqual(metrics["unclassified_posts"], 2)
+        self.assertEqual(metrics["relevant_posts"], 0)
+
+    def test_failed_race_snapshot_ids_are_recoverable_for_manifest(self):
+        error = RuntimeError(
+            'Neither engine returned a valid result. '
+            '[{"engine":"Gemini","snapshot_id":"gem-1","status":"invalid"},'
+            '{"engine":"ChatGPT","snapshot_id":"gpt-1","status":"timeout"}]'
+        )
+
+        metadata = social._failed_race_metadata(
+            error,
+            "classification batch 1/2",
+        )
+
+        self.assertEqual(
+            metadata["all_snapshot_ids"],
+            {"gemini": "gem-1", "chatgpt": "gpt-1"},
+        )
+        self.assertEqual(
+            metadata["attempt_statuses"],
+            {"gemini": "invalid", "chatgpt": "timeout"},
+        )
+
+    def test_social_snapshot_manifest_keeps_operation_and_context(self):
+        response = mock.Mock(status_code=202, text='{"snapshot_id":"snap-1"}')
+        client = SimpleNamespace(
+            headers={"Authorization": "Bearer test"},
+            snapshot_status=lambda snapshot_id: {"status": "ready"},
+            download_snapshot=lambda snapshot_id: [{"post_id": "abc123"}],
+            normalize_records=lambda value: value,
+            log=lambda *args, **kwargs: None,
+        )
+        manifest = []
+        with (
+            mock.patch.object(social, "BD_SCRAPE_URL", "https://example.test/scrape", create=True),
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(social.reddit_requests, "post", return_value=response),
+            mock.patch.object(
+                social,
+                "decode_bright_data_response",
+                return_value={"snapshot_id": "snap-1"},
+                create=True,
+            ),
+        ):
+            records = social._scrape_reddit_dataset(
+                social.REDDIT_POSTS_DATASET_ID,
+                {"input": [{"url": "https://reddit.test/post"}]},
+                60,
+                "AutoScout24",
+                "post hydration",
+                manifest,
+            )
+
+        self.assertEqual(records, [{"post_id": "abc123"}])
+        self.assertEqual(
+            manifest[0],
+            {
+                "context": "AutoScout24",
+                "operation": "post hydration",
+                "dataset_id": social.REDDIT_POSTS_DATASET_ID,
+                "snapshot_id": "snap-1",
+                "status": "ready",
+                "duration_seconds": mock.ANY,
+                "record_count": 1,
+            },
+        )
+
+    def test_social_log_does_not_pass_none_as_a_rich_color(self):
+        calls = []
+
+        def log(*args):
+            calls.append(args)
+            if len(args) > 1 and args[1] is None:
+                raise AssertionError("None must not be passed as a Rich color")
+
+        with mock.patch.object(
+            social,
+            "bd_client",
+            SimpleNamespace(log=log),
+            create=True,
+        ):
+            social._reddit_log("Mobile.de", "snapshot started")
+
+        self.assertEqual(
+            calls,
+            [("[Social · Mobile.de] snapshot started",)],
+        )
+
+    def test_social_snapshot_timeout_uses_the_notebook_exception_contract(self):
+        class ExpectedTimeout(TimeoutError):
+            def __init__(self, snapshot_id, timeout_seconds):
+                self.snapshot_id = snapshot_id
+                self.timeout_seconds = timeout_seconds
+
+        entry = {"status": "triggered"}
+        client = SimpleNamespace(
+            snapshot_status=lambda snapshot_id: {"status": "running"},
+            log=lambda *args: None,
+        )
+        with (
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(
+                social,
+                "SnapshotTimeoutError",
+                ExpectedTimeout,
+                create=True,
+            ),
+            mock.patch.object(
+                social.time,
+                "monotonic",
+                side_effect=[0, 61],
+            ),
+        ):
+            with self.assertRaises(ExpectedTimeout) as raised:
+                social._wait_reddit_snapshot(
+                    "snap-timeout",
+                    60,
+                    "Kleinanzeigen",
+                    "comment collection",
+                    entry,
+                )
+
+        self.assertEqual(raised.exception.snapshot_id, "snap-timeout")
+        self.assertEqual(raised.exception.timeout_seconds, 60)
+        self.assertEqual(entry["status"], "timeout")
+
+    def test_report_discloses_and_excludes_unclassified_threads(self):
+        sample = [
+            {
+                "post_id": "unknown1",
+                "title": "Unclassified thread",
+                "analysis": {
+                    "classification_status": "unclassified",
+                    "relevant": None,
+                },
+            }
+        ]
+        metrics = social.aggregate_reddit_analysis(sample)
+        result = {
+            "status": "partial",
+            "mode": "competitive",
+            "comparison_type": "marketplace",
+            "unique_thread_count": 1,
+            "cohorts": [
+                {
+                    "role": "target",
+                    "brand": "Acme",
+                    "focus": "Marketplace",
+                    "sample": sample,
+                    "metrics": metrics,
+                }
+            ],
+        }
+
+        report = social.build_competitive_reddit_report_section(result)
+
+        self.assertIn("Classification note", report)
+        self.assertIn("| Acme | target | Marketplace | 1 | 0 | 1 | 0 |", report)
+        self.assertNotIn("[Unclassified thread]", report)
 
     def test_aggregation_and_report_are_deterministic(self):
         posts = [
