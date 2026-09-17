@@ -10,6 +10,7 @@ This repository contains a no-code Google Colab notebook that audits competitive
 - Google AI Mode
 - ChatGPT
 - Gemini
+- Optional Reddit posts and comments
 
 It uses Bright Data to collect live search and AI-answer data, identify direct competitors, analyze the sources shaping AI answers, and generate downloadable Markdown and PDF competitive visibility reports.
 
@@ -65,11 +66,15 @@ The notebook then:
 5. Asks Google AI Mode three neutral customer questions using three-way races.
 6. Identifies ten likely direct competitors using a three-way Google AI Mode race.
 7. Selects the two strongest direct competitors.
-8. Creates profiles for the target and both competitors using three-way Google AI Mode races.
-9. Measures visibility in Google AI Mode, ChatGPT, and Gemini.
-10. Analyzes which sources shape the AI answers.
-11. Races Gemini and ChatGPT to produce the final report.
-12. Exports the report as Markdown, PDF, JSON, and ZIP.
+8. When the optional Reddit analysis is enabled, immediately starts discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends its strongest early query to three identical snapshots and keeps the first successful result; the wider query set is still searched through SERP discovery.
+9. Creates profiles for the target and both competitors using three-way Google AI Mode races.
+10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while any enabled Reddit discovery continues.
+11. For Reddit-enabled runs, classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type comparison offering for each competitor.
+12. Applies the prefetched Reddit results to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
+13. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
+14. Analyzes which sources shape the AI answers.
+15. Builds a deterministic report, including a side-by-side Reddit comparison when requested.
+16. Exports the report as Markdown, PDF, JSON, and ZIP.
 
 ---
 
@@ -107,20 +112,27 @@ Company name + website + optional audit focus
                       │
                       ▼
         2 selected direct competitors
-                      │
+             ┌────────┴────────┐
+             ▼                 ▼
+ Target + 2 profiles    optional Reddit discovery
+   × 3 snapshots         4 cohorts × 3 races
+             │                 │
+             ▼                 │
+ Google AI Mode +              │
+ ChatGPT + Gemini              │
+ visibility                    │
+             └────────┬────────┘
                       ▼
- Target + 2 competitor profiles × 3 snapshots
-                      │
-                      ▼
-  Google AI Mode + ChatGPT + Gemini visibility
+ same-type comparable-offering selection
+                      +
+ prefetched target + 2 competitors + category
                       │
                       ▼
         Gemini ───────────── ChatGPT
-              final-report race
-           first valid report wins
+        validated Reddit classification races
                       │
                       ▼
-       Markdown + styled PDF + JSON + ZIP
+     deterministic report + styled PDF + JSON + ZIP
 ```
 
 ---
@@ -133,6 +145,10 @@ The notebook uses:
 - Google AI Mode
 - ChatGPT
 - Gemini
+- Reddit posts dataset (only when Reddit analysis is enabled)
+- Reddit comments dataset (only when Reddit analysis is enabled)
+
+Reddit discovery deliberately races three identical snapshots per cohort to reduce slow-tail latency. This increases dataset usage; set `REDDIT_NATIVE_RACE_WIDTH=1` to prefer minimum usage over speed.
 
 ---
 
@@ -144,7 +160,7 @@ You need:
 2. A Bright Data account.
 3. A Bright Data API token.
 4. An active Bright Data SERP API zone.
-5. Access to the required Google AI Mode, ChatGPT, and Gemini scrapers.
+5. Access to the required Google AI Mode, ChatGPT, and Gemini datasets. Reddit posts and comments dataset access is needed only when the optional Reddit analysis is enabled.
 
 ---
 
@@ -184,6 +200,7 @@ SEARCH_ENGINE = "auto"
 SERP_ZONE = "serp_api1"
 
 AUTO_DOWNLOAD_REPORT = False
+INCLUDE_REDDIT_ANALYSIS = False
 DEBUG_MODE = False
 ```
 
@@ -196,6 +213,7 @@ DEBUG_MODE = False
 | `SEARCH_ENGINE` | Yes | `auto`, `google`, `bing`, or `none` |
 | `SERP_ZONE` | Yes | Bright Data SERP API zone name |
 | `AUTO_DOWNLOAD_REPORT` | No | Automatically download the ZIP when the audit finishes |
+| `INCLUDE_REDDIT_ANALYSIS` | No | Include Reddit conversations. May add up to 10 minutes and uses additional Bright Data dataset requests |
 | `DEBUG_MODE` | No | Display API, snapshot, retry, prompt, and parsing diagnostics |
 
 The domain can be entered as:
@@ -274,6 +292,7 @@ A typical run displays:
 [5/6] Cross-engine AI visibility
       ✓ ChatGPT completed
       ✓ Gemini completed
+      ✓ Reddit sample: 10 thread(s)  # only when enabled
 
 [6/6] Final report and export
       ✓ Styled PDF report generated
@@ -281,6 +300,28 @@ A typical run displays:
 ```
 
 A live audit can take several minutes. Runtime depends on snapshot availability, search-engine retries, and which concurrent research or utility result finishes first.
+
+### Local headless runs
+
+For local development, create an uncommitted `.env.local` file in the repository root:
+
+```text
+BRIGHTDATA_API_TOKEN=...
+SERP_ZONE=...
+```
+
+Create a virtual environment and install the project requirements, then run:
+
+```text
+.venv/bin/python scripts/run_local_audit.py \
+  --company "Rayner" \
+  --domain "rayner.com" \
+  --focus "presbyopia-correcting intraocular lenses" \
+  --country "GB" \
+  --include-reddit
+```
+
+Omit `--include-reddit` for the faster core audit. Use `--dry-run` to validate the local settings and generated notebook runner without making Bright Data calls. Live runs are written to separate timestamped directories under `local-runs/`, including `audit.log` and all generated report artifacts. Both `.env.local` and `local-runs/` are excluded from Git.
 
 ---
 
@@ -452,23 +493,29 @@ The notebook records:
 - Source classifications
 - Whether ChatGPT triggered web search, when reported
 
+### Optional Stage 5: Reddit conversation snapshot
+
+Enable `INCLUDE_REDDIT_ANALYSIS` to add this section. It may add up to 10 minutes and uses additional Bright Data dataset requests. When enabled, the Reddit snapshot runs in parallel with cross-engine AI visibility so that most of its collection time is hidden behind work the audit already performs.
+
+Three discovery paths are combined and deduplicated by Reddit post ID:
+
+- Native Reddit keyword discovery
+- Google searches restricted to `reddit.com`
+- Reddit URLs already present in the audit's buyer-search results
+
+The strongest candidates are hydrated with the Reddit posts dataset. The notebook then selects up to ten threads while limiting any one community to three threads during the first selection pass. Representative comments are collected for additional context.
+
+Native discovery and comment collection use a one-year lookback by default.
+
+The selected threads are classified in small batches. Gemini and ChatGPT race on each batch, but a response is accepted only when it returns the complete schema and every quoted evidence excerpt exists verbatim in the supplied thread text. Aggregation into stance, experience, theme, pain-point, desired-outcome, and comparison counts is deterministic.
+
+If a discovery path, post hydration, comment collection, or AI classifier is unavailable, the stage degrades to the remaining evidence and records a warning instead of terminating the complete audit.
+
 ### Stage 6: Final report
 
-Gemini and ChatGPT generate the final report concurrently.
+The final report is assembled deterministically from the validated structured audit data. No additional answer-engine request is made for report writing, so a late AI formatting failure cannot discard an otherwise completed audit.
 
-The first response containing a valid report structure is used.
-
-Both engines receive only a compact evidence packet containing the measured audit results.
-
-The report validator recognizes and normalizes:
-
-- Standard Markdown headings
-- Different Markdown heading levels
-- Bold headings
-- Numbered headings
-- Bulleted headings
-- Setext headings
-- Indented report output
+When enabled, the Reddit conversation snapshot is inserted before the methodology section and keeps its sample-size caveat visible in the report.
 
 The report includes:
 
@@ -477,6 +524,7 @@ The report includes:
 - Traditional search visibility
 - AI answer-engine visibility
 - Source influence
+- Reddit conversation snapshot (when enabled)
 - Positioning and information gaps
 - Prioritized recommendations
 - Methodology and limitations
@@ -604,6 +652,7 @@ Typical contents:
 03_competitor_selection.json
 04_brand_profiles.json
 05_ai_visibility.json
+05_reddit_social.json  # records disabled status or the collected Reddit result
 06_competitive_visibility_audit.md
 06_competitive_visibility_audit.pdf
 06_competitive_visibility_audit.json
@@ -677,6 +726,10 @@ The notebook includes handling for:
 - Non-overlapping mention counts
 - Partial profile failures
 - Redundant ChatGPT and Gemini visibility snapshots
+- Parallel Reddit discovery paths
+- Diverse, deduplicated Reddit sampling
+- Validated Gemini and ChatGPT Reddit-classification races
+- Graceful Reddit collection and classification fallbacks
 - AI response boilerplate
 - Duplicate citation URLs
 - Styled PDF export
@@ -696,7 +749,10 @@ A typical successful audit may include:
 - 9 Google AI Mode profile snapshots
 - 3 ChatGPT visibility snapshots
 - 3 Gemini visibility snapshots
-- 1 Gemini and 1 ChatGPT final-report request
+- 1 Reddit keyword-discovery snapshot
+- Up to 3 site-restricted Reddit search requests
+- 1 Reddit post collection and 1 Reddit comment collection request
+- 2 Reddit classification batches, with 1 Gemini and 1 ChatGPT request per batch
 
 Additional requests may occur for:
 
@@ -721,6 +777,8 @@ Important limitations:
 - Search results vary by time, country, query, selected search engine, and search-engine behavior.
 - AI answers vary between otherwise identical requests.
 - AI source selection can change between runs.
+- The Reddit section is a selected sample of up to ten threads, not platform-wide sentiment measurement.
+- Reddit labels are AI-assisted classifications of public conversation and can be wrong.
 - A small number of prompts cannot represent every customer journey.
 - Profiles are public-research summaries, not verified product specifications.
 - Mention detection depends on known names and aliases.
