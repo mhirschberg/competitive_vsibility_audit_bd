@@ -46,7 +46,7 @@ REDDIT_COMMENT_DAYS_BACK = max(
     1, int(os.getenv("REDDIT_COMMENT_DAYS_BACK", "365"))
 )
 REDDIT_DISCOVERY_TIMEOUT_SECONDS = max(
-    60, min(300, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "120")))
+    60, min(300, int(os.getenv("REDDIT_DISCOVERY_TIMEOUT_SECONDS", "180")))
 )
 REDDIT_NATIVE_RACE_WIDTH = max(
     1, min(5, int(os.getenv("REDDIT_NATIVE_RACE_WIDTH", "3")))
@@ -68,10 +68,10 @@ REDDIT_AI_TIMEOUT_SECONDS = max(
     60, min(300, int(os.getenv("REDDIT_AI_TIMEOUT_SECONDS", "120")))
 )
 REDDIT_POST_TIMEOUT_SECONDS = max(
-    60, min(300, int(os.getenv("REDDIT_POST_TIMEOUT_SECONDS", "120")))
+    60, min(300, int(os.getenv("REDDIT_POST_TIMEOUT_SECONDS", "180")))
 )
 REDDIT_COMMENT_TIMEOUT_SECONDS = max(
-    60, min(360, int(os.getenv("REDDIT_COMMENT_TIMEOUT_SECONDS", "120")))
+    60, min(360, int(os.getenv("REDDIT_COMMENT_TIMEOUT_SECONDS", "180")))
 )
 REDDIT_AI_RACE_SEMAPHORE = RedditSemaphore(REDDIT_AI_RACE_SLOTS)
 REDDIT_SERP_SEMAPHORE = RedditSemaphore(REDDIT_SERP_SLOTS)
@@ -1967,6 +1967,65 @@ async def start_reddit_discovery_prefetch(
     )
 
 
+def reddit_cohort_status(sample, warnings):
+    material_warning_markers = (
+        "post hydration failed",
+        "comment collection failed",
+        "no reddit post candidates",
+    )
+    has_material_warning = any(
+        marker in str(warning).lower()
+        for warning in (warnings or [])
+        for marker in material_warning_markers
+    )
+    has_unclassified_posts = any(
+        (post.get("analysis") or {}).get("classification_status")
+        == "unclassified"
+        for post in (sample or [])
+    )
+    return (
+        "success"
+        if (
+            len(sample or []) >= REDDIT_SAMPLE_SIZE
+            and not has_material_warning
+            and not has_unclassified_posts
+        )
+        else "partial"
+    )
+
+
+def normalize_reddit_result_status(result):
+    result = dict(result or {})
+    cohorts = [dict(item) for item in (result.get("cohorts") or [])]
+    if cohorts:
+        for cohort in cohorts:
+            cohort["status"] = reddit_cohort_status(
+                cohort.get("sample") or [],
+                cohort.get("warnings") or [],
+            )
+        brand_cohorts = [
+            item for item in cohorts if item.get("role") != "category"
+        ]
+        successful = [
+            item for item in brand_cohorts if item.get("status") == "success"
+        ]
+        result["status"] = (
+            "success"
+            if brand_cohorts and len(successful) == len(brand_cohorts)
+            else "partial"
+            if successful
+            else "failed"
+        )
+        result["cohorts"] = cohorts
+        return result
+
+    result["status"] = reddit_cohort_status(
+        result.get("sample") or [],
+        result.get("warnings") or [],
+    )
+    return result
+
+
 def _run_reddit_profile_cohort(
     profile,
     peer_profiles,
@@ -2128,7 +2187,7 @@ def _run_reddit_profile_cohort(
                 )
             )
 
-    status = "success" if len(sample) >= REDDIT_SAMPLE_SIZE and not warnings else "partial"
+    status = reddit_cohort_status(sample, warnings)
     return {
         "status": status,
         "role": role,
@@ -2361,7 +2420,8 @@ def run_reddit_social_sync(
                 )
     status = (
         "success"
-        if len(successful) == len(brand_cohorts) and not warnings
+        if brand_cohorts
+        and all(item.get("status") == "success" for item in brand_cohorts)
         else "partial"
         if successful
         else "failed"
@@ -2652,25 +2712,32 @@ def build_competitive_reddit_report_section(result):
             "This is a directional sample, not market-wide sentiment or share of voice."
         ),
         "",
-        "| Brand | Role | Comparable offering | Sampled | Classified | Unclassified | Relevant | First-hand | Favorable | Mixed | Critical |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     total_unclassified = sum(
         int((cohort.get("metrics") or {}).get("unclassified_posts") or 0)
         for cohort in brand_cohorts
     )
     if total_unclassified:
-        lines[7:7] = [
+        lines.extend(
+            [
             (
                 f"**Classification note:** {total_unclassified} sampled thread(s) "
                 "could not be classified after retrying and are excluded from "
                 "relevance, stance, theme, and experience counts."
             ),
             "",
+            ]
+        )
+    lines.extend(
+        [
+            "### Cohort Coverage",
+            "",
+            "| Brand | Role | Comparable offering | Sampled | Classified | Unclassified | Relevant |",
+            "|---|---|---|---:|---:|---:|---:|",
         ]
+    )
     for cohort in brand_cohorts:
         metrics = cohort.get("metrics") or {}
-        stances = metrics.get("stance_counts") or {}
         lines.append(
             "| "
             + " | ".join(
@@ -2682,6 +2749,28 @@ def build_competitive_reddit_report_section(result):
                     str(_classified_post_count(metrics)),
                     str(metrics.get("unclassified_posts", 0)),
                     str(metrics.get("relevant_posts", 0)),
+                ]
+            )
+            + " |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### Conversation Signals",
+            "",
+            "| Brand | First-hand | Favorable | Mixed | Critical |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
+    for cohort in brand_cohorts:
+        metrics = cohort.get("metrics") or {}
+        stances = metrics.get("stance_counts") or {}
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_cell(cohort.get("brand")),
                     str(metrics.get("firsthand_posts", 0)),
                     str(stances.get("favorable", 0)),
                     str(stances.get("mixed", 0)),
