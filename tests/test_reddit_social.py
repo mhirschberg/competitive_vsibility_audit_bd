@@ -384,8 +384,170 @@ class RedditUrlTests(unittest.TestCase):
         self.assertTrue(valid["valid"])
         self.assertFalse(invalid["valid"])
 
+    def test_comparable_offering_validator_allows_evidence_derived_scope(self):
+        social.parse_ai_json = json.loads
+        validator = social._competitor_focus_validator(
+            {"Samsung": [], "Google": []}
+        )
+
+        valid = validator(
+            json.dumps(
+                {
+                    "comparison_type": "physical_product",
+                    "selections": [
+                        {"brand": "Samsung", "offering": "Galaxy S series"},
+                        {"brand": "Google", "offering": "Pixel series"},
+                    ],
+                }
+            )
+        )
+        brand_only = validator(
+            json.dumps(
+                {
+                    "comparison_type": "physical_product",
+                    "selections": [
+                        {"brand": "Samsung", "offering": "Samsung"},
+                        {"brand": "Google", "offering": "Google products"},
+                    ],
+                }
+            )
+        )
+
+        self.assertTrue(valid["valid"])
+        self.assertFalse(brand_only["valid"])
+
+    def test_missing_profiles_infer_competitor_offerings_from_evidence(self):
+        target = profile("Apple", ["iPhone"])
+        samsung = profile("Samsung", [])
+        samsung.relevant_products = []
+        samsung.competitor_reason = (
+            "Samsung offers flagship smartphones such as the Galaxy S and Z "
+            "series that directly substitute for iPhone."
+        )
+        samsung.evidence = []
+        google = profile("Google", [])
+        google.relevant_products = []
+        google.competitor_reason = (
+            "Google manufactures the Pixel series of high-end smartphones."
+        )
+        google.evidence = []
+        race_answer = json.dumps(
+            {
+                "comparison_type": "physical_product",
+                "selections": [
+                    {"brand": "Samsung", "offering": "Galaxy S series"},
+                    {"brand": "Google", "offering": "Pixel series"},
+                ],
+            }
+        )
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            return_value={
+                "answer": race_answer,
+                "engine_name": "Gemini",
+                "snapshot_id": "scope-1",
+                "all_snapshot_ids": {"gemini": "scope-1"},
+                "race_duration_seconds": 1.5,
+            },
+            create=True,
+        ) as race_mock:
+            offerings, metadata, warnings = (
+                social.choose_competitor_reddit_offerings(
+                    target,
+                    [samsung, google],
+                    "iPhone",
+                    ["high-end smartphone"],
+                )
+            )
+
+        self.assertEqual(
+            offerings,
+            {"Samsung": "Galaxy S series", "Google": "Pixel series"},
+        )
+        self.assertEqual(metadata["comparison_type"], "physical_product")
+        self.assertEqual(
+            metadata["evidence_inferred_brands"], ["Samsung", "Google"]
+        )
+        self.assertEqual(warnings, [])
+        prompt = race_mock.call_args.kwargs["prompt"]
+        self.assertIn("Galaxy S and Z series", prompt)
+        self.assertIn("Pixel series", prompt)
+
+    def test_deterministic_fallback_uses_evidence_not_bare_brand(self):
+        target = profile("Apple", ["iPhone"])
+        samsung = profile("Samsung", [])
+        samsung.relevant_products = []
+        samsung.competitor_reason = (
+            "Samsung offers phones such as the Galaxy S series."
+        )
+        samsung.evidence = []
+        google = profile("Google", [])
+        google.relevant_products = []
+        google.competitor_reason = (
+            "Google manufactures the Pixel series of high-end smartphones."
+        )
+        google.evidence = []
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            side_effect=RuntimeError("scope race unavailable"),
+            create=True,
+        ):
+            offerings, metadata, warnings = (
+                social.choose_competitor_reddit_offerings(
+                    target,
+                    [samsung, google],
+                    "iPhone",
+                    ["high-end smartphone"],
+                )
+            )
+
+        self.assertEqual(
+            offerings,
+            {"Samsung": "Galaxy S series", "Google": "Pixel series"},
+        )
+        self.assertEqual(metadata["engine"], "deterministic-fallback")
+        self.assertEqual(
+            metadata["evidence_inferred_brands"], ["Samsung", "Google"]
+        )
+        self.assertEqual(len(warnings), 1)
+
 
 class RedditSelectionTests(unittest.TestCase):
+    def test_fallback_profile_requires_recovered_product_focus(self):
+        fallback = profile("Google", [])
+        fallback.relevant_products = []
+        scoped = social._scoped_reddit_profile(fallback, "Pixel series")
+        posts = [
+            {
+                "post_id": "reviews",
+                "title": "How to get more Google Reviews for my business?",
+                "description": "Local SEO discussion",
+                "community_name": "localseo",
+                "num_upvotes": 100,
+                "num_comments": 30,
+                "sources": ["native_reddit"],
+                "best_rank": 1,
+            },
+            {
+                "post_id": "pixel",
+                "title": "Pixel 10 Pro long-term review",
+                "description": "Thinking of switching to a Google phone",
+                "community_name": "GooglePixel",
+                "num_upvotes": 5,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": 3,
+            },
+        ]
+
+        selected = social.select_reddit_sample(posts, scoped)
+
+        self.assertEqual([item["post_id"] for item in selected], ["pixel"])
+
     def test_selection_excludes_similar_but_different_product_names(self):
         target = profile(
             "Rayner",

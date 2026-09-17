@@ -846,6 +846,45 @@ def _target_relevance_score_text(text, target_profile):
     return score
 
 
+def _required_focus_matches_text(text, target_profile):
+    """Require a recovered product focus for broad fallback brand profiles."""
+    focus = str(
+        getattr(target_profile, "reddit_required_focus", "") or ""
+    ).strip()
+    if not focus:
+        return True
+    haystack = str(text or "").casefold()
+    compact = _compact_reddit_term(focus, 8).casefold()
+    if compact and re.search(rf"(?<!\w){re.escape(compact)}(?!\w)", haystack):
+        return True
+    ignored = {
+        "and",
+        "for",
+        "from",
+        "with",
+        "the",
+        "family",
+        "range",
+        "portfolio",
+        "product",
+        "products",
+        "series",
+        "service",
+        "services",
+        "platform",
+        "marketplace",
+    }
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", compact)
+        if len(token) >= 4 and token not in ignored
+    ]
+    return bool(tokens) and any(
+        re.search(rf"(?<!\w){re.escape(token)}(?!\w)", haystack)
+        for token in tokens
+    )
+
+
 def _candidate_target_relevance(candidate, target_profile):
     return _target_relevance_score_text(
         f"{candidate.get('title', '')} {candidate.get('description', '')}",
@@ -857,6 +896,17 @@ def _sorted_reddit_candidates(candidates, target_profile=None):
     return sorted(
         candidates,
         key=lambda candidate: (
+            -(
+                int(
+                    _required_focus_matches_text(
+                        f"{candidate.get('title', '')} "
+                        f"{candidate.get('description', '')}",
+                        target_profile,
+                    )
+                )
+                if target_profile is not None
+                else 0
+            ),
             -(
                 _candidate_target_relevance(candidate, target_profile)
                 if target_profile is not None
@@ -953,11 +1003,17 @@ def select_reddit_sample(posts, target_profile, require_profile_match=True):
         posts = [
             post
             for post in posts
-            if _target_relevance_score_text(
-                f"{post.get('title', '')} {post.get('description', '')}",
-                target_profile,
+            if (
+                _target_relevance_score_text(
+                    f"{post.get('title', '')} {post.get('description', '')}",
+                    target_profile,
+                )
+                > 0
+                and _required_focus_matches_text(
+                    f"{post.get('title', '')} {post.get('description', '')}",
+                    target_profile,
+                )
             )
-            > 0
         ]
     ranked = sorted(
         posts,
@@ -1524,7 +1580,74 @@ def _fallback_competitor_offering(profile):
         return offerings[1]
     if offerings:
         return offerings[0]
+    inferred = _infer_offering_hint_from_profile(profile)
+    if inferred:
+        return inferred
     return _profile_name(profile)
+
+
+def _profile_competitor_evidence(profile):
+    """Return the audited evidence that remains on a fallback profile."""
+    values = []
+    reason = " ".join(
+        str(getattr(profile, "competitor_reason", "") or "").split()
+    ).strip()
+    if reason:
+        values.append(reason)
+    for item in (getattr(profile, "evidence", None) or []):
+        cleaned = " ".join(str(item or "").split()).strip()
+        if cleaned and cleaned not in values:
+            values.append(cleaned)
+    return values
+
+
+def _infer_offering_hint_from_profile(profile):
+    """Recover a named offering from selection evidence when profiling times out."""
+    brand = _profile_name(profile)
+    patterns = (
+        r"\bsuch as\s+(?:the\s+)?([^.;)]+)",
+        r"\b(?:the\s+)?([A-Z][A-Za-z0-9+.-]*(?:\s+[A-Z0-9][A-Za-z0-9+.-]*){0,4}\s+(?:series|lineup|line|range|family|platform|marketplace|service))\b",
+    )
+    for text in _profile_competitor_evidence(profile):
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            hint = " ".join(match.group(1).split()).strip(" \t\n\r,;:.()[]{}'\"")
+            hint = re.split(
+                r"\s+(?:that|which|serving|targeting|offering|acting)\b",
+                hint,
+                maxsplit=1,
+                flags=re.IGNORECASE,
+            )[0].strip(" \t\n\r,;:.()[]{}'\"")
+            if brand and hint.casefold().startswith(f"{brand.casefold()} "):
+                hint = hint[len(brand) :].strip()
+            if (
+                hint
+                and hint.casefold() != brand.casefold()
+                and len(hint) <= 80
+                and len(hint.split()) <= 10
+            ):
+                return _clean_reddit_offering(hint)
+    return ""
+
+
+def _scoped_reddit_profile(profile, focus):
+    """Add recovered focus to a fallback profile without mutating audit data."""
+    offerings = _profile_offerings(profile)
+    if offerings:
+        return profile
+    focus = _clean_reddit_offering(focus)
+    return RedditSubject(
+        brand_name=_profile_name(profile),
+        relevant_products=[focus] if focus else [],
+        category=str(getattr(profile, "category", "") or ""),
+        competitor_reason=str(
+            getattr(profile, "competitor_reason", "") or ""
+        ),
+        evidence=list(getattr(profile, "evidence", None) or []),
+        reddit_required_focus=focus,
+    )
 
 
 def _competitor_focus_validator(options_by_brand):
@@ -1541,14 +1664,43 @@ def _competitor_focus_validator(options_by_brand):
             if not isinstance(item, dict):
                 return {"valid": False, "reason": "Selection is not an object."}
             brand = str(item.get("brand") or "").strip()
-            offering = str(item.get("offering") or "").strip()
+            offering = _clean_reddit_offering(item.get("offering"))
             if brand not in options_by_brand:
                 return {"valid": False, "reason": f"Unexpected brand: {brand}"}
-            if offering not in options_by_brand[brand]:
+            supplied_options = options_by_brand[brand]
+            if supplied_options and offering not in supplied_options:
                 return {
                     "valid": False,
                     "reason": f"Offering {offering!r} is not supplied for {brand!r}.",
                 }
+            if not supplied_options:
+                brand_tokens = set(re.findall(r"[a-z0-9]+", brand.casefold()))
+                offering_tokens = set(
+                    re.findall(r"[a-z0-9]+", offering.casefold())
+                )
+                generic_tokens = {
+                    "brand",
+                    "company",
+                    "offering",
+                    "offerings",
+                    "product",
+                    "products",
+                    "service",
+                    "services",
+                }
+                if (
+                    not offering
+                    or len(offering) > 80
+                    or not (offering_tokens - brand_tokens - generic_tokens)
+                ):
+                    return {
+                        "valid": False,
+                        "reason": (
+                            f"Offering for {brand!r} must identify a specific "
+                            "product, product family, service, or marketplace; "
+                            "the brand name alone is not enough."
+                        ),
+                    }
             if brand in selected:
                 return {"valid": False, "reason": f"Duplicate brand: {brand}"}
             selected[brand] = offering
@@ -1586,27 +1738,32 @@ def choose_competitor_reddit_offerings(
     options_by_brand = {
         _profile_name(profile): _profile_offerings(profile)
         for profile in competitor_profiles
-        if _profile_name(profile) and _profile_offerings(profile)
+        if _profile_name(profile)
+    }
+    evidence_by_brand = {
+        _profile_name(profile): _profile_competitor_evidence(profile)
+        for profile in competitor_profiles
+        if _profile_name(profile)
     }
     fallback = {
         _profile_name(profile): _fallback_competitor_offering(profile)
         for profile in competitor_profiles
         if _profile_name(profile)
     }
-    if not options_by_brand:
-        return fallback, None, []
-
     prompt = f"""Build a like-for-like comparison scope for Reddit research.
 First classify the target as exactly one comparison_type from: {sorted(REDDIT_OFFERING_TYPES)!r}.
 Then select the single closest offering of that same functional type for each competitor.
 Do not compare a product with a marketplace, a retailer with a manufacturer, or a service with a product.
-Use only the exact offering strings supplied for that competitor. Do not invent or rename offerings.
+When supplied offerings are available for a competitor, use one of those exact strings.
+When that list is empty because detailed profiling timed out, infer a concise, specific branded product family, service, platform, retailer, or marketplace from its audited competitor evidence.
+Never return only the company or brand name as the offering.
 Target brand: {_profile_name(target_profile)}
 Target audit focus: {audit_focus or _fallback_competitor_offering(target_profile)}
 Target offerings: {_profile_offerings(target_profile)!r}
 Buyer-intent context: {[str(item) for item in (keywords or [])[:4]]!r}
 Competitor offerings: {options_by_brand!r}
-Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand":"exact brand","offering":"exact supplied offering"}}]}}"""
+Audited competitor evidence: {evidence_by_brand!r}
+Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand":"exact brand","offering":"exact supplied offering or concise evidence-derived offering"}}]}}"""
     try:
         race = race_utility_ai(
             prompt=prompt,
@@ -1632,10 +1789,25 @@ Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand
             "all_snapshot_ids": race.get("all_snapshot_ids", {}),
             "duration_seconds": race.get("race_duration_seconds"),
             "comparison_type": parsed.get("comparison_type"),
+            "evidence_inferred_brands": [
+                brand for brand, options in options_by_brand.items() if not options
+            ],
         }
         return selected, metadata, []
     except Exception as exc:
-        return fallback, None, [
+        metadata = {
+            "engine": "deterministic-fallback",
+            "snapshot_id": None,
+            "all_snapshot_ids": {},
+            "duration_seconds": 0.0,
+            "comparison_type": _infer_reddit_comparison_type(audit_focus),
+            "evidence_inferred_brands": [
+                brand
+                for brand, options in options_by_brand.items()
+                if not options and fallback.get(brand) != brand
+            ],
+        }
+        return fallback, metadata, [
             "Reddit comparable-offering selection fallback used: "
             f"{type(exc).__name__}: {exc}"
         ]
@@ -2040,11 +2212,20 @@ def run_reddit_social_sync(
         }
         warnings = []
     prefetch_cohorts = (discovery_prefetch or {}).get("cohorts", {})
-    all_brand_profiles = [target_profile, *competitor_profiles]
+    scoped_target_profile = _scoped_reddit_profile(target_profile, target_focus)
+    scoped_competitor_profiles = [
+        _scoped_reddit_profile(
+            profile,
+            offerings.get(_profile_name(profile))
+            or _fallback_competitor_offering(profile),
+        )
+        for profile in competitor_profiles
+    ]
+    all_brand_profiles = [scoped_target_profile, *scoped_competitor_profiles]
     specs = [
         {
-            "profile": target_profile,
-            "peers": competitor_profiles,
+            "profile": scoped_target_profile,
+            "peers": scoped_competitor_profiles,
             "focus": target_focus,
             "queries": None,
             "match": True,
@@ -2055,7 +2236,7 @@ def run_reddit_social_sync(
             ),
         }
     ]
-    for competitor in competitor_profiles:
+    for competitor in scoped_competitor_profiles:
         brand = _profile_name(competitor)
         specs.append(
             {
