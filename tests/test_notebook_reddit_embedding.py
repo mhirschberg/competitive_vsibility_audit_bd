@@ -33,6 +33,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "run_reddit_social_stage(",
             "discovery_prefetch_task=reddit_prefetch_task",
             'output_directory / "05_reddit_social.json"',
+            'output_directory / "05_reddit_snapshot_manifest.json"',
             "insert_reddit_report_section(",
             '"reddit_social": reddit_social_result',
         ):
@@ -47,6 +48,9 @@ class NotebookEmbeddingTests(unittest.TestCase):
         )
         self.assertIn("if include_reddit_analysis:", orchestration)
         self.assertIn('"status": "disabled"', orchestration)
+        self.assertIn("total_stages = 7 if include_reddit_analysis else 6", orchestration)
+        self.assertIn('"Reddit conversation analysis"', orchestration)
+        self.assertNotIn("await asyncio.gather(\n            visibility_task", orchestration)
 
     def test_reddit_analysis_is_an_opt_in_notebook_setting(self):
         config_cell = next(

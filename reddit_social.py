@@ -128,6 +128,164 @@ REDDIT_GEOGRAPHIC_BRAND_SUFFIXES = (
 )
 
 
+def _reddit_log(context, message, color=None):
+    """Keep concurrent social work identifiable in the shared notebook log."""
+    label = " · ".join(
+        part.strip()
+        for part in str(context or "Reddit").split("·")
+        if part.strip()
+    )
+    logger = getattr(bd_client, "log", None)
+    if callable(logger):
+        rendered = f"[Social · {label}] {message}"
+        if color is None:
+            logger(rendered)
+        else:
+            logger(rendered, color)
+
+
+def _snapshot_entry(
+    context,
+    operation,
+    dataset_id,
+    snapshot_id,
+    **details,
+):
+    return {
+        "context": str(context or "Reddit"),
+        "operation": operation,
+        "dataset_id": dataset_id,
+        "snapshot_id": snapshot_id,
+        **details,
+    }
+
+
+def _wait_reddit_snapshot(
+    snapshot_id,
+    timeout_seconds,
+    context,
+    operation,
+    manifest_entry,
+):
+    """Poll one social snapshot with contextual logs and manifest updates."""
+    started_at = time.monotonic()
+    next_progress_log = 0
+    last_status = ""
+    while True:
+        elapsed = time.monotonic() - started_at
+        if elapsed >= timeout_seconds:
+            manifest_entry.update(
+                status="timeout",
+                duration_seconds=round(elapsed, 2),
+            )
+            raise SnapshotTimeoutError(
+                snapshot_id,
+                timeout_seconds,
+            )
+
+        status_result = bd_client.snapshot_status(snapshot_id)
+        status = str(status_result.get("status") or "unknown").lower()
+        if status != last_status or elapsed >= next_progress_log:
+            _reddit_log(
+                context,
+                f"{operation} snapshot {snapshot_id}: {status} — {round(elapsed)}s",
+            )
+            last_status = status
+            next_progress_log = elapsed + 30
+
+        if status in {
+            "failed",
+            "error",
+            "cancelled",
+            "canceled",
+            "expired",
+            "stopped",
+        }:
+            manifest_entry.update(
+                status=status,
+                duration_seconds=round(elapsed, 2),
+            )
+            raise BrightDataAPIError(
+                f"Snapshot {snapshot_id} ended with status {status}."
+            )
+        if status == "ready":
+            records = bd_client.download_snapshot(snapshot_id)
+            materializing = (
+                len(records) == 1
+                and isinstance(records[0], dict)
+                and str(records[0].get("status") or "").lower()
+                in {"building", "collecting", "digesting", "running", "processing", "pending"}
+            )
+            if not materializing:
+                manifest_entry.update(
+                    status="ready",
+                    duration_seconds=round(time.monotonic() - started_at, 2),
+                    record_count=len(records),
+                )
+                return records
+        time.sleep(REDDIT_NATIVE_POLL_SECONDS)
+
+
+def _scrape_reddit_dataset(
+    dataset_id,
+    payload,
+    timeout_seconds,
+    context,
+    operation,
+    snapshot_manifest,
+):
+    """Run a social dataset request without discarding its snapshot context."""
+    response = reddit_requests.post(
+        BD_SCRAPE_URL,
+        headers=bd_client.headers,
+        params={
+            "dataset_id": dataset_id,
+            "format": "json",
+            "notify": "false",
+            "include_errors": "true",
+        },
+        json=payload,
+        timeout=90,
+    )
+    if response.status_code not in {200, 202}:
+        raise BrightDataAPIError(
+            f"Dataset request failed. HTTP {response.status_code}: "
+            f"{response.text[:1500]}"
+        )
+    data = decode_bright_data_response(
+        response,
+        context=f"Reddit {operation} for {context}",
+    )
+    snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
+    if not snapshot_id:
+        return bd_client.normalize_records(data)
+
+    entry = _snapshot_entry(
+        context,
+        operation,
+        dataset_id,
+        snapshot_id,
+        status="triggered",
+    )
+    snapshot_manifest.append(entry)
+    _reddit_log(context, f"{operation} snapshot {snapshot_id}: triggered")
+    try:
+        return _wait_reddit_snapshot(
+            snapshot_id,
+            timeout_seconds,
+            context,
+            operation,
+            entry,
+        )
+    except Exception as exc:
+        if entry.get("status") == "triggered":
+            entry.update(
+                status="error",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        raise
+
+
 def _reddit_search_brand_name(value):
     """Remove an appended market label while preserving the audited brand."""
     brand = (
@@ -264,10 +422,19 @@ def _clean_reddit_offering(value):
     return text.strip(" []")
 
 
-def _trigger_native_reddit_discovery(queries, race_width=None):
+def _trigger_native_reddit_discovery(
+    queries,
+    race_width=None,
+    context="Reddit discovery",
+):
     """Trigger identical multi-query snapshots for a first-success race."""
     if not queries:
-        return {"records": [], "snapshots": [], "warnings": []}
+        return {
+            "records": [],
+            "snapshots": [],
+            "snapshot_manifest": [],
+            "warnings": [],
+        }
 
     race_width = REDDIT_NATIVE_RACE_WIDTH if race_width is None else max(1, race_width)
     race_query = str(queries[0]).strip()
@@ -317,6 +484,7 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
         }
 
     snapshots = []
+    snapshot_manifest = []
     records = []
     warnings = []
     with RedditExecutor(max_workers=race_width) as executor:
@@ -337,6 +505,23 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
                             "snapshot_id": result["snapshot_id"],
                         }
                     )
+                    snapshot_manifest.append(
+                        _snapshot_entry(
+                            context,
+                            "native discovery",
+                            REDDIT_POSTS_DATASET_ID,
+                            result["snapshot_id"],
+                            status="triggered",
+                            race_index=result["race_index"],
+                            winner=False,
+                        )
+                    )
+                    _reddit_log(
+                        context,
+                        "native discovery "
+                        f"race {result['race_index']} snapshot "
+                        f"{result['snapshot_id']}: triggered",
+                    )
             except Exception as exc:
                 warnings.append(
                     f"Reddit native race trigger {race_index} failed: "
@@ -346,12 +531,13 @@ def _trigger_native_reddit_discovery(queries, race_width=None):
         "queries": [race_query],
         "records": records,
         "snapshots": snapshots,
+        "snapshot_manifest": snapshot_manifest,
         "race_width": race_width,
         "warnings": warnings,
     }
 
 
-def _wait_for_native_reddit_discovery(native):
+def _wait_for_native_reddit_discovery(native, context="Reddit discovery"):
     """Poll a snapshot race and download only the first successful result."""
     snapshots = native.get("snapshots") or []
     if not snapshots:
@@ -360,6 +546,11 @@ def _wait_for_native_reddit_discovery(native):
     records = list(native.get("records") or [])
     warnings = list(native.get("warnings") or [])
     active = {item["snapshot_id"]: item for item in snapshots}
+    manifest_by_id = {
+        item.get("snapshot_id"): item
+        for item in native.get("snapshot_manifest", [])
+        if item.get("snapshot_id")
+    }
     started_at = time.monotonic()
     failed_statuses = {
         "failed",
@@ -392,6 +583,8 @@ def _wait_for_native_reddit_discovery(native):
                     ready_ids.append(snapshot_id)
                 elif status in failed_statuses:
                     failed_ids.append(snapshot_id)
+                    if snapshot_id in manifest_by_id:
+                        manifest_by_id[snapshot_id]["status"] = status
 
         for snapshot_id in failed_ids:
             active.pop(snapshot_id, None)
@@ -407,6 +600,25 @@ def _wait_for_native_reddit_discovery(native):
                 if materializing:
                     continue
                 records.extend(downloaded)
+                elapsed = round(time.monotonic() - started_at, 2)
+                for contender_id, entry in manifest_by_id.items():
+                    if contender_id == snapshot_id:
+                        entry.update(
+                            status="ready",
+                            winner=True,
+                            duration_seconds=elapsed,
+                            record_count=len(downloaded),
+                        )
+                    elif entry.get("status") == "triggered":
+                        entry.update(
+                            status="superseded",
+                            winner=False,
+                            duration_seconds=elapsed,
+                        )
+                _reddit_log(
+                    context,
+                    f"native discovery snapshot {snapshot_id}: won in {elapsed}s",
+                )
                 return {
                     **native,
                     "records": records,
@@ -423,6 +635,13 @@ def _wait_for_native_reddit_discovery(native):
             time.sleep(REDDIT_NATIVE_POLL_SECONDS)
 
     if active:
+        elapsed = round(time.monotonic() - started_at, 2)
+        for snapshot_id in active:
+            if snapshot_id in manifest_by_id:
+                manifest_by_id[snapshot_id].update(
+                    status="timeout",
+                    duration_seconds=elapsed,
+                )
         warnings.append(
             "Reddit native snapshot race did not produce a ready result within "
             f"{REDDIT_DISCOVERY_TIMEOUT_SECONDS} seconds."
@@ -649,7 +868,13 @@ def _sorted_reddit_candidates(candidates, target_profile=None):
     )
 
 
-def _collect_reddit_posts(candidates, target_profile=None):
+def _collect_reddit_posts(
+    candidates,
+    target_profile=None,
+    context="Reddit",
+    snapshot_manifest=None,
+):
+    snapshot_manifest = snapshot_manifest if snapshot_manifest is not None else []
     shortlist = _sorted_reddit_candidates(candidates, target_profile)[
         :REDDIT_HYDRATE_LIMIT
     ]
@@ -662,10 +887,13 @@ def _collect_reddit_posts(candidates, target_profile=None):
     ]
     records = []
     if to_scrape:
-        records = bd_client.scrape_dataset(
+        records = _scrape_reddit_dataset(
             dataset_id=REDDIT_POSTS_DATASET_ID,
             payload={"input": [{"url": item["url"]} for item in to_scrape]},
             timeout_seconds=REDDIT_POST_TIMEOUT_SECONDS,
+            context=context,
+            operation="post hydration",
+            snapshot_manifest=snapshot_manifest,
         )
     by_id = {
         reddit_post_id(record.get("post_id") or record.get("url")): record
@@ -710,6 +938,15 @@ def _post_selection_score(post, target_profile):
     return relevance + engagement + diversity + rank
 
 
+def _reddit_topic_key(post):
+    """Collapse cross-posts and reposts with the same normalized title."""
+    return re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        str(post.get("title") or "").casefold(),
+    ).strip()
+
+
 def select_reddit_sample(posts, target_profile, require_profile_match=True):
     """Select a deterministic, community-diverse ten-post sample."""
     if require_profile_match:
@@ -729,28 +966,46 @@ def select_reddit_sample(posts, target_profile, require_profile_match=True):
     )
     selected = []
     per_community = RedditCounter()
+    seen_topics = set()
     for post in ranked:
         community = post.get("community_name") or "unknown"
+        topic_key = _reddit_topic_key(post)
+        if topic_key and topic_key in seen_topics:
+            continue
         if per_community[community] >= 3:
             continue
         selected.append(post)
+        if topic_key:
+            seen_topics.add(topic_key)
         per_community[community] += 1
         if len(selected) >= REDDIT_SAMPLE_SIZE:
             break
     if len(selected) < REDDIT_SAMPLE_SIZE:
         selected_ids = {post["post_id"] for post in selected}
-        selected.extend(
-            post
-            for post in ranked
-            if post["post_id"] not in selected_ids
-        )
+        for post in ranked:
+            topic_key = _reddit_topic_key(post)
+            if post["post_id"] in selected_ids:
+                continue
+            if topic_key and topic_key in seen_topics:
+                continue
+            selected.append(post)
+            selected_ids.add(post["post_id"])
+            if topic_key:
+                seen_topics.add(topic_key)
+            if len(selected) >= REDDIT_SAMPLE_SIZE:
+                break
     return selected[:REDDIT_SAMPLE_SIZE]
 
 
-def _collect_reddit_comments(posts):
+def _collect_reddit_comments(
+    posts,
+    context="Reddit",
+    snapshot_manifest=None,
+):
+    snapshot_manifest = snapshot_manifest if snapshot_manifest is not None else []
     if not posts or REDDIT_COMMENTS_PER_POST <= 0:
         return {}
-    records = bd_client.scrape_dataset(
+    records = _scrape_reddit_dataset(
         dataset_id=REDDIT_COMMENTS_DATASET_ID,
         payload={
             "input": [
@@ -759,6 +1014,9 @@ def _collect_reddit_comments(posts):
             ]
         },
         timeout_seconds=REDDIT_COMMENT_TIMEOUT_SECONDS,
+        context=context,
+        operation="comment collection",
+        snapshot_manifest=snapshot_manifest,
     )
     grouped = {}
     for record in records:
@@ -997,64 +1255,155 @@ Schema: {json.dumps(schema, ensure_ascii=False)}"""
     raise ValueError("Reddit classification prompt could not fit the 4096-character limit.")
 
 
-def analyze_reddit_posts(posts, target_profile, competitor_profiles):
+def _failed_race_metadata(exc, operation):
+    """Recover failed contender IDs exposed by the utility-race error."""
+    text = str(exc)
+    marker = text.rfind("[{")
+    if marker < 0:
+        return None
+    try:
+        failures = json.loads(text[marker:])
+    except Exception:
+        return None
+    if not isinstance(failures, list):
+        return None
+    snapshot_ids = {}
+    statuses = {}
+    for item in failures:
+        if not isinstance(item, dict) or not item.get("snapshot_id"):
+            continue
+        engine_name = str(item.get("engine") or "unknown")
+        engine = engine_name.casefold()
+        snapshot_ids[engine] = item["snapshot_id"]
+        statuses[engine] = str(item.get("status") or "failed")
+    if not snapshot_ids:
+        return None
+    return {
+        "engine": None,
+        "snapshot_id": None,
+        "all_snapshot_ids": snapshot_ids,
+        "attempt_statuses": statuses,
+        "duration_seconds": None,
+        "operation": operation,
+        "status": "failed",
+    }
+
+
+def analyze_reddit_posts(
+    posts,
+    target_profile,
+    competitor_profiles,
+    context="Reddit",
+):
     """Race ChatGPT and Gemini in small validated batches."""
     batches = [
         posts[index : index + REDDIT_ANALYSIS_BATCH_SIZE]
         for index in range(0, len(posts), REDDIT_ANALYSIS_BATCH_SIZE)
     ]
 
-    def analyze_batch(batch):
+    def analyze_batch(batch, batch_label):
+        task_name = f"Social · {context} · {batch_label}"
         with REDDIT_AI_RACE_SEMAPHORE:
             result = race_utility_ai(
                 prompt=_reddit_analysis_prompt(batch, target_profile, competitor_profiles),
                 validator=_reddit_analysis_validator(batch),
                 timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
-                task_name="Reddit conversation classification",
+                task_name=task_name,
             )
         parsed = json.loads(result["answer"])
-        return parsed["items"], {
+        items = [
+            {**item, "classification_status": "classified"}
+            for item in parsed["items"]
+        ]
+        return items, {
             "engine": result.get("engine_name"),
             "snapshot_id": result.get("snapshot_id"),
+            "all_snapshot_ids": result.get("all_snapshot_ids", {}),
             "duration_seconds": result.get("race_duration_seconds"),
+            "operation": batch_label,
         }
 
     analyses = []
     races = []
     warnings = []
     with RedditExecutor(max_workers=max(1, len(batches))) as executor:
-        futures = {executor.submit(analyze_batch, batch): batch for batch in batches}
+        futures = {
+            executor.submit(
+                analyze_batch,
+                batch,
+                f"classification batch {index}/{len(batches)}",
+            ): (batch, index)
+            for index, batch in enumerate(batches, start=1)
+        }
         for future in reddit_as_completed(futures):
-            batch = futures[future]
+            batch, batch_index = futures[future]
             try:
                 items, race = future.result()
                 analyses.extend(items)
                 races.append(race)
             except Exception as exc:
-                warnings.append(f"Reddit AI classification fallback used: {type(exc).__name__}: {exc}")
-                for post in batch:
-                    text = _analysis_text(post)
-                    analyses.append(
-                        {
-                            "post_id": post["post_id"],
-                            "relevant": True,
-                            "content_type": "discussion",
-                            "experience_type": "unclear",
-                            "stance": "unclear",
-                            "themes": [],
-                            "pain_points": [],
-                            "desired_outcomes": [],
-                            "compared_brands": [],
-                            "evidence_excerpt": text[:160],
-                            "confidence": 0.0,
-                        }
+                failed_race = _failed_race_metadata(
+                    exc,
+                    f"classification batch {batch_index}/{len(batches)}",
+                )
+                if failed_race:
+                    races.append(failed_race)
+                warnings.append(
+                    "Reddit AI classification batch failed; retrying each post: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                for post_index, post in enumerate(batch, start=1):
+                    retry_label = (
+                        f"classification retry {batch_index}.{post_index}"
                     )
+                    try:
+                        items, race = analyze_batch([post], retry_label)
+                        analyses.extend(items)
+                        races.append(race)
+                    except Exception as retry_exc:
+                        failed_retry = _failed_race_metadata(
+                            retry_exc,
+                            retry_label,
+                        )
+                        if failed_retry:
+                            races.append(failed_retry)
+                        warnings.append(
+                            "Reddit AI classification unavailable for "
+                            f"{post['post_id']}: {type(retry_exc).__name__}: "
+                            f"{retry_exc}"
+                        )
+                        analyses.append(
+                            {
+                                "post_id": post["post_id"],
+                                "relevant": None,
+                                "content_type": "other",
+                                "experience_type": "unclear",
+                                "stance": "unclear",
+                                "themes": [],
+                                "pain_points": [],
+                                "desired_outcomes": [],
+                                "compared_brands": [],
+                                "evidence_excerpt": "",
+                                "confidence": 0.0,
+                                "classification_status": "unclassified",
+                            }
+                        )
     by_id = {item["post_id"]: item for item in analyses}
     return [by_id[post["post_id"]] for post in posts if post["post_id"] in by_id], races, warnings
 
 
 def aggregate_reddit_analysis(posts):
-    relevant = [post for post in posts if post.get("analysis", {}).get("relevant")]
+    classified = [
+        post
+        for post in posts
+        if (post.get("analysis") or {}).get("classification_status")
+        != "unclassified"
+    ]
+    relevant = [
+        post
+        for post in classified
+        if (post.get("analysis") or {}).get("relevant") is True
+    ]
     counters = {
         "stance_counts": RedditCounter(),
         "content_type_counts": RedditCounter(),
@@ -1079,6 +1428,8 @@ def aggregate_reddit_analysis(posts):
             counters["comparison_counts"][value] += 1
     return {
         "sample_size": len(posts),
+        "classified_posts": len(classified),
+        "unclassified_posts": len(posts) - len(classified),
         "relevant_posts": len(relevant),
         "unique_communities": len({post.get("community_name") for post in posts if post.get("community_name")}),
         "firsthand_posts": counters["experience_type_counts"].get("firsthand", 0),
@@ -1261,7 +1612,7 @@ Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand
             prompt=prompt,
             validator=_competitor_focus_validator(options_by_brand),
             timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
-            task_name="Reddit comparable-offering selection",
+            task_name="Social · competitive scope · comparable-offering selection",
         )
         parsed = json.loads(race["answer"])
         selected = {
@@ -1278,6 +1629,7 @@ Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand
         metadata = {
             "engine": race.get("engine_name"),
             "snapshot_id": race.get("snapshot_id"),
+            "all_snapshot_ids": race.get("all_snapshot_ids", {}),
             "duration_seconds": race.get("race_duration_seconds"),
             "comparison_type": parsed.get("comparison_type"),
         }
@@ -1382,8 +1734,12 @@ def run_reddit_discovery_prefetch_sync(
     )
 
     def prefetch_one(spec):
-        native = _trigger_native_reddit_discovery(spec["queries"])
-        return _wait_for_native_reddit_discovery(native)
+        context = spec["brand"] or "neutral category"
+        native = _trigger_native_reddit_discovery(
+            spec["queries"],
+            context=context,
+        )
+        return _wait_for_native_reddit_discovery(native, context)
 
     cohorts = {}
     warnings = []
@@ -1402,6 +1758,7 @@ def run_reddit_discovery_prefetch_sync(
                     "queries": spec["queries"],
                     "records": [],
                     "snapshots": [],
+                    "snapshot_manifest": [],
                     "winner_snapshot_id": None,
                     "warnings": [f"{type(exc).__name__}: {exc}"],
                 }
@@ -1451,6 +1808,11 @@ def _run_reddit_profile_cohort(
 ):
     started_at = time.monotonic()
     warnings = []
+    context = _profile_name(profile) or role or "Reddit"
+    snapshot_manifest = [
+        dict(item)
+        for item in (native_prefetch or {}).get("snapshot_manifest", [])
+    ]
     queries = list(queries_override or build_reddit_queries(profile, keywords, audit_focus))
     native = {"records": [], "snapshots": [], "warnings": []}
     serp_discovery = {"records": [], "warnings": []}
@@ -1462,7 +1824,14 @@ def _run_reddit_profile_cohort(
     with RedditExecutor(max_workers=1 if prefetch_attempted else 2) as executor:
         futures = {executor.submit(_discover_reddit_with_serp, queries): "serp"}
         if not prefetch_attempted:
-            futures[executor.submit(_trigger_native_reddit_discovery, queries)] = "native"
+            futures[
+                executor.submit(
+                    _trigger_native_reddit_discovery,
+                    queries,
+                    None,
+                    context,
+                )
+            ] = "native"
         for future in reddit_as_completed(futures):
             source = futures[future]
             try:
@@ -1483,12 +1852,20 @@ def _run_reddit_profile_cohort(
     if native.get("snapshots") and not prefetch_attempted:
         native_waited = True
         try:
-            native = _wait_for_native_reddit_discovery(native)
+            native = _wait_for_native_reddit_discovery(native, context)
         except Exception as exc:
             warnings.append(
                 f"Reddit native discovery failed: {type(exc).__name__}: {exc}"
             )
     warnings.extend(native.get("warnings", []))
+    known_snapshot_ids = {
+        item.get("snapshot_id") for item in snapshot_manifest
+    }
+    snapshot_manifest.extend(
+        dict(item)
+        for item in native.get("snapshot_manifest", [])
+        if item.get("snapshot_id") not in known_snapshot_ids
+    )
 
     candidates = merge_reddit_candidates(
         native.get("records", []), serp_candidates, keyword_serp_results
@@ -1502,6 +1879,7 @@ def _run_reddit_profile_cohort(
             "queries": queries,
             "sample": [],
             "metrics": aggregate_reddit_analysis([]),
+            "snapshot_manifest": snapshot_manifest,
             "warnings": warnings + ["No Reddit post candidates were discovered."],
             "duration_seconds": round(time.monotonic() - started_at, 2),
         }
@@ -1510,6 +1888,8 @@ def _run_reddit_profile_cohort(
         posts = _collect_reddit_posts(
             candidates,
             profile if require_profile_match else None,
+            context,
+            snapshot_manifest,
         )
     except Exception as exc:
         warnings.append(f"Reddit post hydration failed: {type(exc).__name__}: {exc}")
@@ -1524,7 +1904,11 @@ def _run_reddit_profile_cohort(
         ]
     sample = select_reddit_sample(posts, profile, require_profile_match)
     try:
-        comments = _collect_reddit_comments(sample)
+        comments = _collect_reddit_comments(
+            sample,
+            context,
+            snapshot_manifest,
+        )
     except Exception as exc:
         warnings.append(f"Reddit comment collection failed: {type(exc).__name__}: {exc}")
         comments = {}
@@ -1532,12 +1916,45 @@ def _run_reddit_profile_cohort(
         post["comments"] = comments.get(post["post_id"], [])
 
     analyses, races, analysis_warnings = analyze_reddit_posts(
-        sample, profile, peer_profiles
+        sample,
+        profile,
+        peer_profiles,
+        context,
     )
     warnings.extend(analysis_warnings)
     analysis_by_id = {item["post_id"]: item for item in analyses}
     for post in sample:
         post["analysis"] = analysis_by_id.get(post["post_id"], {})
+
+    for race in races:
+        winner_id = race.get("snapshot_id")
+        for engine, snapshot_id in (race.get("all_snapshot_ids") or {}).items():
+            if not snapshot_id:
+                continue
+            is_winner = (
+                race.get("status") != "failed"
+                and snapshot_id == winner_id
+            )
+            attempt_status = (
+                (race.get("attempt_statuses") or {}).get(engine)
+                or ("winner" if is_winner else "superseded")
+            )
+            snapshot_manifest.append(
+                _snapshot_entry(
+                    context,
+                    race.get("operation") or "classification",
+                    (
+                        GEMINI_DATASET_ID
+                        if engine == "gemini"
+                        else CHATGPT_DATASET_ID
+                    ),
+                    snapshot_id,
+                    engine=engine,
+                    status=attempt_status,
+                    winner=is_winner,
+                    duration_seconds=race.get("duration_seconds"),
+                )
+            )
 
     status = "success" if len(sample) >= REDDIT_SAMPLE_SIZE and not warnings else "partial"
     return {
@@ -1565,6 +1982,7 @@ def _run_reddit_profile_cohort(
         "sample": sample,
         "metrics": aggregate_reddit_analysis(sample),
         "analysis_races": races,
+        "snapshot_manifest": snapshot_manifest,
         "warnings": warnings,
         "duration_seconds": round(time.monotonic() - started_at, 2),
     }
@@ -1727,6 +2145,39 @@ def run_reddit_social_sync(
         if post.get("post_id")
     }
     successful = [item for item in brand_cohorts if item.get("sample")]
+    snapshot_manifest = [
+        dict(entry)
+        for cohort in cohorts
+        for entry in (cohort.get("snapshot_manifest") or [])
+    ]
+    if offering_race:
+        offering_winner = offering_race.get("snapshot_id")
+        for engine, snapshot_id in (
+            offering_race.get("all_snapshot_ids") or {}
+        ).items():
+            if snapshot_id:
+                snapshot_manifest.append(
+                    _snapshot_entry(
+                        "competitive scope",
+                        "comparable-offering selection",
+                        (
+                            GEMINI_DATASET_ID
+                            if engine == "gemini"
+                            else CHATGPT_DATASET_ID
+                        ),
+                        snapshot_id,
+                        engine=engine,
+                        status=(
+                            "winner"
+                            if snapshot_id == offering_winner
+                            else "superseded"
+                        ),
+                        winner=snapshot_id == offering_winner,
+                        duration_seconds=offering_race.get(
+                            "duration_seconds"
+                        ),
+                    )
+                )
     status = (
         "success"
         if len(successful) == len(brand_cohorts) and not warnings
@@ -1755,6 +2206,7 @@ def run_reddit_social_sync(
             offering_race.get("comparison_type") if offering_race else "other"
         ),
         "offering_selection_race": offering_race,
+        "snapshot_manifest": snapshot_manifest,
         "warnings": warnings,
         "duration_seconds": round(time.monotonic() - started_at, 2),
     }
@@ -1774,8 +2226,19 @@ def summarize_reddit_audit_warning(result):
     usable = [
         cohort
         for cohort in brand_cohorts
-        if int((cohort.get("metrics") or {}).get("relevant_posts") or 0) > 0
+        if int(
+            (cohort.get("metrics") or {}).get(
+                "classified_posts",
+                (cohort.get("metrics") or {}).get("relevant_posts", 0),
+            )
+            or 0
+        )
+        > 0
     ]
+    unclassified = sum(
+        int((cohort.get("metrics") or {}).get("unclassified_posts") or 0)
+        for cohort in brand_cohorts
+    )
     if brand_cohorts:
         missing = [
             str(cohort.get("brand") or "unknown")
@@ -1783,14 +2246,22 @@ def summarize_reddit_audit_warning(result):
             if cohort not in usable
         ]
         if not missing:
-            return (
+            warning = (
                 "Reddit conversation analysis completed for all "
                 f"{len(brand_cohorts)} brand cohorts, but one or more "
                 "collection or classification fallbacks were used. "
-                "Technical details are saved in 05_reddit_social.json."
             )
-        detail = f"{len(usable)}/{len(brand_cohorts)} brand cohorts returned relevant threads"
-        detail += f"; no relevant sample for {', '.join(missing)}"
+            if unclassified:
+                warning += (
+                    f"{unclassified} sampled thread(s) remain unclassified "
+                    "and are excluded from the reported metrics. "
+                )
+            return warning + (
+                "Technical details are saved in 05_reddit_social.json and "
+                "05_reddit_snapshot_manifest.json."
+            )
+        detail = f"{len(usable)}/{len(brand_cohorts)} brand cohorts returned classified threads"
+        detail += f"; no classified sample for {', '.join(missing)}"
         return (
             f"Reddit conversation analysis was partial: {detail}. "
             "Technical details are saved in 05_reddit_social.json."
@@ -1812,14 +2283,15 @@ def reanalyze_reddit_fallback_cohorts(result, target_profile, competitor_profile
     new_top_warnings = [
         warning
         for warning in (result.get("warnings") or [])
-        if "Reddit AI classification fallback used" not in str(warning)
+        if "Reddit AI classification" not in str(warning)
     ]
     for cohort in cohorts:
         fallback_used = any(
-            "Reddit AI classification fallback used" in str(warning)
+            "Reddit AI classification" in str(warning)
             for warning in (cohort.get("warnings") or [])
         ) or any(
-            float((post.get("analysis") or {}).get("confidence") or 0) == 0
+            (post.get("analysis") or {}).get("classification_status")
+            == "unclassified"
             for post in (cohort.get("sample") or [])
         )
         if not fallback_used or not cohort.get("sample"):
@@ -1839,7 +2311,8 @@ def reanalyze_reddit_fallback_cohorts(result, target_profile, competitor_profile
         retry_posts = [
             post
             for post in cohort["sample"]
-            if float((post.get("analysis") or {}).get("confidence") or 0) == 0
+            if (post.get("analysis") or {}).get("classification_status")
+            == "unclassified"
         ]
         if not retry_posts:
             retry_posts = cohort["sample"]
@@ -1861,7 +2334,7 @@ def reanalyze_reddit_fallback_cohorts(result, target_profile, competitor_profile
         cohort["warnings"] = [
             warning
             for warning in (cohort.get("warnings") or [])
-            if "Reddit AI classification fallback used" not in str(warning)
+            if "Reddit AI classification" not in str(warning)
         ] + warnings
         cohort["metrics"] = aggregate_reddit_analysis(cohort["sample"])
         label = cohort.get("brand") or cohort.get("role") or "unknown"
@@ -1955,11 +2428,24 @@ def _markdown_cell(value):
     return str(value or "").replace("|", "\\|").replace("\n", " ").strip()
 
 
+def _classified_post_count(metrics):
+    metrics = metrics or {}
+    if "classified_posts" in metrics:
+        return int(metrics.get("classified_posts") or 0)
+    return max(
+        0,
+        int(metrics.get("sample_size") or 0)
+        - int(metrics.get("unclassified_posts") or 0),
+    )
+
+
 def _relevant_reddit_posts(cohort):
     return [
         post
         for post in (cohort.get("sample") or [])
-        if (post.get("analysis") or {}).get("relevant") is True
+        if (post.get("analysis") or {}).get("classification_status")
+        != "unclassified"
+        and (post.get("analysis") or {}).get("relevant") is True
     ]
 
 
@@ -1985,9 +2471,22 @@ def build_competitive_reddit_report_section(result):
             "This is a directional sample, not market-wide sentiment or share of voice."
         ),
         "",
-        "| Brand | Role | Comparable offering | Sampled | Relevant | First-hand | Favorable | Mixed | Critical |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|",
+        "| Brand | Role | Comparable offering | Sampled | Classified | Unclassified | Relevant | First-hand | Favorable | Mixed | Critical |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    total_unclassified = sum(
+        int((cohort.get("metrics") or {}).get("unclassified_posts") or 0)
+        for cohort in brand_cohorts
+    )
+    if total_unclassified:
+        lines[7:7] = [
+            (
+                f"**Classification note:** {total_unclassified} sampled thread(s) "
+                "could not be classified after retrying and are excluded from "
+                "relevance, stance, theme, and experience counts."
+            ),
+            "",
+        ]
     for cohort in brand_cohorts:
         metrics = cohort.get("metrics") or {}
         stances = metrics.get("stance_counts") or {}
@@ -1999,6 +2498,8 @@ def build_competitive_reddit_report_section(result):
                     _markdown_cell(cohort.get("role")),
                     _markdown_cell(cohort.get("focus")),
                     str(metrics.get("sample_size", 0)),
+                    str(_classified_post_count(metrics)),
+                    str(metrics.get("unclassified_posts", 0)),
                     str(metrics.get("relevant_posts", 0)),
                     str(metrics.get("firsthand_posts", 0)),
                     str(stances.get("favorable", 0)),
@@ -2060,7 +2561,8 @@ def build_competitive_reddit_report_section(result):
                 (
                     f"{metrics.get('sample_size', 0)} thread(s) were sampled from "
                     "unbranded category queries; "
-                    f"{metrics.get('relevant_posts', 0)} were classified as relevant."
+                    f"{_classified_post_count(metrics)} were classified and "
+                    f"{metrics.get('relevant_posts', 0)} were relevant."
                 ),
             ]
         )
@@ -2094,6 +2596,8 @@ def build_reddit_report_section(result):
         [
             "| Measure | Observed count |",
             "|---|---:|",
+            f"| Classified threads | {_classified_post_count(metrics)} |",
+            f"| Unclassified threads | {metrics.get('unclassified_posts', 0)} |",
             f"| Relevant threads | {metrics.get('relevant_posts', 0)} |",
             f"| First-hand experiences | {metrics.get('firsthand_posts', 0)} |",
             f"| Unique communities | {metrics.get('unique_communities', 0)} |",
