@@ -84,6 +84,7 @@ def main(argv=None):
         audit_focus,
         configuration["country"],
         "auto",
+        True,
         bool(configuration.get("debug")),
     )
     definitions = runner_source.split("#@title 4. Run Competitive Visibility Audit", 1)[0]

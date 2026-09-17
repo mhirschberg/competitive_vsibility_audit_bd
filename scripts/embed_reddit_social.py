@@ -48,14 +48,22 @@ stage4_marker = '''    # -------------------------------------------------------
     # Stage 4: profiles
     # --------------------------------------------------------
 '''
-prefetch_before_stage4 = '''    reddit_prefetch_task = asyncio.create_task(
-        start_reddit_discovery_prefetch(
-            target_brand=target_brand,
-            selected_competitors=selected_competitors,
-            keywords=keywords,
-            audit_focus=settings.get("audit_focus", ""),
+prefetch_before_stage4 = '''    include_reddit_analysis = bool(
+        settings.get(
+            "include_reddit_analysis",
+            False,
         )
     )
+    reddit_prefetch_task = None
+    if include_reddit_analysis:
+        reddit_prefetch_task = asyncio.create_task(
+            start_reddit_discovery_prefetch(
+                target_brand=target_brand,
+                selected_competitors=selected_competitors,
+                keywords=keywords,
+                audit_focus=settings.get("audit_focus", ""),
+            )
+        )
 
 ''' + stage4_marker
 source = replace_or_verify(
@@ -83,21 +91,34 @@ new_visibility = '''    visibility_task = asyncio.create_task(
         )
     )
 
-    reddit_task = asyncio.create_task(
-        run_reddit_social_stage(
-            target_profile=target_profile,
-            competitor_profiles=competitor_profiles,
-            keywords=keywords,
-            keyword_serp_results=keyword_serp_results,
-            audit_focus=settings.get("audit_focus", ""),
-            discovery_prefetch_task=reddit_prefetch_task,
+    if include_reddit_analysis:
+        reddit_task = asyncio.create_task(
+            run_reddit_social_stage(
+                target_profile=target_profile,
+                competitor_profiles=competitor_profiles,
+                keywords=keywords,
+                keyword_serp_results=keyword_serp_results,
+                audit_focus=settings.get("audit_focus", ""),
+                discovery_prefetch_task=reddit_prefetch_task,
+            )
         )
-    )
-
-    visibility_result, reddit_social_result = await asyncio.gather(
-        visibility_task,
-        reddit_task,
-    )
+        visibility_result, reddit_social_result = await asyncio.gather(
+            visibility_task,
+            reddit_task,
+        )
+    else:
+        visibility_result = await visibility_task
+        reddit_social_result = {
+            "status": "disabled",
+            "mode": "disabled",
+            "queries": [],
+            "sample": [],
+            "metrics": {},
+            "cohorts": [],
+            "comparison": [],
+            "warnings": [],
+            "duration_seconds": 0.0,
+        }
 '''
 previous_visibility = new_visibility.replace(
     '            discovery_prefetch_task=reddit_prefetch_task,\n',

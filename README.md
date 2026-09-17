@@ -10,7 +10,7 @@ This repository contains a no-code Google Colab notebook that audits competitive
 - Google AI Mode
 - ChatGPT
 - Gemini
-- Reddit posts and comments
+- Optional Reddit posts and comments
 
 It uses Bright Data to collect live search and AI-answer data, identify direct competitors, analyze the sources shaping AI answers, and generate downloadable Markdown and PDF competitive visibility reports.
 
@@ -66,14 +66,14 @@ The notebook then:
 5. Asks Google AI Mode three neutral customer questions using three-way races.
 6. Identifies ten likely direct competitors using a three-way Google AI Mode race.
 7. Selects the two strongest direct competitors.
-8. Immediately starts Reddit discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends its strongest early query to three identical snapshots and keeps the first successful result; the wider query set is still searched through SERP discovery.
+8. When the optional Reddit analysis is enabled, immediately starts discovery for the target, both competitors, and the neutral category while the remaining audit stages continue. Each cohort sends its strongest early query to three identical snapshots and keeps the first successful result; the wider query set is still searched through SERP discovery.
 9. Creates profiles for the target and both competitors using three-way Google AI Mode races.
-10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while the early Reddit discovery continues.
-11. Classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type Reddit comparison offering for each competitor.
+10. Measures visibility in Google AI Mode, ChatGPT, and Gemini while any enabled Reddit discovery continues.
+11. For Reddit-enabled runs, classifies the audit scope as a product, service, marketplace, retailer, platform, or other offering, then selects one same-type comparison offering for each competitor.
 12. Applies the prefetched Reddit results to the target and both competitors, with up to ten threads per brand, plus a separate neutral category sample.
 13. Collects representative comments, deduplicates overlapping threads across cohorts, and races Gemini and ChatGPT to classify conversations in validated batches.
 14. Analyzes which sources shape the AI answers.
-15. Builds a deterministic report with a side-by-side Reddit comparison.
+15. Builds a deterministic report, including a side-by-side Reddit comparison when requested.
 16. Exports the report as Markdown, PDF, JSON, and ZIP.
 
 ---
@@ -114,7 +114,7 @@ Company name + website + optional audit focus
         2 selected direct competitors
              ┌────────┴────────┐
              ▼                 ▼
- Target + 2 profiles    early Reddit discovery
+ Target + 2 profiles    optional Reddit discovery
    × 3 snapshots         4 cohorts × 3 races
              │                 │
              ▼                 │
@@ -145,8 +145,8 @@ The notebook uses:
 - Google AI Mode
 - ChatGPT
 - Gemini
-- Reddit posts dataset
-- Reddit comments dataset
+- Reddit posts dataset (only when Reddit analysis is enabled)
+- Reddit comments dataset (only when Reddit analysis is enabled)
 
 Reddit discovery deliberately races three identical snapshots per cohort to reduce slow-tail latency. This increases dataset usage; set `REDDIT_NATIVE_RACE_WIDTH=1` to prefer minimum usage over speed.
 
@@ -160,7 +160,7 @@ You need:
 2. A Bright Data account.
 3. A Bright Data API token.
 4. An active Bright Data SERP API zone.
-5. Access to the required Google AI Mode, ChatGPT, Gemini, Reddit posts, and Reddit comments datasets.
+5. Access to the required Google AI Mode, ChatGPT, and Gemini datasets. Reddit posts and comments dataset access is needed only when the optional Reddit analysis is enabled.
 
 ---
 
@@ -200,6 +200,7 @@ SEARCH_ENGINE = "auto"
 SERP_ZONE = "serp_api1"
 
 AUTO_DOWNLOAD_REPORT = False
+INCLUDE_REDDIT_ANALYSIS = False
 DEBUG_MODE = False
 ```
 
@@ -212,6 +213,7 @@ DEBUG_MODE = False
 | `SEARCH_ENGINE` | Yes | `auto`, `google`, `bing`, or `none` |
 | `SERP_ZONE` | Yes | Bright Data SERP API zone name |
 | `AUTO_DOWNLOAD_REPORT` | No | Automatically download the ZIP when the audit finishes |
+| `INCLUDE_REDDIT_ANALYSIS` | No | Include Reddit conversations. May add up to 10 minutes and uses additional Bright Data dataset requests |
 | `DEBUG_MODE` | No | Display API, snapshot, retry, prompt, and parsing diagnostics |
 
 The domain can be entered as:
@@ -290,7 +292,7 @@ A typical run displays:
 [5/6] Cross-engine AI visibility
       ✓ ChatGPT completed
       ✓ Gemini completed
-      ✓ Reddit sample: 10 thread(s)
+      ✓ Reddit sample: 10 thread(s)  # only when enabled
 
 [6/6] Final report and export
       ✓ Styled PDF report generated
@@ -315,10 +317,11 @@ Create a virtual environment and install the project requirements, then run:
   --company "Rayner" \
   --domain "rayner.com" \
   --focus "presbyopia-correcting intraocular lenses" \
-  --country "GB"
+  --country "GB" \
+  --include-reddit
 ```
 
-Use `--dry-run` to validate the local settings and generated notebook runner without making Bright Data calls. Live runs are written to separate timestamped directories under `local-runs/`, including `audit.log` and all generated report artifacts. Both `.env.local` and `local-runs/` are excluded from Git.
+Omit `--include-reddit` for the faster core audit. Use `--dry-run` to validate the local settings and generated notebook runner without making Bright Data calls. Live runs are written to separate timestamped directories under `local-runs/`, including `audit.log` and all generated report artifacts. Both `.env.local` and `local-runs/` are excluded from Git.
 
 ---
 
@@ -490,9 +493,9 @@ The notebook records:
 - Source classifications
 - Whether ChatGPT triggered web search, when reported
 
-### Stage 5: Reddit conversation snapshot
+### Optional Stage 5: Reddit conversation snapshot
 
-The Reddit snapshot runs in parallel with cross-engine AI visibility so that most of its collection time is hidden behind work the audit already performs.
+Enable `INCLUDE_REDDIT_ANALYSIS` to add this section. It may add up to 10 minutes and uses additional Bright Data dataset requests. When enabled, the Reddit snapshot runs in parallel with cross-engine AI visibility so that most of its collection time is hidden behind work the audit already performs.
 
 Three discovery paths are combined and deduplicated by Reddit post ID:
 
@@ -512,7 +515,7 @@ If a discovery path, post hydration, comment collection, or AI classifier is una
 
 The final report is assembled deterministically from the validated structured audit data. No additional answer-engine request is made for report writing, so a late AI formatting failure cannot discard an otherwise completed audit.
 
-The Reddit conversation snapshot is inserted before the methodology section and keeps its sample-size caveat visible in the report.
+When enabled, the Reddit conversation snapshot is inserted before the methodology section and keeps its sample-size caveat visible in the report.
 
 The report includes:
 
@@ -521,7 +524,7 @@ The report includes:
 - Traditional search visibility
 - AI answer-engine visibility
 - Source influence
-- Reddit conversation snapshot
+- Reddit conversation snapshot (when enabled)
 - Positioning and information gaps
 - Prioritized recommendations
 - Methodology and limitations
@@ -649,7 +652,7 @@ Typical contents:
 03_competitor_selection.json
 04_brand_profiles.json
 05_ai_visibility.json
-05_reddit_social.json
+05_reddit_social.json  # records disabled status or the collected Reddit result
 06_competitive_visibility_audit.md
 06_competitive_visibility_audit.pdf
 06_competitive_visibility_audit.json

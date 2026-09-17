@@ -33,6 +33,17 @@ class LocalAuditRunnerTests(unittest.TestCase):
             self.assertTrue(first.is_dir())
             self.assertTrue(second.is_dir())
 
+    def test_reddit_analysis_is_opt_in(self):
+        base_args = ["--company", "Acme", "--domain", "example.com"]
+
+        default_args = run_local_audit.build_parser().parse_args(base_args)
+        enabled_args = run_local_audit.build_parser().parse_args(
+            [*base_args, "--include-reddit"]
+        )
+
+        self.assertFalse(default_args.include_reddit)
+        self.assertTrue(enabled_args.include_reddit)
+
 
 if __name__ == "__main__":
     unittest.main()

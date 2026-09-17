@@ -40,13 +40,22 @@ def _cell_source(cell):
     return source
 
 
-def _build_config_cell(company_name, company_domain, audit_focus, country, search_engine, debug_mode):
+def _build_config_cell(
+    company_name,
+    company_domain,
+    audit_focus,
+    country,
+    search_engine,
+    include_reddit_analysis,
+    debug_mode,
+):
     values = {
         "company_name": str(company_name or "").strip(),
         "company_domain": str(company_domain or "").strip(),
         "audit_focus": str(audit_focus or "").strip(),
         "country": str(country or "US").strip().upper(),
         "search_engine": str(search_engine or "auto").strip().lower(),
+        "include_reddit_analysis": bool(include_reddit_analysis),
         "debug_mode": bool(debug_mode),
     }
     payload = json.dumps(values, ensure_ascii=False)
@@ -63,6 +72,7 @@ AUDIT_FOCUS = _WEB_CONFIG["audit_focus"]
 COUNTRY = _WEB_CONFIG["country"]
 SEARCH_ENGINE = _WEB_CONFIG["search_engine"]
 AUTO_DOWNLOAD_REPORT = False
+INCLUDE_REDDIT_ANALYSIS = bool(_WEB_CONFIG["include_reddit_analysis"])
 DEBUG_MODE = bool(_WEB_CONFIG["debug_mode"])
 
 BRIGHTDATA_API_TOKEN = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
@@ -102,6 +112,7 @@ AUDIT_SETTINGS = {{
     "search_engine": SEARCH_ENGINE,
     "serp_zone": SERP_ZONE,
     "auto_download": False,
+    "include_reddit_analysis": INCLUDE_REDDIT_ANALYSIS,
     "debug": DEBUG_MODE,
 }}
 
@@ -112,11 +123,23 @@ print(f"Website: {{COMPANY_URL}}")
 print(f"Country: {{COUNTRY}}")
 print(f"Audit focus: {{AUDIT_FOCUS or 'Primary offering'}}")
 print(f"Search engine: {{SEARCH_ENGINE}}")
+print(
+    f"Reddit conversation analysis: "
+    f"{{'enabled' if INCLUDE_REDDIT_ANALYSIS else 'skipped'}}"
+)
 print(f"Debug logging: {{'enabled' if DEBUG_MODE else 'disabled'}}")
 '''
 
 
-def _build_runner_script(company_name, company_domain, audit_focus, country, search_engine, debug_mode):
+def _build_runner_script(
+    company_name,
+    company_domain,
+    audit_focus,
+    country,
+    search_engine,
+    include_reddit_analysis,
+    debug_mode,
+):
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
     chunks = [
         "# Auto-generated workshop runner from the existing notebook.\n",
@@ -140,6 +163,7 @@ def _build_runner_script(company_name, company_domain, audit_focus, country, sea
                     audit_focus,
                     country,
                     search_engine,
+                    include_reddit_analysis,
                     debug_mode,
                 )
             )
@@ -203,7 +227,15 @@ def _validate_audit_request(company_name, company_domain):
         raise gr.Error("Company domain is required.")
 
 
-def run_audit(company_name, company_domain, audit_focus, country, search_engine, debug_mode):
+def run_audit(
+    company_name,
+    company_domain,
+    audit_focus,
+    country,
+    search_engine,
+    include_reddit_analysis,
+    debug_mode,
+):
     _validate_audit_request(company_name, company_domain)
 
     run_dir = Path(tempfile.mkdtemp(prefix="competitive-audit-"))
@@ -217,6 +249,7 @@ def run_audit(company_name, company_domain, audit_focus, country, search_engine,
                 audit_focus,
                 country,
                 search_engine,
+                include_reddit_analysis,
                 debug_mode,
             ),
             encoding="utf-8",
@@ -319,6 +352,7 @@ def start_audit_job(
     audit_focus,
     country,
     search_engine,
+    include_reddit_analysis,
     debug_mode,
     browser_state,
 ):
@@ -340,6 +374,7 @@ def start_audit_job(
         audit_focus,
         country,
         search_engine,
+        include_reddit_analysis,
         debug_mode,
     )
     run_id = uuid.uuid4().hex
@@ -360,6 +395,7 @@ def start_audit_job(
             "audit_focus": str(audit_focus or ""),
             "country": str(country or "US"),
             "search_engine": str(search_engine or "auto"),
+            "include_reddit_analysis": bool(include_reddit_analysis),
             "debug_mode": bool(debug_mode),
         }
     )
@@ -381,6 +417,7 @@ def restore_audit_session(browser_state):
         saved_state.get("audit_focus", ""),
         saved_state.get("country", "US"),
         saved_state.get("search_engine", "auto"),
+        bool(saved_state.get("include_reddit_analysis", False)),
         bool(saved_state.get("debug_mode", False)),
         logs,
         downloads,
@@ -417,6 +454,15 @@ def build_ui():
             )
             debug_mode = gr.Checkbox(label="Debug mode", value=False)
 
+        include_reddit_analysis = gr.Checkbox(
+            label="Include Reddit conversation analysis",
+            value=False,
+            info=(
+                "Optional. May add up to 10 minutes and uses additional "
+                "Bright Data dataset requests."
+            ),
+        )
+
         run_button = gr.Button("Run audit", variant="primary")
         logs = gr.Textbox(label="Live audit output", lines=24, interactive=False)
         downloads = gr.File(label="Download report files", file_count="multiple")
@@ -430,6 +476,7 @@ def build_ui():
                 audit_focus,
                 country,
                 search_engine,
+                include_reddit_analysis,
                 debug_mode,
                 browser_state,
             ],
@@ -454,6 +501,7 @@ def build_ui():
                 audit_focus,
                 country,
                 search_engine,
+                include_reddit_analysis,
                 debug_mode,
                 logs,
                 downloads,

@@ -41,6 +41,27 @@ class NotebookEmbeddingTests(unittest.TestCase):
             orchestration.count('audit_focus=settings.get("audit_focus", "")'),
             2,
         )
+        self.assertIn(
+            'settings.get(\n            "include_reddit_analysis",\n            False,',
+            orchestration,
+        )
+        self.assertIn("if include_reddit_analysis:", orchestration)
+        self.assertIn('"status": "disabled"', orchestration)
+
+    def test_reddit_analysis_is_an_opt_in_notebook_setting(self):
+        config_cell = next(
+            cell
+            for cell in self.notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "UsMNZ4-2jKg6"
+        )
+        config = "".join(config_cell["source"])
+
+        self.assertIn("INCLUDE_REDDIT_ANALYSIS = False", config)
+        self.assertIn(
+            '"include_reddit_analysis": (\n        INCLUDE_REDDIT_ANALYSIS',
+            config,
+        )
+        self.assertIn("may add up to 10 minutes", config)
 
     def test_modified_code_cells_compile(self):
         for index in range(2, 7):
