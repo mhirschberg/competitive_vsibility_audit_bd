@@ -91,11 +91,32 @@ def main(argv=None):
     namespace = {"__name__": "reddit_stage_runtime"}
     exec(compile(definitions, "reddit-stage-runtime", "exec"), namespace)
 
-    profile_model = namespace["BrandProfile"]
-    target = profile_model(**audit["profiles"]["target"])
+    clean_profile_label = namespace["clean_profile_label"]
+    normalize_brand_profile = namespace["normalize_brand_profile"]
+
+    def normalize_saved_profile(payload, role):
+        clean_name = clean_profile_label(payload.get("brand_name"))
+        job = {
+            "role": role,
+            "brand_name": clean_name or configuration["company_name"],
+            "official_url": payload.get("official_url") or "",
+            "domain": payload.get("domain") or "",
+            "reason": payload.get("competitor_reason") or "",
+        }
+        return normalize_brand_profile(payload, job)
+
+    target = normalize_saved_profile(audit["profiles"]["target"], "target")
     competitors = [
-        profile_model(**item) for item in audit["profiles"]["competitors"]
+        normalize_saved_profile(item, "competitor")
+        for item in audit["profiles"]["competitors"]
     ]
+    normalized_target = namespace["model_to_dict"](target)
+    normalized_competitors = [
+        namespace["model_to_dict"](item) for item in competitors
+    ]
+    audit["target"] = normalized_target
+    audit["profiles"]["target"] = normalized_target
+    audit["profiles"]["competitors"] = normalized_competitors
     keywords = [item["keyword"] for item in audit["buyer_intent_keywords"]]
     keyword_serp_results = audit["serp"]["keyword_results"]
     measured_engines = [
@@ -131,6 +152,7 @@ def main(argv=None):
             competitors,
         )
     result = namespace["normalize_reddit_result_offerings"](result)
+    result = namespace["normalize_reddit_result_status"](result)
     output_path.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -169,6 +191,12 @@ def main(argv=None):
     markdown_path = audit_path.parent / "06_competitive_visibility_audit.md"
     pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
     visibility = dict(audit["ai_visibility"])
+    for mentions in (visibility.get("mentions") or {}).values():
+        for mention in mentions or []:
+            mention["brand_name"] = clean_profile_label(
+                mention.get("brand_name")
+            )
+    audit["ai_visibility"] = visibility
     visibility["audited_domains"] = {
         profile.domain: profile.brand_name
         for profile in (target, *competitors)

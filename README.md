@@ -493,7 +493,7 @@ The notebook records:
 - Source classifications
 - Whether ChatGPT triggered web search, when reported
 
-### Optional Stage 5: Reddit conversation snapshot
+### Optional Stage 6: Reddit conversation snapshot
 
 Enable `INCLUDE_REDDIT_ANALYSIS` to add this section. It may add up to 10 minutes and uses additional Bright Data dataset requests. When enabled, the Reddit snapshot runs in parallel with cross-engine AI visibility so that most of its collection time is hidden behind work the audit already performs.
 
@@ -507,13 +507,13 @@ The strongest candidates are hydrated with the Reddit posts dataset. The noteboo
 
 Native discovery and comment collection use a one-year lookback by default.
 
-The selected threads are classified in small batches. Gemini and ChatGPT race on each batch; a response must return the complete schema, and only evidence excerpts that exist verbatim in the supplied thread text are retained. Aggregation into stance, experience, theme, pain-point, desired-outcome, and comparison counts is deterministic.
+The selected threads are classified in small batches. Gemini and ChatGPT race on each batch; a response must return the complete schema, and only evidence excerpts that exist verbatim in the supplied thread text are retained. Failed batches are retried one thread at a time. Threads that still cannot be classified are reported as unclassified and excluded from relevance, stance, theme, and experience counts. Aggregation is deterministic.
 
-If a discovery path, post hydration, comment collection, or AI classifier is unavailable, the stage degrades to the remaining evidence instead of terminating the complete audit. The final audit shows one concise completeness warning; detailed diagnostics remain in `05_reddit_social.json`.
+If a discovery path, post hydration, comment collection, or AI classifier is unavailable, the stage degrades to the remaining evidence instead of terminating the complete audit. The final audit shows one concise completeness warning; detailed diagnostics remain in `05_reddit_social.json`. Snapshot IDs are mapped to their brand, operation, dataset, status, and race outcome in `05_reddit_snapshot_manifest.json`.
 
-### Stage 6: Final report
+### Final report
 
-The final report is assembled deterministically from the validated structured audit data. No additional answer-engine request is made for report writing, so a late AI formatting failure cannot discard an otherwise completed audit.
+The final report is Stage 7 when Reddit analysis is enabled and Stage 6 otherwise. It is assembled deterministically from the validated structured audit data. No additional answer-engine request is made for report writing, so a late AI formatting failure cannot discard an otherwise completed audit.
 
 When enabled, the Reddit conversation snapshot is inserted before the methodology section and keeps its sample-size caveat visible in the report.
 
@@ -653,6 +653,7 @@ Typical contents:
 04_brand_profiles.json
 05_ai_visibility.json
 05_reddit_social.json  # records disabled status or the collected Reddit result
+05_reddit_snapshot_manifest.json  # maps every recorded social snapshot to its purpose
 06_competitive_visibility_audit.md
 06_competitive_visibility_audit.pdf
 06_competitive_visibility_audit.json

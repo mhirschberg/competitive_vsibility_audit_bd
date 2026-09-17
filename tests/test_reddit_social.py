@@ -218,6 +218,7 @@ class RedditUrlTests(unittest.TestCase):
                 "queries": ["Acme review"],
                 "records": [],
                 "snapshots": [],
+                "snapshot_manifest": [],
                 "race_width": 3,
                 "warnings": [],
             },
@@ -299,16 +300,17 @@ class RedditUrlTests(unittest.TestCase):
         target.category = "Widgets"
         competitors = [profile("Other"), profile("Third")]
 
-        def trigger(queries):
+        def trigger(queries, race_width=None, context="Reddit discovery"):
             return {
                 "queries": queries,
                 "records": [],
                 "snapshots": [{"snapshot_id": queries[0]}],
+                "snapshot_manifest": [],
                 "race_width": 3,
                 "warnings": [],
             }
 
-        def wait(native):
+        def wait(native, context="Reddit discovery"):
             return {
                 **native,
                 "records": [{"post_id": native["queries"][0]}],
@@ -382,8 +384,170 @@ class RedditUrlTests(unittest.TestCase):
         self.assertTrue(valid["valid"])
         self.assertFalse(invalid["valid"])
 
+    def test_comparable_offering_validator_allows_evidence_derived_scope(self):
+        social.parse_ai_json = json.loads
+        validator = social._competitor_focus_validator(
+            {"Samsung": [], "Google": []}
+        )
+
+        valid = validator(
+            json.dumps(
+                {
+                    "comparison_type": "physical_product",
+                    "selections": [
+                        {"brand": "Samsung", "offering": "Galaxy S series"},
+                        {"brand": "Google", "offering": "Pixel series"},
+                    ],
+                }
+            )
+        )
+        brand_only = validator(
+            json.dumps(
+                {
+                    "comparison_type": "physical_product",
+                    "selections": [
+                        {"brand": "Samsung", "offering": "Samsung"},
+                        {"brand": "Google", "offering": "Google products"},
+                    ],
+                }
+            )
+        )
+
+        self.assertTrue(valid["valid"])
+        self.assertFalse(brand_only["valid"])
+
+    def test_missing_profiles_infer_competitor_offerings_from_evidence(self):
+        target = profile("Apple", ["iPhone"])
+        samsung = profile("Samsung", [])
+        samsung.relevant_products = []
+        samsung.competitor_reason = (
+            "Samsung offers flagship smartphones such as the Galaxy S and Z "
+            "series that directly substitute for iPhone."
+        )
+        samsung.evidence = []
+        google = profile("Google", [])
+        google.relevant_products = []
+        google.competitor_reason = (
+            "Google manufactures the Pixel series of high-end smartphones."
+        )
+        google.evidence = []
+        race_answer = json.dumps(
+            {
+                "comparison_type": "physical_product",
+                "selections": [
+                    {"brand": "Samsung", "offering": "Galaxy S series"},
+                    {"brand": "Google", "offering": "Pixel series"},
+                ],
+            }
+        )
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            return_value={
+                "answer": race_answer,
+                "engine_name": "Gemini",
+                "snapshot_id": "scope-1",
+                "all_snapshot_ids": {"gemini": "scope-1"},
+                "race_duration_seconds": 1.5,
+            },
+            create=True,
+        ) as race_mock:
+            offerings, metadata, warnings = (
+                social.choose_competitor_reddit_offerings(
+                    target,
+                    [samsung, google],
+                    "iPhone",
+                    ["high-end smartphone"],
+                )
+            )
+
+        self.assertEqual(
+            offerings,
+            {"Samsung": "Galaxy S series", "Google": "Pixel series"},
+        )
+        self.assertEqual(metadata["comparison_type"], "physical_product")
+        self.assertEqual(
+            metadata["evidence_inferred_brands"], ["Samsung", "Google"]
+        )
+        self.assertEqual(warnings, [])
+        prompt = race_mock.call_args.kwargs["prompt"]
+        self.assertIn("Galaxy S and Z series", prompt)
+        self.assertIn("Pixel series", prompt)
+
+    def test_deterministic_fallback_uses_evidence_not_bare_brand(self):
+        target = profile("Apple", ["iPhone"])
+        samsung = profile("Samsung", [])
+        samsung.relevant_products = []
+        samsung.competitor_reason = (
+            "Samsung offers phones such as the Galaxy S series."
+        )
+        samsung.evidence = []
+        google = profile("Google", [])
+        google.relevant_products = []
+        google.competitor_reason = (
+            "Google manufactures the Pixel series of high-end smartphones."
+        )
+        google.evidence = []
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            side_effect=RuntimeError("scope race unavailable"),
+            create=True,
+        ):
+            offerings, metadata, warnings = (
+                social.choose_competitor_reddit_offerings(
+                    target,
+                    [samsung, google],
+                    "iPhone",
+                    ["high-end smartphone"],
+                )
+            )
+
+        self.assertEqual(
+            offerings,
+            {"Samsung": "Galaxy S series", "Google": "Pixel series"},
+        )
+        self.assertEqual(metadata["engine"], "deterministic-fallback")
+        self.assertEqual(
+            metadata["evidence_inferred_brands"], ["Samsung", "Google"]
+        )
+        self.assertEqual(len(warnings), 1)
+
 
 class RedditSelectionTests(unittest.TestCase):
+    def test_fallback_profile_requires_recovered_product_focus(self):
+        fallback = profile("Google", [])
+        fallback.relevant_products = []
+        scoped = social._scoped_reddit_profile(fallback, "Pixel series")
+        posts = [
+            {
+                "post_id": "reviews",
+                "title": "How to get more Google Reviews for my business?",
+                "description": "Local SEO discussion",
+                "community_name": "localseo",
+                "num_upvotes": 100,
+                "num_comments": 30,
+                "sources": ["native_reddit"],
+                "best_rank": 1,
+            },
+            {
+                "post_id": "pixel",
+                "title": "Pixel 10 Pro long-term review",
+                "description": "Thinking of switching to a Google phone",
+                "community_name": "GooglePixel",
+                "num_upvotes": 5,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": 3,
+            },
+        ]
+
+        selected = social.select_reddit_sample(posts, scoped)
+
+        self.assertEqual([item["post_id"] for item in selected], ["pixel"])
+
     def test_selection_excludes_similar_but_different_product_names(self):
         target = profile(
             "Rayner",
@@ -453,7 +617,7 @@ class RedditSelectionTests(unittest.TestCase):
                 {
                     "post_id": f"post{index}",
                     "url": f"https://www.reddit.com/comments/post{index}/",
-                    "title": "Acme Widget Pro review",
+                    "title": f"Acme Widget Pro review {index}",
                     "description": "",
                     "community_name": "widgets" if index < 8 else f"group{index}",
                     "num_upvotes": 100 - index,
@@ -470,6 +634,36 @@ class RedditSelectionTests(unittest.TestCase):
             item for item in selected[:7] if item["community_name"] == "widgets"
         ]
         self.assertLessEqual(len(first_pass_widgets), 3)
+
+    def test_selection_removes_same_title_crossposts(self):
+        posts = [
+            {
+                "post_id": "crosspost1",
+                "url": "https://www.reddit.com/comments/crosspost1/",
+                "title": "Is this Acme deal too good to be true?",
+                "description": "",
+                "community_name": "group-one",
+                "num_upvotes": 20,
+                "num_comments": 5,
+                "sources": ["serp"],
+                "best_rank": 1,
+            },
+            {
+                "post_id": "crosspost2",
+                "url": "https://www.reddit.com/comments/crosspost2/",
+                "title": "Is this Acme deal too good to be true?",
+                "description": "",
+                "community_name": "group-two",
+                "num_upvotes": 10,
+                "num_comments": 2,
+                "sources": ["serp"],
+                "best_rank": 2,
+            },
+        ]
+
+        selected = social.select_reddit_sample(posts, profile())
+
+        self.assertEqual([item["post_id"] for item in selected], ["crosspost1"])
 
 
 class RedditAnalysisTests(unittest.TestCase):
@@ -580,6 +774,208 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertEqual(cleaned["content_type"], "firsthand_experience")
         self.assertEqual(cleaned["experience_type"], "firsthand")
         self.assertEqual(cleaned["stance"], "favorable")
+
+    def test_failed_batch_retries_individually_and_stays_unclassified(self):
+        posts = [
+            {
+                "post_id": f"post{index}",
+                "title": f"Acme discussion {index}",
+                "description": "",
+                "comments": [],
+            }
+            for index in range(2)
+        ]
+
+        with mock.patch.object(
+            social,
+            "race_utility_ai",
+            side_effect=RuntimeError("classification unavailable"),
+            create=True,
+        ) as race:
+            analyses, races, warnings = social.analyze_reddit_posts(
+                posts,
+                profile(),
+                [profile("Other")],
+                "Acme",
+            )
+
+        self.assertEqual(race.call_count, 3)
+        self.assertEqual(races, [])
+        self.assertEqual(len(warnings), 3)
+        self.assertTrue(
+            all(item["classification_status"] == "unclassified" for item in analyses)
+        )
+        self.assertTrue(all(item["relevant"] is None for item in analyses))
+
+        sample = [
+            {"post_id": item["post_id"], "analysis": item}
+            for item in analyses
+        ]
+        metrics = social.aggregate_reddit_analysis(sample)
+        self.assertEqual(metrics["classified_posts"], 0)
+        self.assertEqual(metrics["unclassified_posts"], 2)
+        self.assertEqual(metrics["relevant_posts"], 0)
+
+    def test_failed_race_snapshot_ids_are_recoverable_for_manifest(self):
+        error = RuntimeError(
+            'Neither engine returned a valid result. '
+            '[{"engine":"Gemini","snapshot_id":"gem-1","status":"invalid"},'
+            '{"engine":"ChatGPT","snapshot_id":"gpt-1","status":"timeout"}]'
+        )
+
+        metadata = social._failed_race_metadata(
+            error,
+            "classification batch 1/2",
+        )
+
+        self.assertEqual(
+            metadata["all_snapshot_ids"],
+            {"gemini": "gem-1", "chatgpt": "gpt-1"},
+        )
+        self.assertEqual(
+            metadata["attempt_statuses"],
+            {"gemini": "invalid", "chatgpt": "timeout"},
+        )
+
+    def test_social_snapshot_manifest_keeps_operation_and_context(self):
+        response = mock.Mock(status_code=202, text='{"snapshot_id":"snap-1"}')
+        client = SimpleNamespace(
+            headers={"Authorization": "Bearer test"},
+            snapshot_status=lambda snapshot_id: {"status": "ready"},
+            download_snapshot=lambda snapshot_id: [{"post_id": "abc123"}],
+            normalize_records=lambda value: value,
+            log=lambda *args, **kwargs: None,
+        )
+        manifest = []
+        with (
+            mock.patch.object(social, "BD_SCRAPE_URL", "https://example.test/scrape", create=True),
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(social.reddit_requests, "post", return_value=response),
+            mock.patch.object(
+                social,
+                "decode_bright_data_response",
+                return_value={"snapshot_id": "snap-1"},
+                create=True,
+            ),
+        ):
+            records = social._scrape_reddit_dataset(
+                social.REDDIT_POSTS_DATASET_ID,
+                {"input": [{"url": "https://reddit.test/post"}]},
+                60,
+                "AutoScout24",
+                "post hydration",
+                manifest,
+            )
+
+        self.assertEqual(records, [{"post_id": "abc123"}])
+        self.assertEqual(
+            manifest[0],
+            {
+                "context": "AutoScout24",
+                "operation": "post hydration",
+                "dataset_id": social.REDDIT_POSTS_DATASET_ID,
+                "snapshot_id": "snap-1",
+                "status": "ready",
+                "duration_seconds": mock.ANY,
+                "record_count": 1,
+            },
+        )
+
+    def test_social_log_does_not_pass_none_as_a_rich_color(self):
+        calls = []
+
+        def log(*args):
+            calls.append(args)
+            if len(args) > 1 and args[1] is None:
+                raise AssertionError("None must not be passed as a Rich color")
+
+        with mock.patch.object(
+            social,
+            "bd_client",
+            SimpleNamespace(log=log),
+            create=True,
+        ):
+            social._reddit_log("Mobile.de", "snapshot started")
+
+        self.assertEqual(
+            calls,
+            [("[Social · Mobile.de] snapshot started",)],
+        )
+
+    def test_social_snapshot_timeout_uses_the_notebook_exception_contract(self):
+        class ExpectedTimeout(TimeoutError):
+            def __init__(self, snapshot_id, timeout_seconds):
+                self.snapshot_id = snapshot_id
+                self.timeout_seconds = timeout_seconds
+
+        entry = {"status": "triggered"}
+        client = SimpleNamespace(
+            snapshot_status=lambda snapshot_id: {"status": "running"},
+            log=lambda *args: None,
+        )
+        with (
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(
+                social,
+                "SnapshotTimeoutError",
+                ExpectedTimeout,
+                create=True,
+            ),
+            mock.patch.object(
+                social.time,
+                "monotonic",
+                side_effect=[0, 61],
+            ),
+        ):
+            with self.assertRaises(ExpectedTimeout) as raised:
+                social._wait_reddit_snapshot(
+                    "snap-timeout",
+                    60,
+                    "Kleinanzeigen",
+                    "comment collection",
+                    entry,
+                )
+
+        self.assertEqual(raised.exception.snapshot_id, "snap-timeout")
+        self.assertEqual(raised.exception.timeout_seconds, 60)
+        self.assertEqual(entry["status"], "timeout")
+
+    def test_report_discloses_and_excludes_unclassified_threads(self):
+        sample = [
+            {
+                "post_id": "unknown1",
+                "title": "Unclassified thread",
+                "analysis": {
+                    "classification_status": "unclassified",
+                    "relevant": None,
+                },
+            }
+        ]
+        metrics = social.aggregate_reddit_analysis(sample)
+        result = {
+            "status": "partial",
+            "mode": "competitive",
+            "comparison_type": "marketplace",
+            "unique_thread_count": 1,
+            "cohorts": [
+                {
+                    "role": "target",
+                    "brand": "Acme",
+                    "focus": "Marketplace",
+                    "sample": sample,
+                    "metrics": metrics,
+                }
+            ],
+        }
+
+        report = social.build_competitive_reddit_report_section(result)
+
+        self.assertIn("Classification note", report)
+        self.assertIn("### Cohort Coverage", report)
+        self.assertIn("### Conversation Signals", report)
+        self.assertIn("| Acme | target | Marketplace | 1 | 0 | 1 | 0 |", report)
+        self.assertNotIn("| Brand | Role | Comparable offering | Sampled | Classified | Unclassified | Relevant | First-hand", report)
+        self.assertNotIn("[Unclassified thread]", report)
 
     def test_aggregation_and_report_are_deterministic(self):
         posts = [
@@ -774,6 +1170,90 @@ class RedditAnalysisTests(unittest.TestCase):
         wait.assert_called_once()
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["discovery"]["native_snapshot_waited"])
+
+    def test_recovered_discovery_warning_keeps_complete_cohort_successful(self):
+        candidates = [
+            {
+                "post_id": f"post{index}",
+                "url": f"https://www.reddit.com/r/widgets/comments/post{index}/thread/",
+                "title": f"Acme experience {index}",
+                "description": "Useful experience",
+                "source": "native_reddit",
+            }
+            for index in range(10)
+        ]
+        analyses = [
+            {
+                "post_id": item["post_id"],
+                "relevant": True,
+                "classification_status": "classified",
+            }
+            for item in candidates
+        ]
+        with (
+            mock.patch.object(
+                social,
+                "_trigger_native_reddit_discovery",
+                return_value={"records": candidates, "warnings": []},
+            ),
+            mock.patch.object(
+                social,
+                "_discover_reddit_with_serp",
+                return_value={
+                    "records": [],
+                    "warnings": ["Reddit SERP query failed: HTTP 502"],
+                },
+            ),
+            mock.patch.object(social, "_collect_reddit_posts", return_value=candidates),
+            mock.patch.object(social, "_collect_reddit_comments", return_value={}),
+            mock.patch.object(
+                social,
+                "analyze_reddit_posts",
+                return_value=(analyses, [], []),
+            ),
+        ):
+            result = social.run_reddit_social_sync(profile(), [], ["widget"], {})
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["warnings"])
+
+    def test_normalize_result_status_keeps_recovered_warnings_as_diagnostics(self):
+        sample = [
+            {
+                "post_id": f"post{index}",
+                "analysis": {"classification_status": "classified"},
+            }
+            for index in range(10)
+        ]
+        result = social.normalize_reddit_result_status(
+            {
+                "status": "partial",
+                "cohorts": [
+                    {
+                        "role": "target",
+                        "brand": "Acme",
+                        "status": "partial",
+                        "sample": sample,
+                        "warnings": ["Reddit SERP query failed: HTTP 502"],
+                    },
+                    {
+                        "role": "competitor",
+                        "brand": "Other",
+                        "status": "partial",
+                        "sample": sample,
+                        "warnings": [
+                            "Reddit AI classification batch failed; "
+                            "retrying each post"
+                        ],
+                    },
+                ],
+                "warnings": ["diagnostic only"],
+            }
+        )
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(all(item["status"] == "success" for item in result["cohorts"]))
+        self.assertEqual(result["warnings"], ["diagnostic only"])
 
     def test_failed_prefetch_does_not_repeat_native_race(self):
         prefetch = {
