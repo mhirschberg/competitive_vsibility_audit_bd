@@ -546,6 +546,124 @@ class NotebookEmbeddingTests(unittest.TestCase):
         self.assertTrue(matching_publisher["role_matches_scope"])
         self.assertTrue(matching_publisher["is_direct_competitor"])
 
+    def test_discovery_conflict_retry_requires_strong_exact_scope_match(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def discovery_supports_consistency_retry")
+        end = runtime.index("def build_locked_scope_validation_retry_prompt")
+        namespace = {
+            "LOCKED_SCOPE_CONFLICT_RETRY_MAX_RANK": 5,
+            "LOCKED_SCOPE_CONFLICT_RETRY_MIN_CONFIDENCE": 0.8,
+            "locked_scope_role": lambda value: value,
+            "normalize_confidence": lambda value: float(value or 0),
+            "normalize_boolean": bool,
+            "ensure_string_list": lambda value: list(value or []),
+        }
+        exec(runtime[start:end], namespace)
+        candidate = {
+            "discovery_rank": 1,
+            "discovery_confidence": 0.95,
+            "discovery_record": {
+                "candidate_role": "marketplace",
+                "active_in_target_country": True,
+                "same_category": True,
+                "same_market_role": True,
+                "same_business_model": True,
+                "same_primary_customers": True,
+                "same_core_transaction": True,
+                "offering_is_substitute": True,
+                "confidence": 0.95,
+                "reason": "Same OTA marketplace model",
+            },
+        }
+        supports_retry = namespace["discovery_supports_consistency_retry"]
+
+        self.assertTrue(
+            supports_retry(candidate, {"market_role": "marketplace"})
+        )
+
+        candidate["discovery_rank"] = 6
+        self.assertFalse(
+            supports_retry(candidate, {"market_role": "marketplace"})
+        )
+
+        candidate["discovery_rank"] = 1
+        self.assertFalse(
+            supports_retry(candidate, {"market_role": "software_vendor"})
+        )
+
+    def test_conflicting_candidate_validation_gets_one_retry(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def validate_locked_scope_candidate")
+        end = runtime.index("def validate_locked_scope_batch")
+
+        class FakeClient:
+            def __init__(self):
+                self.calls = 0
+
+            def google_ai_mode(self, prompt, timeout_seconds):
+                self.calls += 1
+                return {"attempt": self.calls, "prompt": prompt}
+
+            @staticmethod
+            def answer_text(record):
+                return json.dumps({"attempt": record["attempt"]})
+
+        fake_client = FakeClient()
+
+        def normalize_validation(data, candidate_record, scope):
+            direct = data["attempt"] == 2
+            return {
+                "candidate_name": candidate_record["brand_name"],
+                "candidate_domain": candidate_record["representative_domain"],
+                "official_url": candidate_record["official_url"],
+                "candidate_role": scope["market_role"],
+                "market_prominence": 0.9,
+                "confidence": 0.95,
+                "is_direct_competitor": direct,
+                "reason": "confirmed" if direct else "conflict",
+                "failed_checks": [] if direct else ["ai_direct"],
+            }
+
+        namespace = {
+            "time": __import__("time"),
+            "bd_client": fake_client,
+            "build_locked_scope_validation_prompt": (
+                lambda scope, candidate_record: "initial"
+            ),
+            "build_locked_scope_validation_retry_prompt": (
+                lambda scope, candidate_record, initial_validation: "retry"
+            ),
+            "parse_ai_json": json.loads,
+            "normalize_locked_scope_validation": normalize_validation,
+            "discovery_supports_consistency_retry": (
+                lambda candidate_record, scope: True
+            ),
+            "locked_scope_local_domain_bonus": lambda domain, country: 0,
+        }
+        exec(runtime[start:end], namespace)
+        candidate = {
+            "brand_name": "Expedia",
+            "representative_domain": "expedia.co.uk",
+            "official_url": "https://expedia.co.uk/",
+            "discovery_rank": 1,
+            "market_prominence": 0.95,
+            "observed_score": 25,
+        }
+
+        result = namespace["validate_locked_scope_candidate"](
+            candidate,
+            {"market_role": "marketplace", "country": "GB"},
+        )
+
+        self.assertEqual(fake_client.calls, 2)
+        self.assertTrue(result["consistency_retry_used"])
+        self.assertFalse(
+            result["initial_validation"]["is_direct_competitor"]
+        )
+        self.assertTrue(result["validation"]["is_direct_competitor"])
+        self.assertEqual(result["record"]["attempt"], 2)
+        self.assertIsNone(result["consistency_retry_error"])
+
     def test_locked_scope_keeps_service_provider_without_product_signal(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
         start = runtime.index("def locked_scope_normalize_text")
