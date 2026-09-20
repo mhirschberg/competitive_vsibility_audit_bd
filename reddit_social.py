@@ -21,6 +21,29 @@ from urllib.parse import urlparse as reddit_urlparse
 import requests as reddit_requests
 
 
+def _usage_start(operation, dataset_id="", input_count=1):
+    tracker = getattr(bd_client, "start_usage_operation", None)
+    if not callable(tracker):
+        return None
+    return tracker(
+        operation,
+        dataset_id=dataset_id,
+        input_count=input_count,
+    )
+
+
+def _usage_update(operation_id, **updates):
+    tracker = getattr(bd_client, "update_usage_operation", None)
+    if operation_id is not None and callable(tracker):
+        tracker(operation_id, **updates)
+
+
+def _usage_snapshot_results(snapshot_id, result_count):
+    tracker = getattr(bd_client, "record_snapshot_results", None)
+    if callable(tracker):
+        tracker(snapshot_id, result_count)
+
+
 REDDIT_POSTS_DATASET_ID = "gd_lvz8ah06191smkebj4"
 REDDIT_COMMENTS_DATASET_ID = "gd_lvzdpsdlw09j6t702"
 
@@ -217,6 +240,7 @@ def _wait_reddit_snapshot(
                 in {"building", "collecting", "digesting", "running", "processing", "pending"}
             )
             if not materializing:
+                _usage_snapshot_results(snapshot_id, len(records))
                 manifest_entry.update(
                     status="ready",
                     duration_seconds=round(time.monotonic() - started_at, 2),
@@ -235,6 +259,11 @@ def _scrape_reddit_dataset(
     snapshot_manifest,
 ):
     """Run a social dataset request without discarding its snapshot context."""
+    usage_operation_id = _usage_start(
+        f"Reddit {operation}",
+        dataset_id=dataset_id,
+        input_count=len(payload.get("input") or []) if isinstance(payload, dict) else 1,
+    )
     response = reddit_requests.post(
         BD_SCRAPE_URL,
         headers=bd_client.headers,
@@ -248,6 +277,7 @@ def _scrape_reddit_dataset(
         timeout=90,
     )
     if response.status_code not in {200, 202}:
+        _usage_update(usage_operation_id, status="failed")
         raise BrightDataAPIError(
             f"Dataset request failed. HTTP {response.status_code}: "
             f"{response.text[:1500]}"
@@ -258,7 +288,19 @@ def _scrape_reddit_dataset(
     )
     snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
     if not snapshot_id:
-        return bd_client.normalize_records(data)
+        records = bd_client.normalize_records(data)
+        _usage_update(
+            usage_operation_id,
+            status="success",
+            result_count=len(records),
+        )
+        return records
+
+    _usage_update(
+        usage_operation_id,
+        snapshot_id=snapshot_id,
+        status="triggered",
+    )
 
     entry = _snapshot_entry(
         context,
@@ -449,6 +491,11 @@ def _trigger_native_reddit_discovery(
     }
 
     def trigger_one(race_index):
+        usage_operation_id = _usage_start(
+            "Reddit native discovery",
+            dataset_id=REDDIT_POSTS_DATASET_ID,
+            input_count=len(payload["input"]),
+        )
         response = reddit_requests.post(
             BD_TRIGGER_URL,
             headers=bd_client.headers,
@@ -464,6 +511,7 @@ def _trigger_native_reddit_discovery(
             timeout=60,
         )
         if not response.ok:
+            _usage_update(usage_operation_id, status="failed")
             raise BrightDataAPIError(
                 "Reddit keyword discovery trigger failed. "
                 f"HTTP {response.status_code}: {response.text[:1500]}"
@@ -476,6 +524,12 @@ def _trigger_native_reddit_discovery(
             ) from exc
         snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
         records = [] if snapshot_id else bd_client.normalize_records(data)
+        _usage_update(
+            usage_operation_id,
+            snapshot_id=snapshot_id,
+            status="triggered" if snapshot_id else "success",
+            result_count=None if snapshot_id else len(records),
+        )
         return {
             "race_index": race_index,
             "queries": [race_query],
@@ -599,6 +653,7 @@ def _wait_for_native_reddit_discovery(native, context="Reddit discovery"):
                 )
                 if materializing:
                     continue
+                _usage_snapshot_results(snapshot_id, len(downloaded))
                 records.extend(downloaded)
                 elapsed = round(time.monotonic() - started_at, 2)
                 for contender_id, entry in manifest_by_id.items():
@@ -662,6 +717,7 @@ def _discover_reddit_with_serp(queries):
     warnings = []
 
     def search_one(query):
+        usage_operation_id = _usage_start("Reddit SERP", input_count=1)
         search_query = f"site:reddit.com {query}"
         search_url = (
             "https://www.google.com/search"
@@ -681,10 +737,16 @@ def _discover_reddit_with_serp(queries):
                 timeout=90,
             )
         if not response.ok:
+            _usage_update(usage_operation_id, status="failed")
             raise BrightDataAPIError(
                 f"Reddit SERP discovery failed for {query!r}. "
                 f"HTTP {response.status_code}: {response.text[:1000]}"
             )
+        _usage_update(
+            usage_operation_id,
+            status="success",
+            result_count=1,
+        )
         if not str(response.text or "").strip():
             return query, []
         data = decode_bright_data_response(
