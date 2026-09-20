@@ -469,12 +469,16 @@ old_audit_data = '''        "final_report": {
 new_audit_data = '''        "reddit_social": reddit_social_result,
         "final_report": {
 '''
-source = replace_or_verify(
-    source,
-    old_audit_data,
-    new_audit_data,
-    "Reddit structured output",
-)
+reddit_audit_field = '        "reddit_social": reddit_social_result,\n'
+if reddit_audit_field not in source:
+    source = replace_or_verify(
+        source,
+        old_audit_data,
+        new_audit_data,
+        "Reddit structured output",
+    )
+elif source.count(reddit_audit_field) != 1:
+    raise RuntimeError("Reddit structured output must appear exactly once")
 
 orchestration_cell["source"] = source.splitlines(keepends=True)
 NOTEBOOK.write_text(json.dumps(notebook, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
