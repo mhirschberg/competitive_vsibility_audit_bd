@@ -193,6 +193,138 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertEqual(role, "manufacturer")
 
+    def test_stage_one_prompt_requests_focus_relative_market_role(self):
+        runtime = "".join(self.notebook["cells"][4]["source"])
+        start = runtime.index("def build_company_research_prompt")
+        end = runtime.index("def build_company_structuring_prompt")
+        namespace = {}
+        exec(runtime[start:end], namespace)
+
+        prompt = namespace["build_company_research_prompt"](
+            {
+                "company_name": "KEBA",
+                "company_url": "https://keba.com/",
+                "country": "DE",
+                "audit_focus": "machine tools automation",
+            }
+        )
+
+        self.assertIn("relative to the audit focus", prompt)
+        self.assertIn("manufacturer", prompt)
+        self.assertIn("software_vendor", prompt)
+        self.assertIn("If uncertain, use other", prompt)
+        self.assertIn("What would count as a true substitute", prompt)
+
+        self.assertIn('"primary_market_role"', runtime)
+        self.assertIn('"classification_confidence"', runtime)
+        self.assertIn('"substitute_definition"', runtime)
+
+        structuring_start = runtime.index("def build_company_structuring_prompt")
+        structuring_end = runtime.index("def complete_company_keywords")
+        structuring_namespace = {
+            "select_relevant_company_research": (
+                lambda **kwargs: kwargs["research_text"][
+                    : kwargs["max_characters"]
+                ]
+            ),
+            "bd_client": SimpleNamespace(debug=False),
+        }
+        exec(
+            runtime[structuring_start:structuring_end],
+            structuring_namespace,
+        )
+        structuring_prompt = structuring_namespace[
+            "build_company_structuring_prompt"
+        ](
+            {
+                "company_name": "KEBA",
+                "company_url": "https://keba.com/",
+                "company_domain": "keba.com",
+                "audit_focus": "machine tools automation",
+            },
+            "x" * 3000,
+        )
+        self.assertLessEqual(len(structuring_prompt), 4050)
+
+    def test_locked_scope_prefers_confident_stage_one_classification(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("LOCKED_SCOPE_CLASSIFICATION_MIN_CONFIDENCE")
+        end = runtime.index("# Lock scope after Stage 1")
+        namespace = {
+            "re": re,
+            "normalize_confidence": lambda value: float(value or 0),
+        }
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            brand_name="KEBA",
+            official_url="https://keba.com/",
+            domain="keba.com",
+            category="Industrial automation",
+            description="Integrated automation solutions",
+            positioning="Automation specialist",
+            target_customers=["Machine builders"],
+            products=["Control systems"],
+            primary_market_role="manufacturer",
+            secondary_market_roles=["software_vendor", "manufacturer"],
+            offering_type="Industrial automation equipment and software",
+            value_chain_position="Automation technology manufacturer",
+            substitute_definition="Another machine-tool automation vendor",
+            classification_confidence=0.92,
+            classification_evidence=["Makes KeControl and KeDrive products"],
+        )
+
+        scope = namespace["build_locked_target_scope"](
+            brand,
+            {
+                "audit_focus": "machine tools automation",
+                "country": "DE",
+            },
+        )
+
+        self.assertEqual(scope["market_role"], "manufacturer")
+        self.assertEqual(scope["classification_source"], "stage_1_ai")
+        self.assertEqual(scope["secondary_market_roles"], ["software_vendor"])
+        self.assertEqual(scope["classification_confidence"], 0.92)
+        self.assertEqual(
+            scope["substitute_definition"],
+            "Another machine-tool automation vendor",
+        )
+
+    def test_locked_scope_falls_back_when_stage_one_is_uncertain(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("LOCKED_SCOPE_CLASSIFICATION_MIN_CONFIDENCE")
+        end = runtime.index("# Lock scope after Stage 1")
+        namespace = {
+            "re": re,
+            "normalize_confidence": lambda value: float(value or 0),
+        }
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            brand_name="Advisory Co",
+            official_url="https://advisory.example/",
+            domain="advisory.example",
+            category="Management consulting",
+            description="Independent strategy consultancy",
+            positioning="Professional advisory services",
+            target_customers=["Enterprise teams"],
+            products=["Transformation advisory"],
+            primary_market_role="manufacturer",
+            secondary_market_roles=[],
+            offering_type="Service",
+            value_chain_position="Consultancy",
+            substitute_definition="Another strategy consultancy",
+            classification_confidence=0.35,
+            classification_evidence=[],
+        )
+
+        scope = namespace["build_locked_target_scope"](
+            brand,
+            {"audit_focus": "strategy consulting", "country": "GB"},
+        )
+
+        self.assertEqual(scope["market_role"], "service_provider")
+        self.assertEqual(scope["classification_source"], "heuristic_fallback")
+
     def test_profile_prompt_strictly_scopes_target_and_competitors(self):
         runtime = "".join(self.notebook["cells"][4]["source"])
         start = runtime.index("def build_profile_prompt")
@@ -318,6 +450,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "official_url": "https://manufacturer.example/",
             "representative_domain": "manufacturer.example",
             "brand_name": "Manufacturer",
+            "discovery_confidence": 0.85,
         }
         validation = namespace["normalize_locked_scope_validation"](
             {
@@ -342,6 +475,31 @@ class NotebookEmbeddingTests(unittest.TestCase):
         self.assertTrue(validation["role_matches_scope"])
         self.assertTrue(validation["is_direct_competitor"])
 
+        discovery_backed = namespace["normalize_locked_scope_validation"](
+            {
+                "candidate_role": "manufacturer",
+                "candidate_name": "Manufacturer",
+                "candidate_domain": "manufacturer.example",
+                "official_url": "https://manufacturer.example/",
+                "active_in_target_country": True,
+                "same_category": True,
+                "same_market_role": True,
+                "same_business_model": True,
+                "same_primary_customers": True,
+                "same_core_transaction": True,
+                "offering_is_substitute": True,
+                "is_direct_competitor": True,
+                "confidence": None,
+            },
+            candidate,
+            {"market_role": "manufacturer"},
+        )
+
+        self.assertTrue(discovery_backed["is_direct_competitor"])
+        self.assertEqual(discovery_backed["validation_confidence"], 0.0)
+        self.assertEqual(discovery_backed["discovery_confidence"], 0.85)
+        self.assertEqual(discovery_backed["confidence"], 0.85)
+
         rejected = namespace["normalize_locked_scope_validation"](
             {
                 "candidate_role": "publisher_or_directory",
@@ -364,6 +522,29 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertFalse(rejected["role_matches_scope"])
         self.assertFalse(rejected["is_direct_competitor"])
+
+        matching_publisher = namespace["normalize_locked_scope_validation"](
+            {
+                "candidate_role": "publisher_or_directory",
+                "candidate_name": "Publisher",
+                "candidate_domain": "publisher.example",
+                "official_url": "https://publisher.example/",
+                "active_in_target_country": True,
+                "same_category": True,
+                "same_market_role": True,
+                "same_business_model": True,
+                "same_primary_customers": True,
+                "same_core_transaction": True,
+                "offering_is_substitute": True,
+                "is_direct_competitor": True,
+                "confidence": 0.9,
+            },
+            candidate,
+            {"market_role": "publisher_or_directory"},
+        )
+
+        self.assertTrue(matching_publisher["role_matches_scope"])
+        self.assertTrue(matching_publisher["is_direct_competitor"])
 
     def test_locked_scope_keeps_service_provider_without_product_signal(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
