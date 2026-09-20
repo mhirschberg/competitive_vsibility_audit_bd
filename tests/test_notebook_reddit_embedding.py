@@ -40,7 +40,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             self.assertEqual(orchestration.count(hook), 1, hook)
         self.assertEqual(
             orchestration.count('audit_focus=settings.get("audit_focus", "")'),
-            2,
+            3,
         )
         self.assertIn(
             'settings.get(\n            "include_reddit_analysis",\n            False,',
@@ -99,6 +99,46 @@ class NotebookEmbeddingTests(unittest.TestCase):
         )
 
         self.assertEqual(role, "manufacturer")
+
+    def test_profile_prompt_strictly_scopes_target_and_competitors(self):
+        runtime = "".join(self.notebook["cells"][4]["source"])
+        start = runtime.index("def build_profile_prompt")
+        end = runtime.index("def clean_profile_label")
+        namespace = {}
+        exec(runtime[start:end], namespace)
+        target_brand = SimpleNamespace(brand_name="KEBA")
+        target_job = {
+            "role": "target",
+            "brand_name": "KEBA",
+            "official_url": "https://keba.com/",
+            "domain": "keba.com",
+            "reason": "",
+        }
+        competitor_job = {
+            "role": "competitor",
+            "brand_name": "Beckhoff",
+            "official_url": "https://beckhoff.com/",
+            "domain": "beckhoff.com",
+            "reason": "Comparable industrial automation offering",
+        }
+
+        for job in (target_job, competitor_job):
+            prompt = namespace["build_profile_prompt"](
+                job,
+                target_brand,
+                "machine tools automation",
+            )
+            self.assertIn("AUDIT SCOPE — STRICT REQUIREMENT", prompt)
+            self.assertIn("machine tools automation", prompt)
+            self.assertIn("Exclude unrelated business lines", prompt)
+            self.assertIn("leave it empty or use unknown", prompt)
+
+        unscoped = namespace["build_profile_prompt"](
+            target_job,
+            target_brand,
+        )
+        self.assertNotIn("AUDIT SCOPE — STRICT REQUIREMENT", unscoped)
+        self.assertIn("Profile the primary offering", unscoped)
 
     def test_locked_scope_recognizes_consumer_product_brand(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
