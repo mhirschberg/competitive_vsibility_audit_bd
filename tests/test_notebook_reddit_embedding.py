@@ -111,17 +111,34 @@ class NotebookEmbeddingTests(unittest.TestCase):
         client.record_snapshot_results("snapshot-1", 15)
         failed_id = client.start_usage_operation("Gemini")
         client.update_usage_operation(failed_id, status="failed")
+        late_ai_id = client.start_usage_operation(
+            "Accepted AI race contender",
+            expected_result_count=1,
+        )
+        client.update_usage_operation(
+            late_ai_id,
+            snapshot_id="late-ai-snapshot",
+            status="triggered",
+        )
 
         summary = client.usage_summary(price_per_1000=1.5)
 
-        self.assertEqual(summary["data_operations_started"], 3)
+        self.assertEqual(summary["data_operations_started"], 4)
+        self.assertEqual(summary["accepted_operations"], 3)
         self.assertEqual(summary["confirmed_result_records"], 16)
+        self.assertEqual(summary["expected_fixed_cardinality_results"], 1)
+        self.assertEqual(summary["estimated_billable_result_records"], 17)
         self.assertEqual(summary["failed_operations"], 1)
         self.assertEqual(summary["unconfirmed_operations"], 0)
-        self.assertAlmostEqual(summary["estimated_cost_usd"], 0.024)
+        self.assertAlmostEqual(summary["estimated_cost_usd"], 0.0255)
         self.assertFalse(summary["estimate_is_lower_bound"])
 
-        client.start_usage_operation("Late raced snapshot")
+        variable_id = client.start_usage_operation("Reddit native discovery")
+        client.update_usage_operation(
+            variable_id,
+            snapshot_id="late-reddit-snapshot",
+            status="triggered",
+        )
         self.assertTrue(
             client.usage_summary()["estimate_is_lower_bound"]
         )
@@ -135,19 +152,26 @@ class NotebookEmbeddingTests(unittest.TestCase):
         section = namespace["build_bright_data_usage_section"](
             {
                 "data_operations_started": 12,
+                "accepted_operations": 11,
                 "confirmed_result_records": 40,
-                "unconfirmed_operations": 2,
+                "expected_fixed_cardinality_results": 2,
+                "estimated_billable_result_records": 42,
+                "reddit_raw_result_records": 25,
+                "variable_output_operations_pending": 2,
                 "failed_operations": 1,
                 "price_per_1000_results_usd": 1.5,
-                "estimated_cost_usd": 0.06,
+                "estimated_cost_usd": 0.063,
             }
         )
 
         self.assertIn("Bright Data Usage and Estimated Cost", section)
         self.assertIn("| Data operations started | 12 |", section)
-        self.assertIn("| Confirmed result records returned | At least 40 |", section)
-        self.assertIn("| Estimated Bright Data cost | at least $0.0600 |", section)
-        self.assertIn("returned result records, not the number of API calls", section)
+        self.assertIn("| Accepted operations, including race contenders | 11 |", section)
+        self.assertIn("| Estimated billable result records | At least 42 |", section)
+        self.assertIn("| Reddit raw post/comment records before deduplication | 25 |", section)
+        self.assertIn("| Estimated Bright Data cost | at least $0.0630 |", section)
+        self.assertIn("whether or not it won the race", section)
+        self.assertIn("counts multiple times", section)
         self.assertIn("lower bounds", section)
 
     def test_locked_scope_recognizes_generic_physical_product_signals(self):
