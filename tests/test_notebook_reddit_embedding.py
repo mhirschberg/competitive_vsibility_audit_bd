@@ -122,6 +122,116 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
         self.assertEqual(role, "manufacturer")
 
+    def test_locked_scope_recognizes_industrial_automation_manufacturer(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def locked_scope_normalize_text")
+        end = runtime.index("def infer_locked_business_model")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            description="Integrated automation solutions for machine builders",
+            positioning="Automation specialist for machine tools",
+            products=["KeControl C5", "KeDrive D3", "KeTop T150"],
+        )
+
+        role = namespace["infer_locked_target_role"](
+            brand,
+            "Automation solutions",
+            "machine tools automation",
+        )
+
+        self.assertEqual(role, "manufacturer")
+
+    def test_locked_scope_leaves_ambiguous_role_unclassified(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def locked_scope_normalize_text")
+        end = runtime.index("def infer_locked_business_model")
+        namespace = {"re": re}
+        exec(runtime[start:end], namespace)
+        brand = SimpleNamespace(
+            description="Integrated transformation solutions",
+            positioning="Enterprise operations specialist",
+            products=["Custom transformation program"],
+        )
+
+        role = namespace["infer_locked_target_role"](
+            brand,
+            "Enterprise transformation",
+        )
+
+        self.assertEqual(role, "other")
+
+    def test_ambiguous_target_role_uses_validated_role_match(self):
+        runtime = "".join(self.notebook["cells"][6]["source"])
+        start = runtime.index("def normalize_locked_scope_validation")
+        end = runtime.index("def validate_locked_scope_candidate")
+        namespace = {
+            "LOCKED_SCOPE_INACTIVE_TERMS": set(),
+            "LOCKED_SCOPE_MIN_CONFIDENCE": 0.6,
+            "LOCKED_SCOPE_REJECTED_ROLES": {
+                "publisher_or_directory",
+                "unrelated",
+            },
+            "locked_scope_role": lambda value: value,
+            "locked_scope_normalize_text": lambda value: str(value).lower(),
+            "normalize_boolean": bool,
+            "normalize_confidence": lambda value: float(value or 0),
+            "ensure_string_list": lambda value: list(value or []),
+            "normalize_public_url": lambda value: value,
+            "get_root_domain": lambda value: value,
+        }
+        exec(runtime[start:end], namespace)
+        candidate = {
+            "official_url": "https://manufacturer.example/",
+            "representative_domain": "manufacturer.example",
+            "brand_name": "Manufacturer",
+        }
+        validation = namespace["normalize_locked_scope_validation"](
+            {
+                "candidate_role": "manufacturer",
+                "candidate_name": "Manufacturer",
+                "candidate_domain": "manufacturer.example",
+                "official_url": "https://manufacturer.example/",
+                "active_in_target_country": True,
+                "same_category": True,
+                "same_market_role": True,
+                "same_business_model": True,
+                "same_primary_customers": True,
+                "same_core_transaction": True,
+                "offering_is_substitute": True,
+                "is_direct_competitor": True,
+                "confidence": 0.9,
+            },
+            candidate,
+            {"market_role": "other"},
+        )
+
+        self.assertTrue(validation["role_matches_scope"])
+        self.assertTrue(validation["is_direct_competitor"])
+
+        rejected = namespace["normalize_locked_scope_validation"](
+            {
+                "candidate_role": "publisher_or_directory",
+                "candidate_name": "Directory",
+                "candidate_domain": "directory.example",
+                "official_url": "https://directory.example/",
+                "active_in_target_country": True,
+                "same_category": True,
+                "same_market_role": True,
+                "same_business_model": True,
+                "same_primary_customers": True,
+                "same_core_transaction": True,
+                "offering_is_substitute": True,
+                "is_direct_competitor": True,
+                "confidence": 0.9,
+            },
+            candidate,
+            {"market_role": "other"},
+        )
+
+        self.assertFalse(rejected["role_matches_scope"])
+        self.assertFalse(rejected["is_direct_competitor"])
+
     def test_locked_scope_keeps_service_provider_without_product_signal(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
         start = runtime.index("def locked_scope_normalize_text")
