@@ -44,7 +44,7 @@ You need:
 
 1. A Google account with access to Google Colab.
 2. A Bright Data account and API token.
-3. An active Bright Data SERP API zone configured for Markdown output.
+3. An active Bright Data SERP API zone configured for Markdown output. Google uses parsed organic JSON; Bing fallback uses the zone's raw Markdown output.
 4. Access to the required Google AI Mode, ChatGPT, and Gemini datasets.
 5. Reddit posts and comments dataset access only if Reddit analysis is enabled.
 

@@ -717,46 +717,72 @@ def _discover_reddit_with_serp(queries):
     warnings = []
 
     def search_one(query):
-        usage_operation_id = _usage_start("Reddit SERP", input_count=1)
         search_query = f"site:reddit.com {query}"
         search_url = (
             "https://www.google.com/search"
             f"?q={reddit_quote_plus(search_query)}"
             f"&gl={bd_client.country.lower()}&hl=en&num=10"
         )
-        with REDDIT_SERP_SEMAPHORE:
-            response = reddit_requests.post(
-                BD_REQUEST_URL,
-                headers=bd_client.headers,
-                json={
-                    "zone": bd_client.serp_zone,
-                    "url": search_url,
-                    "format": "raw",
-                    "data_format": "parsed_light",
-                },
-                timeout=90,
-            )
-        if not response.ok:
-            _usage_update(usage_operation_id, status="failed")
-            raise BrightDataAPIError(
-                f"Reddit SERP discovery failed for {query!r}. "
-                f"HTTP {response.status_code}: {response.text[:1000]}"
-            )
-        _usage_update(
-            usage_operation_id,
-            status="success",
-            result_count=1,
+        last_error = None
+        for attempt in range(1, 4):
+            usage_operation_id = _usage_start("Reddit SERP", input_count=1)
+            response = None
+            try:
+                with REDDIT_SERP_SEMAPHORE:
+                    response = reddit_requests.post(
+                        BD_REQUEST_URL,
+                        headers=bd_client.headers,
+                        json={
+                            "zone": bd_client.serp_zone,
+                            "url": search_url,
+                            "format": "raw",
+                            "data_format": "parsed_light",
+                        },
+                        timeout=90,
+                    )
+                if not response.ok:
+                    raise BrightDataAPIError(
+                        f"HTTP {response.status_code}: {response.text[:1000]}"
+                    )
+                if not str(response.text or "").strip():
+                    headers = getattr(response, "headers", {}) or {}
+                    raise BrightDataAPIError(
+                        "Empty HTTP 200 from Bright Data: "
+                        f"{headers.get('x-brd-error-code', '')} "
+                        f"{headers.get('x-brd-error', '')}"
+                    )
+                data = decode_bright_data_response(
+                    response,
+                    context=f"Reddit SERP discovery for {query!r}",
+                )
+                organic = []
+                if isinstance(data, dict):
+                    organic = (
+                        data.get("organic")
+                        or data.get("results")
+                        or data.get("organic_results")
+                        or []
+                    )
+                if not isinstance(organic, list) or not organic:
+                    raise BrightDataAPIError("No organic results in SERP response.")
+            except Exception as exc:
+                _usage_update(usage_operation_id, status="failed")
+                last_error = exc
+                if response is not None and not response.ok and (
+                    response.status_code < 500 and response.status_code != 429
+                ):
+                    break
+                if attempt < 3:
+                    time.sleep(attempt * 2)
+                continue
+
+            _usage_update(usage_operation_id, status="success", result_count=1)
+            return query, organic
+
+        raise BrightDataAPIError(
+            f"Reddit SERP discovery failed for {query!r} after "
+            f"{attempt} attempt(s): {last_error}"
         )
-        if not str(response.text or "").strip():
-            return query, []
-        data = decode_bright_data_response(
-            response,
-            context=f"Reddit SERP discovery for {query!r}",
-        )
-        organic = []
-        if isinstance(data, dict):
-            organic = data.get("organic") or data.get("results") or data.get("organic_results") or []
-        return query, organic if isinstance(organic, list) else []
 
     if not queries:
         return {"records": results, "warnings": warnings}

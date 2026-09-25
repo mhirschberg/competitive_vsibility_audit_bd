@@ -132,8 +132,16 @@ class RedditUrlTests(unittest.TestCase):
             ],
         )
 
-    def test_empty_reddit_serp_response_is_a_normal_zero_result(self):
-        response = mock.Mock(ok=True, status_code=200, text="")
+    def test_empty_reddit_serp_response_retries_and_warns(self):
+        response = mock.Mock(
+            ok=True,
+            status_code=200,
+            text="",
+            headers={
+                "x-brd-error-code": "captcha",
+                "x-brd-error": "redirect location was rejected",
+            },
+        )
         client = SimpleNamespace(
             headers={"Authorization": "Bearer test"},
             country="DE",
@@ -142,11 +150,48 @@ class RedditUrlTests(unittest.TestCase):
         with (
             mock.patch.object(social, "BD_REQUEST_URL", "https://example.test/request", create=True),
             mock.patch.object(social, "bd_client", client, create=True),
-            mock.patch.object(social.reddit_requests, "post", return_value=response),
+            mock.patch.object(social.reddit_requests, "post", return_value=response) as post,
+            mock.patch.object(social.time, "sleep"),
+            mock.patch.object(social, "BrightDataAPIError", RuntimeError, create=True),
         ):
             result = social._discover_reddit_with_serp(["AutoScout24 Gebrauchtwagen"])
 
-        self.assertEqual(result, {"records": [], "warnings": []})
+        self.assertEqual(result["records"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("after 3 attempt(s)", result["warnings"][0])
+        self.assertIn("captcha", result["warnings"][0])
+        self.assertEqual(post.call_count, 3)
+
+    def test_reddit_serp_uses_second_result_after_empty_http_200(self):
+        empty = mock.Mock(ok=True, status_code=200, text="", headers={})
+        valid = mock.Mock(ok=True, status_code=200, text="json")
+        client = SimpleNamespace(
+            headers={"Authorization": "Bearer test"},
+            country="DE",
+            serp_zone="serp",
+        )
+        with (
+            mock.patch.object(social, "BD_REQUEST_URL", "https://example.test/request", create=True),
+            mock.patch.object(social, "bd_client", client, create=True),
+            mock.patch.object(social.reddit_requests, "post", side_effect=[empty, valid]) as post,
+            mock.patch.object(social.time, "sleep"),
+            mock.patch.object(social, "BrightDataAPIError", RuntimeError, create=True),
+            mock.patch.object(social, "is_google_goto_url", return_value=False, create=True),
+            mock.patch.object(
+                social,
+                "decode_bright_data_response",
+                return_value={"organic": [{
+                        "link": "https://www.reddit.com/r/CataractSurgery/comments/abc123/a_review/",
+                        "title": "A review",
+                    }]},
+                create=True,
+            ),
+        ):
+            result = social._discover_reddit_with_serp(["Rayner Galaxy"])
+
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual(result["records"][0]["post_id"], "abc123")
 
     def test_extracts_and_canonicalizes_post_urls(self):
         self.assertEqual(social.reddit_post_id("t3_AbC123"), "abc123")
