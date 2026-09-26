@@ -23,6 +23,12 @@ class SubmissionError(Exception):
     pass
 
 
+class TrialQuotaError(Exception):
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
 class BackendError(Exception):
     pass
 
@@ -103,15 +109,18 @@ class SupabaseGateway:
     def authenticate(self, bearer_token: str) -> UUID:
         return UUID(self._authenticated_user(bearer_token)["id"])
 
-    def authenticate_google_organizer(self, bearer_token: str) -> UUID:
+    def authenticate_google_participant(self, bearer_token: str) -> UUID:
         user = self._authenticated_user(bearer_token)
         metadata = user.get("app_metadata") or {}
         providers = metadata.get("providers") or []
         if user.get("is_anonymous") is True or not (
             metadata.get("provider") == "google" or "google" in providers
         ):
-            raise AuthorizationError("Sign in with Google to manage workshops")
+            raise AuthorizationError("Sign in with Google to run a personal trial")
         return UUID(user["id"])
+
+    def authenticate_google_organizer(self, bearer_token: str) -> UUID:
+        return self.authenticate_google_participant(bearer_token)
 
     def _rpc(self, name: str, payload: dict):
         try:
@@ -128,9 +137,15 @@ class SupabaseGateway:
             raise BackendError("Database service unavailable") from exc
         if not response.ok:
             try:
-                code = response.json().get("code")
+                error_body = response.json()
+                code = error_body.get("code")
             except (TypeError, ValueError):
                 code = None
+                error_body = {}
+            if code == "P0001" and error_body.get("message") in (
+                "trial_total_limit", "trial_daily_limit"
+            ):
+                raise TrialQuotaError(error_body["message"])
             if code in ("22023", "22001", "23505", "23514"):
                 raise SubmissionError("Workshop settings are invalid or the link name is already used")
             if code == "42501":
@@ -147,6 +162,19 @@ class SupabaseGateway:
             return UUID(result)
         except (TypeError, ValueError) as exc:
             raise BackendError("Invalid audit ID from database") from exc
+
+    def submit_trial_audit(self, **payload) -> UUID:
+        result = self._rpc("submit_trial_audit", payload)
+        try:
+            return UUID(result)
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid audit ID from database") from exc
+
+    def trial_status(self, user_id: UUID) -> dict:
+        result = self._rpc("trial_status", {"p_user_id": str(user_id)})
+        if not isinstance(result, dict):
+            raise BackendError("Invalid trial status response")
+        return result
 
     def public_workshop(self, slug: str) -> dict | None:
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):

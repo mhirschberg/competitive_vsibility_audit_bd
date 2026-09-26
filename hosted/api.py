@@ -18,6 +18,7 @@ from hosted.supabase_gateway import (
     BackendError,
     SubmissionError,
     SupabaseGateway,
+    TrialQuotaError,
 )
 from hosted.watchdog_tasks import AuditWatchdogTasks, WatchdogError
 
@@ -30,7 +31,7 @@ class AuditRequest(BaseModel):
     country_code: str = Field(default="US", pattern=r"^[A-Za-z]{2}$")
     search_engine: Literal["auto", "google", "bing", "none"] = "auto"
     include_reddit_analysis: bool = False
-    workshop_id: UUID
+    workshop_id: UUID | None = None
 
 
 class AuditAccepted(BaseModel):
@@ -216,8 +217,17 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             raise HTTPException(status_code=401, detail="Sign in required")
         bearer_token = authorization.removeprefix("Bearer ").strip()
         try:
-            user_id = gateway.authenticate(bearer_token)
-            audit_id = gateway.submit_audit(
+            user_id = (
+                gateway.authenticate_google_participant(bearer_token)
+                if request.workshop_id is None
+                else gateway.authenticate(bearer_token)
+            )
+            submit = (
+                gateway.submit_trial_audit
+                if request.workshop_id is None
+                else gateway.submit_audit
+            )
+            payload = dict(
                 p_user_id=str(user_id),
                 p_client_request_id=str(request.client_request_id),
                 p_company_name=request.company_name.strip(),
@@ -232,8 +242,10 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                 },
                 p_engine_commit=engine_commit,
                 p_methodology_version=methodology_version,
-                p_workshop_id=str(request.workshop_id),
             )
+            if request.workshop_id is not None:
+                payload["p_workshop_id"] = str(request.workshop_id)
+            audit_id = submit(**payload)
             if scheduler is not None:
                 # Schedule before dispatch: a failed enqueue leaves a retryable
                 # request and never strands an unmonitored worker.
@@ -255,11 +267,37 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             raise HTTPException(status_code=401, detail=str(exc)) from exc
         except AuthorizationError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except TrialQuotaError as exc:
+            raise HTTPException(status_code=429, detail={
+                "code": exc.reason,
+                "message": (
+                    "Your three personal trial audits have been used."
+                    if exc.reason == "trial_total_limit"
+                    else "Personal trial audits are limited to one every 24 hours."
+                ),
+                "notebook_url": "https://github.com/mhirschberg/competitive_vsibility_audit_bd",
+            }) from exc
         except SubmissionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackendError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except WatchdogError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/trial/status")
+    def read_trial_status(authorization: str | None = Header(default=None)):
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Google sign-in required")
+        try:
+            user_id = gateway.authenticate_google_participant(
+                authorization.removeprefix("Bearer ").strip()
+            )
+            return gateway.trial_status(user_id)
+        except AuthenticationError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except BackendError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/audits/{audit_id}")

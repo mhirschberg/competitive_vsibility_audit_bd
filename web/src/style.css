@@ -86,6 +86,16 @@ h1 em { color: var(--orange); font-weight: 500; }
 h2 { font-size: clamp(40px, 3.6vw, 58px); line-height: 1.02; margin-bottom: 0; }
 .section-heading > p { max-width: 330px; font-size: 15px; line-height: 1.55; color: var(--muted); margin-bottom: 6px; }
 .workbench-grid { border: 1px solid var(--line); }
+.trial-pass { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 12px; padding: 16px 18px; background: #e7eee5; border: 1px solid #bacbbd; border-left: 3px solid var(--orange); }
+.trial-pass-copy { min-width: 0; }
+.trial-kicker { display: block; margin-bottom: 5px; color: #466357; font: 500 9px var(--mono); letter-spacing: .13em; }
+.trial-pass strong { display: block; font: 500 22px/1.1 var(--display); letter-spacing: -.04em; }
+.trial-pass p { margin: 6px 0 4px; color: #536357; font-size: 12px; line-height: 1.4; }
+.trial-pass a { color: var(--deep); font-size: 11px; font-weight: 700; text-underline-offset: 3px; }
+.trial-pass-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
+.trial-google { padding: 10px 12px; min-height: 40px; border: 1px solid var(--deep); color: white; background: var(--deep); font-size: 11px; font-weight: 700; }
+.trial-google:hover { background: #0c2e28; }
+.trial-signout { border: 0; padding: 2px 0; background: none; color: #526b5b; font: 10px var(--mono); text-decoration: underline; text-underline-offset: 3px; }
 .audit-form { padding: clamp(17px, 1.8vw, 24px); }
 fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .field-grid { display: grid; gap: 14px; }
@@ -198,6 +208,8 @@ body[data-view="audit"] .active-audit, body[data-view="history"] .history { min-
   h1 { font-size: clamp(34px, 8vw, 43px); margin-bottom: 8px; }
   .hero-description { font-size: 13px; }
   .workbench, .active-audit, .history { padding: 34px 24px 54px; }
+  .trial-pass { align-items: stretch; flex-direction: column; }
+  .trial-pass-actions { align-items: stretch; }
   .section-heading { display: block; margin-bottom: 24px; }
   .section-heading > p { margin: 19px 0 0; }
   .two-up, .result-grid { grid-template-columns: 1fr; }

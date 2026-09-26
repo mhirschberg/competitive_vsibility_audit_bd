@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from hosted.api import create_app
 from hosted.cloud_run import CloudRunDispatcher, DispatchError
 from hosted.reconcile import reconcile_once
-from hosted.supabase_gateway import AuthorizationError, SupabaseGateway
+from hosted.supabase_gateway import AuthorizationError, SupabaseGateway, TrialQuotaError
 from hosted.watchdog_tasks import WatchdogError
 
 
@@ -25,6 +25,8 @@ class FakeGateway:
         self.status_result = {"id": str(AUDIT_ID), "status": "running", "steps": []}
         self.signed_url = "https://test-project.supabase.co/storage/v1/object/sign/test"
         self.organizer_allowed = True
+        self.trial_allowed = True
+        self.trial_quota_error = None
         self.admin_payload = None
 
     def authenticate(self, token):
@@ -36,6 +38,17 @@ class FakeGateway:
         if not self.organizer_allowed:
             raise AuthorizationError("Sign in with Google to manage workshops")
         return USER_ID
+
+    def authenticate_google_participant(self, token):
+        self.token = token
+        if not self.trial_allowed:
+            raise AuthorizationError("Sign in with Google to run a personal trial")
+        return USER_ID
+
+    def trial_status(self, user_id):
+        assert user_id == USER_ID
+        return {"limit": 3, "used": 1, "remaining": 2, "can_submit": False,
+                "next_available_at": "2026-09-27T12:00:00Z"}
 
     def public_workshop(self, slug):
         if slug != "test-event":
@@ -62,6 +75,12 @@ class FakeGateway:
         return WORKSHOP_ID
 
     def submit_audit(self, **payload):
+        self.payload = payload
+        return AUDIT_ID
+
+    def submit_trial_audit(self, **payload):
+        if self.trial_quota_error:
+            raise TrialQuotaError(self.trial_quota_error)
         self.payload = payload
         return AUDIT_ID
 
@@ -275,7 +294,7 @@ class HostedApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.dispatcher.calls, [])
 
-    def test_missing_authentication_or_workshop_is_rejected(self):
+    def test_missing_authentication_is_rejected_and_no_workshop_uses_trial(self):
         no_auth = self.client.post("/audits", json=self.request)
         self.assertEqual(no_auth.status_code, 401)
         without_workshop = dict(self.request)
@@ -285,7 +304,36 @@ class HostedApiTests(unittest.TestCase):
             headers={"Authorization": "Bearer user-jwt"},
             json=without_workshop,
         )
-        self.assertEqual(no_workshop.status_code, 422)
+        self.assertEqual(no_workshop.status_code, 202)
+        self.assertNotIn("p_workshop_id", self.gateway.payload)
+
+    def test_trial_requires_google_and_reports_allowance(self):
+        trial_request = {**self.request, "workshop_id": None}
+        self.assertEqual(self.client.get("/trial/status").status_code, 401)
+        self.gateway.trial_allowed = False
+        denied = self.client.post(
+            "/audits", headers={"Authorization": "Bearer anonymous-jwt"},
+            json=trial_request,
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(self.dispatcher.calls, [])
+        self.gateway.trial_allowed = True
+        status = self.client.get(
+            "/trial/status", headers={"Authorization": "Bearer google-jwt"}
+        )
+        self.assertEqual(status.status_code, 200)
+        self.assertEqual(status.json()["remaining"], 2)
+
+    def test_trial_quota_returns_notebook_without_dispatch(self):
+        self.gateway.trial_quota_error = "trial_daily_limit"
+        response = self.client.post(
+            "/audits", headers={"Authorization": "Bearer google-jwt"},
+            json={**self.request, "workshop_id": None},
+        )
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["detail"]["code"], "trial_daily_limit")
+        self.assertIn("github.com", response.json()["detail"]["notebook_url"])
+        self.assertEqual(self.dispatcher.calls, [])
 
     def test_duplicate_request_does_not_dispatch_again(self):
         self.gateway.reserve_result = False
