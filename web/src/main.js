@@ -441,7 +441,10 @@ async function initialize() {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: trialMode,
-        ...(trialMode ? { storageKey: "competitive-visibility-trial-auth" } : {}),
+        ...(trialMode ? {
+          storageKey: "competitive-visibility-trial-auth",
+          flowType: "pkce",
+        } : {}),
       },
     });
     if (trialMode) {
