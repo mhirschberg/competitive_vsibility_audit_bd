@@ -72,17 +72,23 @@ class SupabaseGateway:
         """Ask Supabase Auth to validate the JWT; never trust browser claims."""
         if not bearer_token:
             raise AuthenticationError("Missing bearer token")
-        try:
-            response = self.session.get(
-                f"{self.url}/auth/v1/user",
-                headers={
-                    "apikey": self.publishable_key,
-                    "Authorization": f"Bearer {bearer_token}",
-                },
-                timeout=10,
-            )
-        except requests.RequestException as exc:
-            raise BackendError("Authentication service unavailable") from exc
+        for attempt in range(2):
+            try:
+                response = self.session.get(
+                    f"{self.url}/auth/v1/user",
+                    headers={
+                        "apikey": self.publishable_key,
+                        "Authorization": f"Bearer {bearer_token}",
+                    },
+                    timeout=10,
+                )
+            except requests.RequestException as exc:
+                if attempt == 0:
+                    continue
+                raise BackendError("Authentication service unavailable") from exc
+            if response.status_code in (502, 503, 504) and attempt == 0:
+                continue
+            break
         if response.status_code in (401, 403):
             raise AuthenticationError("Invalid or expired session")
         if not response.ok:
