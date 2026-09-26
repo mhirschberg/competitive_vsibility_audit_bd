@@ -108,6 +108,11 @@ class HostedApiTests(unittest.TestCase):
         )
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
 
+    def test_health_endpoint_avoids_cloud_run_reserved_suffix(self):
+        response = self.client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
     def test_missing_authentication_or_workshop_is_rejected(self):
         no_auth = self.client.post("/audits", json=self.request)
         self.assertEqual(no_auth.status_code, 401)
