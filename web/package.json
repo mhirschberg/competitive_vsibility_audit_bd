@@ -1,0 +1,17 @@
+{
+  "name": "competitive-visibility-workshop-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build-config.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/build-config.mjs && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.0.0",
+    "vite": "^7.0.0"
+  }
+}
