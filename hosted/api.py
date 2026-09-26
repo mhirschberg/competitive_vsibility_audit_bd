@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from hosted.cloud_run import CloudRunDispatcher, DispatchError
 from hosted.supabase_gateway import (
     AuthenticationError,
+    AuthorizationError,
     BackendError,
     SubmissionError,
     SupabaseGateway,
@@ -34,6 +36,20 @@ class AuditRequest(BaseModel):
 class AuditAccepted(BaseModel):
     audit_id: UUID
     dispatch_state: Literal["started", "already_pending", "pending_retry"]
+
+
+class WorkshopSettings(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None
+    max_total_audits: int = Field(ge=1, le=100000)
+    max_concurrent_audits: int = Field(ge=1, le=1000)
+    max_audits_per_user: int = Field(ge=1, le=1000)
+
+
+class CreateWorkshop(WorkshopSettings):
+    workspace_id: UUID
+    slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=100)
 
 
 def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) -> FastAPI:
@@ -69,7 +85,7 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         app.add_middleware(
             CORSMiddleware,
             allow_origins=[web_origin],
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "PATCH"],
             allow_headers=["Authorization", "Content-Type"],
         )
 
@@ -78,6 +94,93 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
         return {"status": "ok"}
+
+    def organizer_id(authorization: str | None) -> UUID:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Google sign-in required")
+        try:
+            return gateway.authenticate_google_organizer(
+                authorization.removeprefix("Bearer ").strip()
+            )
+        except AuthenticationError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/workshops/{slug}")
+    def public_workshop(slug: str):
+        try:
+            workshop = gateway.public_workshop(slug)
+            if workshop is None:
+                raise HTTPException(status_code=404, detail="Workshop not found")
+            return workshop
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/admin/workshops")
+    def admin_list_workshops(authorization: str | None = Header(default=None)):
+        user_id = organizer_id(authorization)
+        try:
+            result = gateway.admin_list_workshops(user_id)
+            if not result.get("workspaces"):
+                raise HTTPException(status_code=403, detail="This Google account is not an organizer")
+            return result
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/admin/workshops", status_code=201)
+    def admin_create_workshop(
+        request: CreateWorkshop,
+        authorization: str | None = Header(default=None),
+    ):
+        user_id = organizer_id(authorization)
+        try:
+            workshop_id = gateway.admin_create_workshop(
+                p_user_id=str(user_id),
+                p_workspace_id=str(request.workspace_id),
+                p_slug=request.slug,
+                p_name=request.name.strip(),
+                p_opens_at=request.opens_at.isoformat() if request.opens_at else None,
+                p_closes_at=request.closes_at.isoformat() if request.closes_at else None,
+                p_max_total_audits=request.max_total_audits,
+                p_max_concurrent_audits=request.max_concurrent_audits,
+                p_max_audits_per_user=request.max_audits_per_user,
+            )
+            return {"id": workshop_id}
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except SubmissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.patch("/admin/workshops/{workshop_id}")
+    def admin_update_workshop(
+        workshop_id: UUID,
+        request: WorkshopSettings,
+        authorization: str | None = Header(default=None),
+    ):
+        user_id = organizer_id(authorization)
+        try:
+            gateway.admin_update_workshop(
+                p_user_id=str(user_id),
+                p_workshop_id=str(workshop_id),
+                p_name=request.name.strip(),
+                p_opens_at=request.opens_at.isoformat() if request.opens_at else None,
+                p_closes_at=request.closes_at.isoformat() if request.closes_at else None,
+                p_max_total_audits=request.max_total_audits,
+                p_max_concurrent_audits=request.max_concurrent_audits,
+                p_max_audits_per_user=request.max_audits_per_user,
+            )
+            return {"id": workshop_id}
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except SubmissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/audits", response_model=AuditAccepted, status_code=202)
     def submit_audit(
@@ -125,6 +228,8 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             return AuditAccepted(audit_id=audit_id, dispatch_state="started")
         except AuthenticationError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         except SubmissionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackendError as exc:

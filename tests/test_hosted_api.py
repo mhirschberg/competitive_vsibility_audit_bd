@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from hosted.api import create_app
 from hosted.cloud_run import CloudRunDispatcher, DispatchError
 from hosted.reconcile import reconcile_once
-from hosted.supabase_gateway import SupabaseGateway
+from hosted.supabase_gateway import AuthorizationError, SupabaseGateway
 from hosted.watchdog_tasks import WatchdogError
 
 
@@ -24,10 +24,38 @@ class FakeGateway:
         self.reserve_result = True
         self.status_result = {"id": str(AUDIT_ID), "status": "running", "steps": []}
         self.signed_url = "https://test-project.supabase.co/storage/v1/object/sign/test"
+        self.organizer_allowed = True
+        self.admin_payload = None
 
     def authenticate(self, token):
         self.token = token
         return USER_ID
+
+    def authenticate_google_organizer(self, token):
+        self.token = token
+        if not self.organizer_allowed:
+            raise AuthorizationError("Sign in with Google to manage workshops")
+        return USER_ID
+
+    def public_workshop(self, slug):
+        if slug != "test-event":
+            return None
+        return {"id": str(WORKSHOP_ID), "slug": slug, "name": "Test Event"}
+
+    def admin_list_workshops(self, user_id):
+        assert user_id == USER_ID
+        return {
+            "workspaces": [{"id": str(USER_ID), "name": "Organizer"}],
+            "workshops": [],
+        }
+
+    def admin_create_workshop(self, **payload):
+        self.admin_payload = payload
+        return WORKSHOP_ID
+
+    def admin_update_workshop(self, **payload):
+        self.admin_payload = payload
+        return WORKSHOP_ID
 
     def submit_audit(self, **payload):
         self.payload = payload
@@ -124,6 +152,65 @@ class HostedApiTests(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_public_workshop_link_resolves_without_auth(self):
+        response = self.client.get("/workshops/test-event")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], str(WORKSHOP_ID))
+        self.assertEqual(self.client.get("/workshops/unknown").status_code, 404)
+
+    def test_admin_requires_google_identity_and_records_verified_actor(self):
+        self.assertEqual(self.client.get("/admin/workshops").status_code, 401)
+        self.gateway.organizer_allowed = False
+        self.assertEqual(
+            self.client.get(
+                "/admin/workshops", headers={"Authorization": "Bearer anonymous-jwt"}
+            ).status_code,
+            403,
+        )
+        self.gateway.organizer_allowed = True
+        response = self.client.get(
+            "/admin/workshops", headers={"Authorization": "Bearer google-jwt"}
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_admin_can_create_and_update_finite_workshop_limits(self):
+        settings = {
+            "name": "Berlin AI Day",
+            "opens_at": None,
+            "closes_at": None,
+            "max_total_audits": 30,
+            "max_concurrent_audits": 8,
+            "max_audits_per_user": 1,
+        }
+        headers = {"Authorization": "Bearer google-jwt"}
+        create = self.client.post(
+            "/admin/workshops",
+            headers=headers,
+            json={
+                **settings,
+                "workspace_id": str(USER_ID),
+                "slug": "berlin-ai-day",
+            },
+        )
+        self.assertEqual(create.status_code, 201)
+        self.assertEqual(self.gateway.admin_payload["p_user_id"], str(USER_ID))
+        self.assertEqual(self.gateway.admin_payload["p_max_concurrent_audits"], 8)
+        update = self.client.patch(
+            f"/admin/workshops/{WORKSHOP_ID}",
+            headers=headers,
+            json={**settings, "max_total_audits": 40},
+        )
+        self.assertEqual(update.status_code, 200)
+        self.assertEqual(self.gateway.admin_payload["p_max_total_audits"], 40)
+        self.assertEqual(
+            self.client.post(
+                "/admin/workshops",
+                headers=headers,
+                json={**settings, "workspace_id": str(USER_ID), "slug": "BAD SLUG"},
+            ).status_code,
+            422,
+        )
 
     def test_watchdog_is_scheduled_before_dispatch(self):
         watchdog = FakeWatchdog()

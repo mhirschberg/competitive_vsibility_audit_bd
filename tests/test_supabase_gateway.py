@@ -1,7 +1,7 @@
 import unittest
 from uuid import UUID
 
-from hosted.supabase_gateway import SupabaseGateway
+from hosted.supabase_gateway import AuthorizationError, SupabaseGateway
 
 
 AUDIT_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -27,11 +27,12 @@ class FakeSession:
             "signedURL": "/object/sign/audit-artifacts/"
             "workspaces/w/audits/a/report.pdf?token=test"
         }
+        self.auth_payload = {"id": "00000000-0000-0000-0000-000000000001"}
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
         if url.endswith("/auth/v1/user"):
-            return FakeResponse({"id": "00000000-0000-0000-0000-000000000001"})
+            return FakeResponse(self.auth_payload)
         return FakeResponse(self.read_payloads.pop(0))
 
     def post(self, url, **kwargs):
@@ -62,6 +63,22 @@ class SupabaseGatewayTests(unittest.TestCase):
         self.assertEqual(auth_headers["Authorization"], "Bearer user-jwt")
         self.assertEqual(rpc_headers["apikey"], SECRET_KEY)
         self.assertNotIn("Authorization", rpc_headers)
+
+    def test_admin_requires_verified_google_provider_not_user_metadata(self):
+        with self.assertRaises(AuthorizationError):
+            self.gateway.authenticate_google_organizer("anon-jwt")
+        self.session.auth_payload = {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "is_anonymous": True,
+            "app_metadata": {"provider": "google"},
+        }
+        with self.assertRaises(AuthorizationError):
+            self.gateway.authenticate_google_organizer("anon-jwt")
+        self.session.auth_payload["is_anonymous"] = False
+        self.assertEqual(
+            self.gateway.authenticate_google_organizer("google-jwt"),
+            UUID(self.session.auth_payload["id"]),
+        )
 
     def test_status_reads_all_related_rows_with_user_rls(self):
         self.session.read_payloads = [

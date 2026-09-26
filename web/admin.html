@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f0e7" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Workshop control · Competitive Visibility</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="admin-shell">
+      <header class="admin-header">
+        <a class="admin-brand" href="/"><span class="admin-mark">✳</span><span>Competitive<br />Visibility</span></a>
+        <div class="admin-header-right"><span class="admin-kicker">ORGANIZER / CONTROL ROOM</span><a href="/" class="admin-text-link">Open field tool ↗</a><button id="sign-out" class="admin-text-link" type="button" hidden>Sign out</button></div>
+      </header>
+
+      <main>
+        <section id="login-view" class="login-view">
+          <div class="login-card">
+            <p class="eyebrow">PRIVATE ORGANIZER ACCESS</p>
+            <h1>Run the room.<br /><em>Set the limits.</em></h1>
+            <p>Sign in with your existing Google account to create workshop links, adjust audit quotas, and see live capacity. Participants do not need to sign in with Google.</p>
+            <button id="google-sign-in" class="admin-primary" type="button">Continue with Google <span>↗</span></button>
+            <p id="login-message" class="admin-message" role="alert" hidden></p>
+          </div>
+          <aside class="login-aside"><span>FIELD NOTE / 01</span><p>One link per workshop.<br />One set of limits.<br />A clear view of what is running.</p><div class="login-orbit" aria-hidden="true">↗</div></aside>
+        </section>
+
+        <section id="dashboard-view" class="dashboard-view" hidden>
+          <div class="dashboard-intro">
+            <div><p class="eyebrow">WORKSHOP OPERATIONS</p><h1>Control room<span class="orange-dot">.</span></h1></div>
+            <div class="dashboard-actions"><span id="signed-in-as"></span><button id="refresh" class="admin-secondary" type="button">Refresh ↻</button></div>
+          </div>
+          <p id="dashboard-message" class="admin-message" role="status" hidden></p>
+          <div class="admin-layout">
+            <aside class="workshop-rail">
+              <div class="rail-heading"><div><span class="rail-index">01 / WORKSHOPS</span><h2>Your events</h2></div><button id="new-workshop" class="new-button" type="button" aria-label="New workshop">+</button></div>
+              <div id="workshop-list" class="workshop-list"></div>
+              <p class="rail-footnote">Only an organizer can change these settings. Every change is recorded.</p>
+            </aside>
+            <section class="editor-panel">
+              <div id="empty-editor" class="empty-editor"><span class="empty-symbol">↗</span><p>Select a workshop or create a new one.</p></div>
+              <div id="editor" hidden>
+                <div class="editor-heading"><div><p id="editor-index" class="eyebrow"></p><h2 id="editor-title"></h2></div><span id="editor-state" class="editor-state"></span></div>
+                <div id="workshop-metrics" class="metric-strip" hidden>
+                  <div><span>AUDITS USED</span><strong id="metric-used">—</strong><small id="metric-remaining"></small></div>
+                  <div><span>ACTIVE NOW</span><strong id="metric-active">—</strong><small id="metric-queued">Workers starting or running</small></div>
+                  <div><span>COMPLETED</span><strong id="metric-completed">—</strong><small>finished reports</small></div>
+                </div>
+                <div id="participant-link-row" class="participant-link-row" hidden><div><span>PARTICIPANT LINK</span><a id="participant-link" target="_blank" rel="noopener noreferrer"></a></div><button id="copy-participant-link" type="button">Copy link ↗</button></div>
+                <form id="workshop-form">
+                  <div class="form-section"><span class="form-section-index">01 / IDENTITY</span><div class="admin-field-grid">
+                    <label class="admin-field"><span>Name</span><input name="name" maxlength="200" required placeholder="Berlin AI Day" /></label>
+                    <label class="admin-field" id="slug-field"><span>Link name</span><input name="slug" maxlength="100" pattern="[a-z0-9]+(-[a-z0-9]+)*" required placeholder="berlin-ai-day" /><small>Lowercase letters, numbers, hyphens.</small></label>
+                    <label class="admin-field" id="workspace-field"><span>Organizer workspace</span><select name="workspace_id" required></select></label>
+                  </div></div>
+                  <div class="form-section"><span class="form-section-index">02 / WINDOW</span><div class="admin-field-grid">
+                    <label class="admin-field"><span>Opens</span><input name="opens_at" type="datetime-local" /><small>Leave blank to start immediately.</small></label>
+                    <label class="admin-field"><span>Closes</span><input name="closes_at" type="datetime-local" /><small>Leave blank for no automatic close.</small></label>
+                  </div></div>
+                  <div class="form-section"><span class="form-section-index">03 / AUDIT LIMITS</span><div class="admin-field-grid three">
+                    <label class="admin-field"><span>Total audits</span><input name="max_total_audits" type="number" min="1" max="100000" value="30" required /><small>Counts every submitted audit.</small></label>
+                    <label class="admin-field"><span>At once</span><input name="max_concurrent_audits" type="number" min="1" max="1000" value="8" required /><small>Running capacity.</small></label>
+                    <label class="admin-field"><span>Per participant</span><input name="max_audits_per_user" type="number" min="1" max="1000" value="1" required /><small>Per browser session.</small></label>
+                  </div></div>
+                  <div class="editor-footer"><button id="save-workshop" class="admin-primary" type="submit">Save workshop <span>↗</span></button><p>Changes to limits affect new admissions. Existing audits keep running.</p></div>
+                </form>
+              </div>
+            </section>
+          </div>
+          <p class="admin-disclaimer">Cost note: “total audits” is an admission limit, not a dollar cap. Bright Data usage and infrastructure costs are not stopped automatically by a monetary budget field.</p>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/admin.js"></script>
+  </body>
+</html>

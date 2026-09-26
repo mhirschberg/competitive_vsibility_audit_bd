@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from urllib.parse import quote, urlsplit
 from uuid import UUID
 
@@ -11,6 +12,10 @@ import requests
 
 
 class AuthenticationError(Exception):
+    pass
+
+
+class AuthorizationError(Exception):
     pass
 
 
@@ -63,8 +68,8 @@ class SupabaseGateway:
         self.secret_key = secret_key
         self.session = session or requests.Session()
 
-    def authenticate(self, bearer_token: str) -> UUID:
-        """Ask Supabase Auth to validate the user's JWT; never trust its claims locally."""
+    def _authenticated_user(self, bearer_token: str) -> dict:
+        """Ask Supabase Auth to validate the JWT; never trust browser claims."""
         if not bearer_token:
             raise AuthenticationError("Missing bearer token")
         try:
@@ -83,9 +88,24 @@ class SupabaseGateway:
         if not response.ok:
             raise BackendError("Authentication service unavailable")
         try:
-            return UUID(response.json()["id"])
+            user = response.json()
+            UUID(user["id"])
+            return user
         except (KeyError, TypeError, ValueError) as exc:
             raise BackendError("Invalid authentication response") from exc
+
+    def authenticate(self, bearer_token: str) -> UUID:
+        return UUID(self._authenticated_user(bearer_token)["id"])
+
+    def authenticate_google_organizer(self, bearer_token: str) -> UUID:
+        user = self._authenticated_user(bearer_token)
+        metadata = user.get("app_metadata") or {}
+        providers = metadata.get("providers") or []
+        if user.get("is_anonymous") is True or not (
+            metadata.get("provider") == "google" or "google" in providers
+        ):
+            raise AuthorizationError("Sign in with Google to manage workshops")
+        return UUID(user["id"])
 
     def _rpc(self, name: str, payload: dict):
         try:
@@ -105,10 +125,10 @@ class SupabaseGateway:
                 code = response.json().get("code")
             except (TypeError, ValueError):
                 code = None
-            if code == "22023":
-                raise SubmissionError("Audit request or workshop limit invalid")
+            if code in ("22023", "22001", "23505", "23514"):
+                raise SubmissionError("Workshop settings are invalid or the link name is already used")
             if code == "42501":
-                raise AuthenticationError("Not allowed to use this workspace")
+                raise AuthorizationError("Organizer access required")
             raise BackendError("Database operation failed")
         try:
             return response.json()
@@ -121,6 +141,44 @@ class SupabaseGateway:
             return UUID(result)
         except (TypeError, ValueError) as exc:
             raise BackendError("Invalid audit ID from database") from exc
+
+    def public_workshop(self, slug: str) -> dict | None:
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+            return None
+        response = self._admin_request(
+            "GET",
+            "/rest/v1/workshops",
+            params={
+                "select": "id,name,slug,opens_at,closes_at",
+                "slug": f"eq.{slug}",
+                "limit": "1",
+            },
+        )
+        try:
+            rows = response.json()
+            return rows[0] if rows else None
+        except (TypeError, KeyError, ValueError, IndexError) as exc:
+            raise BackendError("Invalid workshop response") from exc
+
+    def admin_list_workshops(self, user_id: UUID) -> dict:
+        result = self._rpc("admin_list_workshops", {"p_user_id": str(user_id)})
+        if not isinstance(result, dict):
+            raise BackendError("Invalid organizer response")
+        return result
+
+    def admin_create_workshop(self, **payload) -> UUID:
+        result = self._rpc("admin_create_workshop", payload)
+        try:
+            return UUID(result)
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid workshop ID from database") from exc
+
+    def admin_update_workshop(self, **payload) -> UUID:
+        result = self._rpc("admin_update_workshop", payload)
+        try:
+            return UUID(result)
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid workshop ID from database") from exc
 
     def reserve_dispatch(self, audit_id: UUID) -> bool:
         result = self._rpc(
