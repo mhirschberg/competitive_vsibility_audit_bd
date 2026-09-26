@@ -1,7 +1,14 @@
 import unittest
 from uuid import UUID
 
-from hosted.supabase_gateway import AuthorizationError, SupabaseGateway
+import requests
+
+from hosted.supabase_gateway import (
+    AuthenticationError,
+    AuthorizationError,
+    BackendError,
+    SupabaseGateway,
+)
 
 
 AUDIT_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -28,10 +35,16 @@ class FakeSession:
             "workspaces/w/audits/a/report.pdf?token=test"
         }
         self.auth_payload = {"id": "00000000-0000-0000-0000-000000000001"}
+        self.auth_responses = []
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
         if url.endswith("/auth/v1/user"):
+            if self.auth_responses:
+                response = self.auth_responses.pop(0)
+                if isinstance(response, Exception):
+                    raise response
+                return response
             return FakeResponse(self.auth_payload)
         return FakeResponse(self.read_payloads.pop(0))
 
@@ -79,6 +92,34 @@ class SupabaseGatewayTests(unittest.TestCase):
             self.gateway.authenticate_google_organizer("google-jwt"),
             UUID(self.session.auth_payload["id"]),
         )
+
+    def test_transient_auth_timeout_is_retried_once(self):
+        self.session.auth_responses = [requests.Timeout()]
+        self.assertEqual(
+            self.gateway.authenticate("user-jwt"),
+            UUID(self.session.auth_payload["id"]),
+        )
+        self.assertEqual(len(self.session.calls), 2)
+
+    def test_transient_auth_gateway_error_is_retried_once(self):
+        self.session.auth_responses = [FakeResponse({}, status_code=503)]
+        self.assertEqual(
+            self.gateway.authenticate("user-jwt"),
+            UUID(self.session.auth_payload["id"]),
+        )
+        self.assertEqual(len(self.session.calls), 2)
+
+    def test_invalid_auth_session_is_not_retried(self):
+        self.session.auth_responses = [FakeResponse({}, status_code=401)]
+        with self.assertRaises(AuthenticationError):
+            self.gateway.authenticate("invalid-jwt")
+        self.assertEqual(len(self.session.calls), 1)
+
+    def test_auth_timeout_stops_after_two_attempts(self):
+        self.session.auth_responses = [requests.Timeout(), requests.Timeout()]
+        with self.assertRaises(BackendError):
+            self.gateway.authenticate("user-jwt")
+        self.assertEqual(len(self.session.calls), 2)
 
     def test_status_reads_all_related_rows_with_user_rls(self):
         self.session.read_payloads = [
