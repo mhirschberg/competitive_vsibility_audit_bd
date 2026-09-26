@@ -13,11 +13,11 @@ raise the workshop admission caps deliberately before inviting attendees.
 - API health: `https://competitive-audit-api-4lvms3qmsa-ew.a.run.app/health`
 - Google Cloud project/region: `getmuzoboz` / `europe-west1`
 - Supabase project ref: `xhntpuwntpftjqmlzxgk` (the separate Competitive Audit project)
-- A bare Web UI URL points to the bounded `deployment-smoke-test-20260926`
-  workshop. Its cap is two total audits, both used by deployment tests. The
-  organizer panel at `/admin` creates separate, finite-cap workshop links of
-  the form `/?workshop=slug`; creating a new workshop no longer requires a
-  web rebuild. Do not simply remove the caps.
+- A bare Web UI URL is the Google-sign-in personal trial: three audits per
+  account, at most one every 24 hours. The old bounded smoke workshop is still
+  available through `/?workshop=deployment-smoke-test-20260926` for diagnostics.
+  The organizer panel at `/admin` creates separate, finite-cap anonymous
+  workshop links of the form `/?workshop=slug`; no web rebuild is needed.
 
 ## Intended flow
 
@@ -44,6 +44,7 @@ raise the workshop admission caps deliberately before inviting attendees.
 | Database schema, access rules, admission/claim/heartbeat functions | `supabase/migrations/20260926000000_audit_foundation.sql` |
 | Organizer permissions, settings functions, and change log | `supabase/migrations/20260926010000_workshop_admin.sql` |
 | Workshop retention, aggregate counters, and purge functions | `supabase/migrations/20260926020000_workshop_anonymous_purge.sql` |
+| Registered-trial admission and status | `supabase/migrations/20260926030000_google_trial_audits.sql` |
 | API | `hosted/api.py` |
 | One-audit worker | `hosted/worker.py` |
 | Dispatch reconciliation | `hosted/reconcile.py` |
@@ -79,10 +80,10 @@ site. The repository's `.dockerignore` also excludes `.env` files from images.
 | `WEB_ORIGIN` | API | Exact HTTPS origin of the future static UI, for CORS |
 | `AUDIT_ID` | Worker execution override | Set by the API for each Job; never configure as a fixed Job variable |
 | `AUDIT_API_URL` | Static UI build only | Public HTTPS URL of the deployed API |
-| `WORKSHOP_ID` | Static UI build only | UUID of the default workshop row; organizer links select another workshop by slug |
+| `WORKSHOP_ID` | Static UI build only | Legacy default workshop UUID, retained for config compatibility; public trial does not use it |
 
 The API does **not** need Bright Data credentials. The browser needs only the
-publishable key, URL, API address, and workshop identifier. `web/scripts/build-config.mjs`
+publishable key, URL, API address, and legacy workshop identifier. `web/scripts/build-config.mjs`
 reads the same root `.env.local` during local development and emits a public
 `config.json` without secrets; on a static host, set those four variables in
 its build environment. The worker does not receive any user's Auth token.
@@ -105,6 +106,21 @@ workspace through a one-time admin operation. Never grant a role by matching
 an email passed from the browser. The browser never receives the Supabase
 secret key. New and changed workshop limits are recorded in
 `workshop_admin_events`.
+
+## Personal trial
+
+The public root page signs in with the existing Supabase Google provider and
+uses a separate browser session store from both `/admin` and anonymous workshop
+links. The root URL is already the Supabase Auth Site URL; keep it configured
+as the Google callback destination. The API
+checks the verified Google identity; the service-only `submit_trial_audit`
+function serializes submissions per Auth user, checks three total non-workshop
+audits and a rolling 24-hour gap, and preserves idempotent retries. Failed or
+interrupted runs still count because they started an audit and may have used
+paid collection. The browser shows remaining allowance and links to the public
+notebook when the allowance is exhausted. Trial history belongs to the Google
+account; anonymous workshop history stays attached to its separate session and
+retention policy. This does not merge old anonymous reports into Google accounts.
 
 The organizer can set opening/closing times and finite total, concurrent,
 and per-participant audit caps. Lowering caps blocks future admissions or

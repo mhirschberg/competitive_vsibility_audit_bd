@@ -17,6 +17,11 @@ const eventsList = document.querySelector("#events-list");
 const artifactsPanel = document.querySelector("#artifacts-panel");
 const artifactsList = document.querySelector("#artifacts-list");
 const historyList = document.querySelector("#history-list");
+const trialPass = document.querySelector("#trial-pass");
+const trialTitle = document.querySelector("#trial-title");
+const trialDescription = document.querySelector("#trial-description");
+const trialGoogle = document.querySelector("#trial-google");
+const trialSignout = document.querySelector("#trial-signout");
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const terminalStatuses = new Set(["completed", "failed", "interrupted", "cancelled"]);
@@ -46,12 +51,20 @@ let currentAuditId = null;
 let currentAuditStatus = null;
 let pollTimer = null;
 let requestInFlight = false;
+let trialMode = false;
+let trialSession = null;
+let trialStatus = null;
 
 function auditIdFromHash() {
   return location.hash.match(/^#audit\/([0-9a-f-]{36})$/i)?.[1] || null;
 }
 
 function syncView() {
+  if (trialMode && !trialSession && location.hash !== "#top" && location.hash !== "") {
+    location.hash = "top";
+    showFormMessage("Sign in with Google to see your personal audits.");
+    return;
+  }
   const auditId = auditIdFromHash();
   document.body.dataset.view = auditId ? "audit" : location.hash === "#history" ? "history" : "home";
   if (auditId && config && auditId !== currentAuditId) void showAudit(auditId);
@@ -85,8 +98,9 @@ function clearStored(key) {
 function setFormState(mode) {
   const pending = mode === "pending";
   const running = mode === "running";
-  fields.disabled = pending || running;
-  submitButton.disabled = running || requestInFlight;
+  const trialBlocked = trialMode && (!trialSession || (!trialStatus?.can_submit && !pending));
+  fields.disabled = pending || running || trialBlocked;
+  submitButton.disabled = running || requestInFlight || trialBlocked;
   pendingNote.hidden = !pending;
   submitButton.querySelector("span").textContent = pending
     ? "Retry safely"
@@ -105,7 +119,7 @@ function collectRequest() {
     country_code: String(data.get("country_code") || "US").trim().toUpperCase(),
     search_engine: String(data.get("search_engine") || "auto"),
     include_reddit_analysis: data.get("include_reddit_analysis") === "on",
-    workshop_id: config.workshop_id,
+    workshop_id: trialMode ? null : config.workshop_id,
   };
 }
 
@@ -123,6 +137,7 @@ async function currentSession(createIfNeeded = false) {
   if (error) throw error;
   if (data.session) return data.session;
   if (!createIfNeeded) return null;
+  if (trialMode) throw new Error("Sign in with Google to start a personal audit.");
   const signedIn = await supabase.auth.signInAnonymously();
   if (signedIn.error || !signedIn.data.session) {
     throw new Error(signedIn.error?.message || "Could not start a workshop session");
@@ -148,8 +163,9 @@ async function apiRequest(path, options = {}) {
     body = {};
   }
   if (!response.ok) {
-    const error = new Error(typeof body.detail === "string" ? body.detail : "The server could not complete this request.");
+    const error = new Error(typeof body.detail === "string" ? body.detail : body.detail?.message || "The server could not complete this request.");
     error.status = response.status;
+    error.code = body.detail?.code;
     throw error;
   }
   return body;
@@ -159,6 +175,10 @@ async function submitAudit(event) {
   event.preventDefault();
   if (requestInFlight) return;
   showFormMessage("");
+  if (trialMode && !trialSession) {
+    showFormMessage("Sign in with Google before starting a personal audit.");
+    return;
+  }
   let request = readStored("pending");
   if (!request) {
     if (!form.reportValidity()) return;
@@ -180,18 +200,55 @@ async function submitAudit(event) {
     location.hash = `audit/${accepted.audit_id}`;
     await showAudit(accepted.audit_id);
     await loadHistory();
+    if (trialMode) await loadTrialStatus();
   } catch (error) {
-    if (error.status === 400 || error.status === 422) {
+    if ([400, 403, 422, 429].includes(error.status)) {
       clearStored("pending");
       setFormState("ready");
     }
     showFormMessage(error.message || "The audit could not be submitted. Try again safely.");
+    if (trialMode && error.status === 429) await loadTrialStatus();
   } finally {
     requestInFlight = false;
     if (readStored("pending")) setFormState("pending");
     else if (currentAuditId && !terminalStatuses.has(currentAuditStatus)) setFormState("running");
     else setFormState("ready");
   }
+}
+
+function renderTrialPass() {
+  if (!trialMode) return;
+  trialPass.hidden = false;
+  trialGoogle.hidden = Boolean(trialSession);
+  trialSignout.hidden = !trialSession;
+  if (!trialSession) {
+    trialTitle.textContent = "Three audits, one per day.";
+    trialDescription.textContent = "Sign in with Google to save your own audits. No account to set up here.";
+  } else if (!trialStatus) {
+    trialTitle.textContent = "Checking your field pass…";
+    trialDescription.textContent = trialSession.user.email || "Signed in with Google";
+  } else if (trialStatus.remaining === 0) {
+    trialTitle.textContent = "Your three trial audits are used.";
+    trialDescription.textContent = `${trialSession.user.email || "Signed in"} · Run more with your own Bright Data account and the notebook below.`;
+  } else if (trialStatus.next_available_at) {
+    trialTitle.textContent = `${trialStatus.remaining} of 3 audits left.`;
+    trialDescription.textContent = `Next available ${formatDate(trialStatus.next_available_at)}. Your earlier reports stay in Your audits.`;
+  } else {
+    trialTitle.textContent = `${trialStatus.remaining} of 3 audits left.`;
+    trialDescription.textContent = `${trialSession.user.email || "Signed in"} · One audit every 24 hours.`;
+  }
+  setFormState(readStored("pending") ? "pending" : currentAuditId && !terminalStatuses.has(currentAuditStatus) ? "running" : "ready");
+}
+
+async function loadTrialStatus() {
+  if (!trialMode || !trialSession) return;
+  try {
+    trialStatus = await apiRequest("/trial/status");
+  } catch (error) {
+    trialStatus = null;
+    showFormMessage(`Could not check your trial allowance: ${error.message}. Reload to try again.`);
+  }
+  renderTrialPass();
 }
 
 function formatDate(value) {
@@ -308,11 +365,12 @@ async function showAudit(auditId) {
 async function loadHistory() {
   const session = await currentSession(false);
   if (!session) return;
-  const { data, error } = await supabase
+  let query = supabase
     .from("audits")
     .select("id,company_name,status,created_at")
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .order("created_at", { ascending: false });
+  query = trialMode ? query.is("workshop_id", null) : query.eq("workshop_id", config.workshop_id);
+  const { data, error } = await query.limit(20);
   if (error) {
     historyList.textContent = "History is temporarily unavailable. Your audits are still saved.";
     return;
@@ -356,10 +414,11 @@ async function initialize() {
     const response = await fetch("/config.json", { cache: "no-store" });
     if (!response.ok) throw new Error("Workshop configuration is missing");
     config = await response.json();
-    if (!config.supabase_url || !config.supabase_publishable_key || !config.api_url || !uuidPattern.test(config.workshop_id || "")) {
+    if (!config.supabase_url || !config.supabase_publishable_key || !config.api_url) {
       throw new Error("Workshop configuration is incomplete");
     }
     const workshopSlug = new URLSearchParams(location.search).get("workshop");
+    trialMode = !workshopSlug;
     if (workshopSlug) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(workshopSlug)) throw new Error("Invalid workshop link");
       const workshopResponse = await fetch(`${config.api_url}/workshops/${encodeURIComponent(workshopSlug)}`, { cache: "no-store" });
@@ -373,11 +432,45 @@ async function initialize() {
         note.textContent = `Workshop reports are available for at least ${workshop.anonymous_retention_hours} hours after closing or the last audit finishes. Download your files before anonymous data is removed.`;
         note.hidden = false;
       }
+    } else {
+      document.querySelector(".issue-label").textContent = "PERSONAL TRIAL · THREE AUDITS";
+      document.querySelector("#history-description").textContent = "Your personal audits stay with your Google account, so you can return on another device.";
     }
     supabase = createClient(config.supabase_url, config.supabase_publishable_key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: trialMode,
+        ...(trialMode ? { storageKey: "competitive-visibility-trial-auth" } : {}),
+      },
     });
-    storagePrefix = `competitive-visibility:${config.workshop_id}`;
+    if (trialMode) {
+      trialSession = await currentSession(false);
+      storagePrefix = `competitive-visibility:trial:${trialSession?.user.id || "guest"}`;
+      trialGoogle.addEventListener("click", async () => {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: location.origin },
+        });
+        if (error) showFormMessage(error.message);
+      });
+      trialSignout.addEventListener("click", async () => {
+        await supabase.auth.signOut();
+        trialSession = null;
+        trialStatus = null;
+        storagePrefix = "competitive-visibility:trial:guest";
+        currentAuditId = null;
+        currentAuditStatus = null;
+        clearInterval(pollTimer);
+        historyList.replaceChildren();
+        location.hash = "top";
+        renderTrialPass();
+      });
+      renderTrialPass();
+      if (trialSession) await loadTrialStatus();
+    } else {
+      storagePrefix = `competitive-visibility:${config.workshop_id}`;
+    }
     const pending = readStored("pending");
     if (pending) {
       restoreRequest(pending);
@@ -397,7 +490,7 @@ async function initialize() {
     const hashAuditId = auditIdFromHash();
     const savedAuditId = readStored("last-audit");
     const auditId = hashAuditId || savedAuditId;
-    if (auditId && !pending) await showAudit(auditId);
+    if (auditId && !pending && (!trialMode || trialSession)) await showAudit(auditId);
     syncView();
   } catch (error) {
     fields.disabled = true;

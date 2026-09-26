@@ -6,13 +6,14 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from fastapi.testclient import TestClient
 
 from hosted.api import create_app
-from hosted.supabase_gateway import SupabaseGateway
+from hosted.supabase_gateway import SupabaseGateway, TrialQuotaError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,63 @@ class SupabaseLocalIntegrationTests(unittest.TestCase):
         response.raise_for_status()
         payload = response.json()
         return payload["user"]["id"], payload["access_token"]
+
+    def test_trial_limits_are_atomic_and_idempotent(self):
+        # The API checks Google identity; this exercises the service-only SQL
+        # admission function against a disposable local Auth user.
+        user_id, _ = self.anonymous_session()
+        gateway = SupabaseGateway(
+            self.url, self.publishable_key, self.secret_key, allow_local_http=True
+        )
+
+        def request(request_id):
+            return gateway.submit_trial_audit(
+                p_user_id=user_id,
+                p_client_request_id=str(request_id),
+                p_company_name="Trial Company",
+                p_company_domain="example.com",
+                p_audit_focus="",
+                p_country_code="DE",
+                p_input_options={},
+                p_engine_commit="integration-test",
+                p_methodology_version="integration-test",
+            )
+
+        first_id = uuid4()
+        second_id = uuid4()
+        def attempt(request_id):
+            try:
+                return request(request_id)
+            except TrialQuotaError as exc:
+                return exc
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(attempt, [first_id, second_id]))
+        # A concurrent second submission must fail the daily limit.
+        self.assertEqual(sum(isinstance(r, TrialQuotaError) for r in results), 1)
+        first_audit = next(r for r in results if not isinstance(r, TrialQuotaError))
+        self.assertEqual(gateway.trial_status(UUID(user_id))["used"], 1)
+
+        # Retry with the original request ID, then age the accepted row so the
+        # following day's audit can run without waiting 24 real hours.
+        # If the first of the two requests won, first_id is its idempotency key.
+        winning_key = first_id if results[0] == first_audit else second_id
+        self.assertEqual(request(winning_key), first_audit)
+        for index in range(2):
+            patch = requests.patch(
+                f"{self.url}/rest/v1/audits",
+                headers={"apikey": self.secret_key, "Content-Type": "application/json"},
+                params={"id": f"eq.{first_audit}" if index == 0 else f"eq.{audit_id}"},
+                json={"created_at": "2026-01-01T00:00:00Z"},
+                timeout=10,
+            )
+            self.assertEqual(patch.status_code, 204, patch.text)
+            last_request_id = uuid4()
+            audit_id = request(last_request_id)
+        self.assertEqual(gateway.trial_status(UUID(user_id))["used"], 3)
+        with self.assertRaises(TrialQuotaError) as context:
+            request(uuid4())
+        self.assertEqual(context.exception.reason, "trial_total_limit")
+        self.assertEqual(request(last_request_id), audit_id)
 
     def test_submit_rls_worker_and_private_artifact(self):
         user_a, token_a = self.anonymous_session()
@@ -131,7 +189,7 @@ class SupabaseLocalIntegrationTests(unittest.TestCase):
         )
         self.assertIn(direct_write.status_code, (401, 403))
 
-        claim = gateway.claim_audit(audit_id, "local-integration")
+        claim = gateway.claim_audit(audit_id, f"local-integration-{uuid4()}")
         self.assertIsNotNone(claim)
         execution_id, claim_token = claim
         self.assertIsNone(gateway.claim_audit(audit_id, "duplicate"))
