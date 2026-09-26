@@ -113,6 +113,16 @@ enforced dollar limit and is deliberately absent from the organizer form.
 
 ## Anonymous workshop retention
 
+Live as of 2026-09-26: migration `20260926020000` is applied in the separate
+Supabase project; API, web, and private watchdog run commit `2f8cccff`.
+`competitive-audit-hourly-purge` is enabled in `europe-west1` and calls the
+private watchdog at minute 15 each hour (UTC) with an OIDC identity that can
+invoke only that service. The first manual Scheduler invocation returned HTTP
+200 with no due workshops. The existing deployment smoke workshop still has
+retention disabled and both of its audit rows remain. The web service's
+previous traffic split was pinned to an old revision, so the new revision was
+explicitly assigned 100% traffic after deployment.
+
 New workshops default to a 48-hour download window; the organizer may choose
 12, 24, 48, 72, or 168 hours, or turn automatic cleanup off, before the
 workshop closes. Existing workshops have `NULL` retention after the migration,
