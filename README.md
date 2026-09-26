@@ -44,7 +44,7 @@ You need:
 
 1. A Google account with access to Google Colab.
 2. A Bright Data account and API token.
-3. An active Bright Data SERP API zone configured for Markdown output.
+3. An active Bright Data SERP API zone configured for Markdown output. Google uses parsed organic JSON; Bing fallback uses the zone's raw Markdown output.
 4. Access to the required Google AI Mode, ChatGPT, and Gemini datasets.
 5. Reddit posts and comments dataset access only if Reddit analysis is enabled.
 
@@ -369,6 +369,9 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for diagnostic steps and 
 competitive_vsibility_audit_bd/
 ├── competitive_visibility_audit_bd.ipynb  # primary Colab workflow
 ├── app.py                                  # optional web wrapper
+├── hosted/                                 # local API and Cloud Run worker prototype
+├── web/                                    # local static participant UI prototype
+├── supabase/migrations/                    # versioned hosted database schema
 ├── reddit_social.py                        # social collection and analysis
 ├── scripts/
 │   ├── embed_reddit_social.py
@@ -377,6 +380,8 @@ competitive_vsibility_audit_bd/
 ├── tests/                                  # regression suite
 ├── docs/
 │   ├── METHODOLOGY.md
+│   ├── HOSTED_BACKEND.md
+│   ├── SUPABASE_DATABASE.md
 │   └── TROUBLESHOOTING.md
 ├── requirements.txt
 └── README.md
@@ -387,6 +392,12 @@ competitive_vsibility_audit_bd/
 ## Project status
 
 This is a working reference implementation and workshop tool.
+
+The optional durable-hosting architecture is being developed separately from
+the notebook. Its database migration, API, worker, and static UI are local code
+only; the new cloud deployment is not live. See
+[docs/HOSTED_BACKEND.md](docs/HOSTED_BACKEND.md) for its exact status and
+configuration boundaries.
 
 It is not an official Bright Data SLA, benchmark, ranking system, or production monitoring product. Review request cost, retry behavior, data retention, and compliance requirements before adapting it for production use.
 

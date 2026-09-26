@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f0e7" />
+    <meta name="description" content="A field tool for comparing what search and AI assistants show buyers about a company and its competitors." />
+    <title>Competitive Visibility · Field Audit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="masthead">
+        <a class="brand" href="#top" aria-label="Competitive Visibility home">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>Competitive<br />Visibility</span>
+        </a>
+        <div class="masthead-right">
+          <span class="issue-label">WORKSHOP FIELD TOOL <span class="issue-dot">●</span> 2026</span>
+          <a href="#history" class="header-link">Your audits <span aria-hidden="true">↗</span></a>
+        </div>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="eyebrow-rule"></span> A BETTER VIEW OF THE MARKET</p>
+            <h1 id="hero-title">What do buyers<br /><em>actually</em> see?</h1>
+            <p class="hero-description">Compare the companies that appear in traditional search with those that show up in AI answers. Same neutral questions. Sometimes, a very different picture.</p>
+            <div class="hero-footnote"><span class="footnote-star">✳</span> A live snapshot, not a market-share score.</div>
+          </div>
+          <div class="hero-graphic" aria-hidden="true">
+            <div class="graphic-meta">FIG. 01 <span>VISIBILITY IS NOT ONE CHANNEL</span></div>
+            <div class="orbit orbit-outer"></div>
+            <div class="orbit orbit-mid"></div>
+            <div class="orbit orbit-inner"></div>
+            <div class="orbit-core">?</div>
+            <div class="orbit-label label-search"><span class="label-dot"></span> SEARCH</div>
+            <div class="orbit-label label-ai"><span class="label-dot"></span> AI ANSWERS</div>
+            <div class="orbit-label label-sources"><span class="label-dot"></span> SOURCES</div>
+            <div class="graphic-caption">THREE VIEWS. ONE BUYER QUESTION.</div>
+          </div>
+        </section>
+
+        <section class="workbench" aria-label="Audit workbench">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">01 / SET UP YOUR AUDIT</p>
+              <h2>Start with a company.</h2>
+            </div>
+            <p>We find category-level questions and compare visibility without planting the company name in the buyer query.</p>
+          </div>
+
+          <div class="workbench-grid">
+            <form id="audit-form" class="audit-form">
+              <fieldset id="audit-fields">
+                <div class="field-grid two-up">
+                  <label class="field">
+                    <span>Company or brand <span class="required">*</span></span>
+                    <input name="company_name" type="text" maxlength="300" placeholder="e.g. Rayner" autocomplete="organization" required />
+                  </label>
+                  <label class="field">
+                    <span>Official website <span class="required">*</span></span>
+                    <input name="company_domain" type="text" maxlength="500" placeholder="e.g. rayner.com" inputmode="url" required />
+                  </label>
+                </div>
+                <label class="field focus-field">
+                  <span>Audit focus <span class="optional">OPTIONAL</span></span>
+                  <input name="audit_focus" type="text" maxlength="1000" placeholder="A product, category, or customer need" />
+                  <small>Useful when the company offers more than one thing.</small>
+                </label>
+                <div class="field-grid two-up settings-row">
+                  <label class="field">
+                    <span>Country</span>
+                    <input name="country_code" type="text" maxlength="2" pattern="[A-Za-z]{2}" list="country-suggestions" value="US" required aria-describedby="country-hint" />
+                    <small id="country-hint">Two-letter code, e.g. DE or GB.</small>
+                    <datalist id="country-suggestions"><option value="US"></option><option value="DE"></option><option value="GB"></option><option value="FR"></option><option value="NL"></option><option value="CH"></option><option value="AT"></option><option value="CA"></option><option value="AU"></option></datalist>
+                  </label>
+                  <label class="field">
+                    <span>Traditional search engine</span>
+                    <select name="search_engine">
+                      <option value="auto">Automatic</option>
+                      <option value="google">Google</option>
+                      <option value="bing">Bing</option>
+                      <option value="none">AI answers only</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="social-option">
+                  <span class="social-copy"><strong>Add Reddit conversations</strong><small>Include a small sample of public posts and comments. This can substantially increase the runtime and Bright Data usage.</small></span>
+                  <span class="switch-wrap"><input name="include_reddit_analysis" type="checkbox" /><span class="switch" aria-hidden="true"></span></span>
+                </label>
+              </fieldset>
+              <p id="pending-note" class="pending-note" hidden>Your previous request may have reached the server. Retry uses the same request ID, so it won't start a duplicate audit.</p>
+              <div class="form-footer">
+                <button id="submit-button" class="primary-button" type="submit"><span>Run visibility audit</span><span aria-hidden="true">↗</span></button>
+                <p>One audit can take several minutes. You can leave this page and return later.</p>
+              </div>
+              <p id="form-message" class="form-message" role="alert" hidden></p>
+            </form>
+            <aside class="method-note" aria-label="How the audit works">
+              <p class="note-topline">FIELD NOTE / THE METHOD</p>
+              <div class="method-item"><span>01</span><p>Find neutral buyer questions about the category.</p></div>
+              <div class="method-item"><span>02</span><p>Discover two direct competitors from live search evidence.</p></div>
+              <div class="method-item"><span>03</span><p>Compare search results, AI answers, and the sources behind them.</p></div>
+              <div class="note-bottom">No separate AI accounts needed.<br />Powered by Bright Data collection.</div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="active-audit" class="active-audit" aria-labelledby="active-heading" hidden>
+          <div class="section-heading active-heading-row">
+            <div>
+              <p class="eyebrow">02 / LIVE AUDIT</p>
+              <h2 id="active-heading">Your audit is on its way.</h2>
+            </div>
+            <div class="status-meta"><span id="status-badge" class="status-badge">QUEUED</span><button id="copy-link" class="text-button" type="button">Copy link ↗</button></div>
+          </div>
+          <div class="progress-track" aria-hidden="true"><div id="progress-fill"></div></div>
+          <p id="status-description" class="status-description" aria-live="polite"></p>
+          <div class="result-grid">
+            <div class="result-panel"><h3>Progress</h3><ol id="steps-list" class="steps-list"></ol></div>
+            <div class="result-panel"><h3>Latest activity</h3><ol id="events-list" class="events-list"></ol></div>
+          </div>
+          <div id="artifacts-panel" class="artifacts-panel" hidden><div><p class="eyebrow">YOUR FILES</p><h3>Take the audit with you.</h3></div><div id="artifacts-list" class="artifacts-list"></div></div>
+        </section>
+
+        <section id="history" class="history" aria-labelledby="history-heading">
+          <div class="section-heading"><div><p class="eyebrow">03 / YOUR FIELD NOTES</p><h2 id="history-heading">Previous audits.</h2></div><p>Come back on this device to see the audits linked to your workshop session.</p></div>
+          <div id="history-list" class="history-list"><p class="empty-state">Your audits will appear here after your first run.</p></div>
+        </section>
+      </main>
+
+      <footer class="site-footer"><span>COMPETITIVE VISIBILITY / A BRIGHT DATA FIELD TOOL</span><span>PUBLIC WEB DATA · POINT-IN-TIME SNAPSHOT</span></footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

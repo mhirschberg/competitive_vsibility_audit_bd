@@ -27,11 +27,13 @@ Confirm that:
 
 - `SERP_ZONE` matches an active Bright Data SERP API zone.
 - The API token can access that zone.
-- The zone is configured for Markdown output.
+- The zone returns parsed JSON for Google when `data_format=parsed_light` is requested and Markdown for the raw Bing fallback.
 - `COUNTRY` is a valid two-letter country code.
 - `SEARCH_ENGINE` is `auto`, `google`, `bing`, or `none`.
 
 With `SEARCH_ENGINE = "auto"`, the notebook tries Google first and falls back to Bing when Google remains unavailable.
+
+Bright Data may occasionally return `HTTP 200` with an empty body and an `x-brd-error` header (for example, a captcha or rejected redirect). The audit retries a bounded number of times and treats a persistently empty response as unavailable, not as a genuine zero-result search. In debug mode, inspect the failed attempt, Bright Data error header, and selected engine in the audit log. Optional Reddit discovery follows the same rule and records a warning if its site-restricted search remains empty.
 
 If neither engine is available, the audit can continue with AI visibility and source analysis. The report should mark traditional search as not measured rather than reporting zero visibility.
 
