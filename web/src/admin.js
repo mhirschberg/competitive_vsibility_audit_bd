@@ -28,6 +28,8 @@ function isoDate(value) {
 }
 
 function workshopState(workshop) {
+  if (workshop.purged_at) return "PURGED";
+  if (workshop.purge_started_at) return "PURGING";
   const now = Date.now();
   if (workshop.opens_at && new Date(workshop.opens_at).getTime() > now) return "UPCOMING";
   if (workshop.closes_at && new Date(workshop.closes_at).getTime() <= now) return "CLOSED";
@@ -87,12 +89,19 @@ function selectWorkshop(id) {
   $("#editor-state").textContent = creating ? "DRAFT" : workshopState(workshop);
   $("#editor-state").dataset.state = creating ? "DRAFT" : workshopState(workshop);
   $("#workshop-metrics").hidden = creating;
+  $("#usage-summary").hidden = creating;
   $("#participant-link-row").hidden = creating;
   $("#slug-field").hidden = !creating;
   $("#workspace-field").hidden = !creating;
   form.elements.namedItem("slug").disabled = !creating;
   form.elements.namedItem("workspace_id").disabled = !creating;
   form.reset();
+  $("#retention-hours").value = workshop?.anonymous_retention_hours ?? "48";
+  $("#retention-hours").disabled = creating;
+  $("#save-retention").disabled = creating;
+  $("#retention-note").textContent = creating
+    ? "New workshops default to 48 hours. Set a closing time to activate cleanup."
+    : "";
   const workspaceSelect = form.elements.namedItem("workspace_id");
   workspaceSelect.replaceChildren();
   for (const workspace of data.workspaces) {
@@ -113,11 +122,50 @@ function selectWorkshop(id) {
     $("#metric-active").textContent = `${workshop.active_audits} / ${workshop.max_concurrent_audits}`;
     $("#metric-queued").textContent = `${workshop.queued_audits} waiting in queue`;
     $("#metric-completed").textContent = workshop.completed_audits;
+    const operations = Number(workshop.brightdata_operations || 0);
+    const results = Number(workshop.brightdata_confirmed_results || 0);
+    const cost = Number(workshop.brightdata_estimated_cost_usd || 0);
+    $("#usage-summary").textContent = `BRIGHT DATA / ${operations.toLocaleString()} operations · ${results.toLocaleString()} confirmed results · ~$${cost.toFixed(2)} estimated. ${workshop.purged_anonymous_audits || 0} anonymous audit records purged; totals preserved.`;
+    $("#retention-hours").value = workshop.anonymous_retention_hours ?? "";
+    const closed = workshop.closes_at && new Date(workshop.closes_at).getTime() <= Date.now();
+    const locked = Boolean(workshop.purge_started_at || closed);
+    $("#retention-hours").disabled = locked;
+    $("#save-retention").disabled = locked;
+    $("#retention-note").textContent = workshop.purged_at
+      ? `Anonymous data removed ${new Date(workshop.purged_at).toLocaleString()}. Aggregate totals remain.`
+      : workshop.purge_started_at
+        ? "Cleanup is in progress. This setting is locked."
+        : closed
+          ? "This workshop has closed; retention can no longer be changed."
+          : workshop.anonymous_retention_hours == null
+            ? "Automatic cleanup is off for this existing workshop until you enable it."
+            : workshop.closes_at
+              ? `Cleanup starts no earlier than ${workshop.anonymous_retention_hours} hours after closing or the last finished audit.`
+              : "Set a closing time; cleanup starts after the workshop closes.";
     const link = `${location.origin}/?workshop=${encodeURIComponent(workshop.slug)}`;
     $("#participant-link").href = link;
     $("#participant-link").textContent = link;
   }
   renderList();
+}
+
+async function saveRetention() {
+  if (!selectedId) return;
+  const button = $("#save-retention");
+  button.disabled = true;
+  message($("#dashboard-message"), "");
+  try {
+    const value = $("#retention-hours").value;
+    await api(`/admin/workshops/${selectedId}/retention`, {
+      method: "PATCH",
+      body: JSON.stringify({ anonymous_retention_hours: value ? Number(value) : null }),
+    });
+    await refresh();
+    message($("#dashboard-message"), "Retention saved. Existing reports are not removed until the scheduled time.");
+  } catch (error) {
+    message($("#dashboard-message"), error.message);
+    button.disabled = false;
+  }
 }
 
 async function refresh() {
@@ -218,6 +266,7 @@ async function initialize() {
     });
     $("#refresh").addEventListener("click", refresh);
     $("#new-workshop").addEventListener("click", () => selectWorkshop(null));
+    $("#save-retention").addEventListener("click", saveRetention);
     $("#copy-participant-link").addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText($("#participant-link").href);

@@ -117,6 +117,7 @@ fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .primary-button:hover { background: #0c2e28; transform: translateY(-2px); }
 .primary-button:disabled { cursor: wait; opacity: .72; transform: none; }
 .form-footer p { max-width: 235px; color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0; }
+.workshop-retention-note { margin: 12px 0 0; padding-left: 13px; border-left: 2px solid #9eb9a7; color: #5b7063; font-size: 11px; line-height: 1.5; }
 .pending-note, .form-message { margin: 18px 0 0; padding: 13px 15px; font-size: 13px; line-height: 1.5; }
 .pending-note { color: #6d4a24; background: #fff2dd; border-left: 3px solid #dba64e; }
 .form-message { color: #713521; background: #fff1ec; border-left: 3px solid var(--orange); }

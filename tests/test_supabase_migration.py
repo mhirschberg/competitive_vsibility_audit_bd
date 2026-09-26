@@ -12,6 +12,7 @@ MIGRATION = (
     / "20260926000000_audit_foundation.sql"
 )
 ADMIN_MIGRATION = MIGRATION.with_name("20260926010000_workshop_admin.sql")
+PURGE_MIGRATION = MIGRATION.with_name("20260926020000_workshop_anonymous_purge.sql")
 
 
 class SupabaseMigrationTests(unittest.TestCase):
@@ -62,6 +63,26 @@ class SupabaseMigrationTests(unittest.TestCase):
             )
         self.assertIn("m.role in ('owner', 'admin')", sql)
         self.assertIn("'active_audits', counts.active_audits", sql)
+
+    def test_anonymous_purge_is_opt_in_for_existing_events_and_service_only(self):
+        sql = PURGE_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("add column anonymous_retention_hours integer", sql)
+        self.assertIn("alter column anonymous_retention_hours set default 48", sql)
+        self.assertIn("create table public.workshop_purge_totals", sql)
+        self.assertIn("create table public.workshop_purge_users", sql)
+        self.assertIn("alter table public.workshop_purge_totals enable row level security", sql)
+        self.assertIn("alter table public.workshop_purge_users enable row level security", sql)
+        for function in (
+            "purge_due_workshops", "purge_workshop_batch", "purge_finalize_batch",
+            "purge_workshop_users", "purge_complete_workshop",
+        ):
+            self.assertIn(f"create function public.{function}", sql)
+            self.assertRegex(
+                sql,
+                rf"revoke all on function public\.{function}\([^;]+from public, anon, authenticated",
+            )
+        self.assertIn("u.is_anonymous is true", sql)
+        self.assertIn("w.purged_at is null", sql)
 
 
 if __name__ == "__main__":

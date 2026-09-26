@@ -43,10 +43,12 @@ raise the workshop admission caps deliberately before inviting attendees.
 | --- | --- |
 | Database schema, access rules, admission/claim/heartbeat functions | `supabase/migrations/20260926000000_audit_foundation.sql` |
 | Organizer permissions, settings functions, and change log | `supabase/migrations/20260926010000_workshop_admin.sql` |
+| Workshop retention, aggregate counters, and purge functions | `supabase/migrations/20260926020000_workshop_anonymous_purge.sql` |
 | API | `hosted/api.py` |
 | One-audit worker | `hosted/worker.py` |
 | Dispatch reconciliation | `hosted/reconcile.py` |
 | Per-audit delayed checks | `hosted/watchdog_tasks.py`, `hosted/watchdog.py` |
+| Anonymous-workshop cleanup | `hosted/purge.py`, private `POST /purge` on the watchdog |
 | Container definitions and Cloud Build recipes | `hosted/Dockerfile.api`, `hosted/Dockerfile.worker`, `hosted/cloudbuild.yaml`, `hosted/cloudbuild-web.yaml`, `web/Dockerfile` |
 | Static participant and organizer UIs | `web/` |
 | Database design and remaining risks | `docs/SUPABASE_DATABASE.md` |
@@ -71,6 +73,7 @@ site. The repository's `.dockerignore` also excludes `.env` files from images.
 | `WATCHDOG_QUEUE` | API and watchdog | Cloud Tasks queue name |
 | `WATCHDOG_URL` | API and watchdog | Default URL of the private watchdog Cloud Run service |
 | `WATCHDOG_INVOKER_EMAIL` | API and watchdog | Task identity allowed to invoke only the private watchdog service |
+| `PURGE_ENABLED` | Watchdog | Set to `true` only after the migration and dry-run verification; otherwise mutating cleanup is disabled |
 | `ENGINE_COMMIT` | API | Git commit SHA of the code inside the worker image |
 | `METHODOLOGY_VERSION` | API | Explicit method label, initially `v1` |
 | `WEB_ORIGIN` | API | Exact HTTPS origin of the future static UI, for CORS |
@@ -108,6 +111,34 @@ and per-participant audit caps. Lowering caps blocks future admissions or
 dispatch; it does not cancel work already running. `budget_usd` is **not** an
 enforced dollar limit and is deliberately absent from the organizer form.
 
+## Anonymous workshop retention
+
+New workshops default to a 48-hour download window; the organizer may choose
+12, 24, 48, 72, or 168 hours, or turn automatic cleanup off, before the
+workshop closes. Existing workshops have `NULL` retention after the migration,
+so **none of their reports is deleted automatically** until an organizer
+explicitly enables it while the event is still open. A workshop without a
+closing time is never due. The clock starts at the later of the closing time
+and the last audit's terminal update; active or queued audits delay cleanup.
+
+The private cleanup route is designed for one hourly Cloud Scheduler call.
+It first identifies due workshops, removes report objects through the Supabase
+Storage API, then transactionally snapshots anonymous audit and Bright Data
+counts and deletes only anonymous audit rows. It removes an empty personal
+workspace and the anonymous Auth identity after its last audit. Registered
+users and their reports stay. The organizer still sees aggregate counts, but
+not the erased report content. Each batch can be retried after a failed call;
+the scheduler may invoke it more than once. The service stops mutating cleanup
+unless `PURGE_ENABLED=true`.
+
+Deployment order: apply the migration, deploy API/web/watchdog, call the
+private `POST /purge?dry_run=true` with authorized service credentials, inspect
+the planned workshop and object counts, then enable `PURGE_ENABLED` and create
+the hourly authenticated Scheduler request to the **private** watchdog service.
+Do not point Scheduler at the public API. The local destructive integration
+test requires `RUN_SUPABASE_PURGE_INTEGRATION=1` and verifies the local API URL
+is exactly `http://127.0.0.1:54321`; it never targets the hosted project.
+
 ## Before exposing it to workshop attendees
 
 1. Keep the versioned migration in Git and connect the **separate** Competitive
@@ -144,7 +175,7 @@ enforced dollar limit and is deliberately absent from the organizer form.
    it only after its `AUDIT_API_URL` and `WORKSHOP_ID` exist. The image bakes in
    **public** configuration only. It signs in anonymously only when someone submits,
    keeps the audit ID across reloads, and reads history under that user's RLS
-   policy. Implement Storage retention cleanup. Test a concurrent room-sized
+   policy. Test a concurrent room-sized
    burst before replacing the current Gradio app.
 
 Verified so far: Python unit tests, SQL migration/RLS tests, a full live audit

@@ -57,6 +57,10 @@ class FakeGateway:
         self.admin_payload = payload
         return WORKSHOP_ID
 
+    def admin_set_workshop_retention(self, **payload):
+        self.admin_payload = payload
+        return WORKSHOP_ID
+
     def submit_audit(self, **payload):
         self.payload = payload
         return AUDIT_ID
@@ -208,6 +212,35 @@ class HostedApiTests(unittest.TestCase):
                 "/admin/workshops",
                 headers=headers,
                 json={**settings, "workspace_id": str(USER_ID), "slug": "BAD SLUG"},
+            ).status_code,
+            422,
+        )
+
+    def test_admin_can_set_retention_but_anonymous_user_cannot(self):
+        path = f"/admin/workshops/{WORKSHOP_ID}/retention"
+        self.assertEqual(
+            self.client.patch(path, json={"anonymous_retention_hours": 48}).status_code,
+            401,
+        )
+        self.gateway.organizer_allowed = False
+        self.assertEqual(
+            self.client.patch(
+                path, headers={"Authorization": "Bearer anonymous-jwt"},
+                json={"anonymous_retention_hours": 48},
+            ).status_code,
+            403,
+        )
+        self.gateway.organizer_allowed = True
+        response = self.client.patch(
+            path, headers={"Authorization": "Bearer google-jwt"},
+            json={"anonymous_retention_hours": 48},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.gateway.admin_payload["p_hours"], 48)
+        self.assertEqual(
+            self.client.patch(
+                path, headers={"Authorization": "Bearer google-jwt"},
+                json={"anonymous_retention_hours": 1},
             ).status_code,
             422,
         )
