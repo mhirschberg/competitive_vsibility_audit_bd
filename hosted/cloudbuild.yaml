@@ -1,0 +1,26 @@
+# Build both runtime images from the same reviewed repository commit.
+# Example: gcloud builds submit --config hosted/cloudbuild.yaml \
+#   --substitutions=_REGISTRY=europe-west1-docker.pkg.dev/PROJECT/REPOSITORY,_TAG=GIT_SHA
+substitutions:
+  _REGISTRY: europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit
+  _TAG: development
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - hosted/Dockerfile.api
+      - -t
+      - ${_REGISTRY}/api:${_TAG}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - hosted/Dockerfile.worker
+      - -t
+      - ${_REGISTRY}/worker:${_TAG}
+      - .
+images:
+  - ${_REGISTRY}/api:${_TAG}
+  - ${_REGISTRY}/worker:${_TAG}

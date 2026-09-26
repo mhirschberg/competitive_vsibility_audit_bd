@@ -29,7 +29,7 @@ is unchanged.
 | API | `hosted/api.py` |
 | One-audit worker | `hosted/worker.py` |
 | Dispatch reconciliation | `hosted/reconcile.py` |
-| Container definitions | `hosted/Dockerfile.api`, `hosted/Dockerfile.worker` |
+| Container definitions and Cloud Build recipes | `hosted/Dockerfile.api`, `hosted/Dockerfile.worker`, `hosted/cloudbuild.yaml`, `hosted/cloudbuild-web.yaml`, `web/Dockerfile` |
 | Static participant UI | `web/` |
 | Database design and remaining risks | `docs/SUPABASE_DATABASE.md` |
 
@@ -78,7 +78,8 @@ its build environment. The worker does not receive any user's Auth token.
 3. Create a workshop record with a finite `max_total_audits`,
    `max_audits_per_user`, and `max_concurrent_audits`. `budget_usd` is recorded
    but **not enforced**; the total cap is the present spend backstop.
-4. Build and deploy the API and worker images. Give the API service identity
+4. Build and deploy the API and worker images from the same commit with
+   `hosted/cloudbuild.yaml`. Give the API service identity
    permission to execute the worker Job **with overrides** (only `AUDIT_ID` is
    overridden). Give each service identity access only to its required secrets.
    Configure the worker Job as one task with **zero automatic retries** and a
@@ -86,8 +87,9 @@ its build environment. The worker does not receive any user's Auth token.
 5. Schedule `python -m hosted.reconcile` with the API image and the same
    configuration as the API. The first version should run every minute or two.
    Without this schedule, a dispatch error can leave a request pending.
-6. Publish the static UI in `web/` only after its `AUDIT_API_URL` and
-   `WORKSHOP_ID` exist. It signs in anonymously only when someone submits,
+6. Build the static UI container with `hosted/cloudbuild-web.yaml` and publish
+   it only after its `AUDIT_API_URL` and `WORKSHOP_ID` exist. The image bakes in
+   **public** configuration only. It signs in anonymously only when someone submits,
    keeps the audit ID across reloads, and reads history under that user's RLS
    policy. Implement Storage retention cleanup. Test a full audit and a concurrent room-sized
    burst before replacing the current Gradio app.

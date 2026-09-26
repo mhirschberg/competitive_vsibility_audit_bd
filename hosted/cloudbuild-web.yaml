@@ -1,0 +1,27 @@
+# Static participant UI. All build arguments are public by design.
+substitutions:
+  _REGISTRY: europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit
+  _TAG: development
+  _SUPABASE_URL: https://example.supabase.co
+  _SUPABASE_PUBLISHABLE_KEY: sb_publishable_replace_me
+  _AUDIT_API_URL: https://example.run.app
+  _WORKSHOP_ID: 00000000-0000-4000-8000-000000000000
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - web/Dockerfile
+      - -t
+      - ${_REGISTRY}/web:${_TAG}
+      - --build-arg
+      - SUPABASE_URL=${_SUPABASE_URL}
+      - --build-arg
+      - PUBLIC_SUPABASE_TOKEN=${_SUPABASE_PUBLISHABLE_KEY}
+      - --build-arg
+      - AUDIT_API_URL=${_AUDIT_API_URL}
+      - --build-arg
+      - WORKSHOP_ID=${_WORKSHOP_ID}
+      - web
+images:
+  - ${_REGISTRY}/web:${_TAG}
