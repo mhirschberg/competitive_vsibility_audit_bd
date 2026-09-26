@@ -47,6 +47,20 @@ let currentAuditStatus = null;
 let pollTimer = null;
 let requestInFlight = false;
 
+function auditIdFromHash() {
+  return location.hash.match(/^#audit\/([0-9a-f-]{36})$/i)?.[1] || null;
+}
+
+function syncView() {
+  const auditId = auditIdFromHash();
+  document.body.dataset.view = auditId ? "audit" : location.hash === "#history" ? "history" : "home";
+  if (auditId && config && auditId !== currentAuditId) void showAudit(auditId);
+  window.scrollTo(0, 0);
+}
+
+syncView();
+window.addEventListener("hashchange", syncView);
+
 function showFormMessage(message) {
   formMessage.textContent = message;
   formMessage.hidden = !message;
@@ -166,7 +180,6 @@ async function submitAudit(event) {
     location.hash = `audit/${accepted.audit_id}`;
     await showAudit(accepted.audit_id);
     await loadHistory();
-    activeSection.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     if (error.status === 400 || error.status === 422) {
       clearStored("pending");
@@ -333,7 +346,6 @@ async function loadHistory() {
     row.addEventListener("click", async () => {
       location.hash = `audit/${audit.id}`;
       await showAudit(audit.id);
-      activeSection.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     historyList.append(row);
   }
@@ -367,10 +379,11 @@ async function initialize() {
     });
     document.addEventListener("visibilitychange", refreshAudit);
     await loadHistory();
-    const hashAuditId = location.hash.match(/^#audit\/([0-9a-f-]{36})$/i)?.[1];
+    const hashAuditId = auditIdFromHash();
     const savedAuditId = readStored("last-audit");
     const auditId = hashAuditId || savedAuditId;
     if (auditId && !pending) await showAudit(auditId);
+    syncView();
   } catch (error) {
     fields.disabled = true;
     submitButton.disabled = true;

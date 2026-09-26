@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
   </head>
-  <body>
+  <body data-view="home">
     <div class="page-shell">
       <header class="masthead">
         <a class="brand" href="#top" aria-label="Competitive Visibility home">
@@ -19,7 +19,10 @@
         </a>
         <div class="masthead-right">
           <span class="issue-label">WORKSHOP FIELD TOOL <span class="issue-dot">●</span> 2026</span>
-          <a href="#history" class="header-link">Your audits <span aria-hidden="true">↗</span></a>
+          <nav class="header-nav" aria-label="Main navigation">
+            <a href="#top" class="header-link">New audit</a>
+            <a href="#history" class="header-link">Your audits <span aria-hidden="true">↗</span></a>
+          </nav>
         </div>
       </header>
 
@@ -27,7 +30,7 @@
         <section class="hero" aria-labelledby="hero-title">
           <div class="hero-copy">
             <p class="eyebrow"><span class="eyebrow-rule"></span> A BETTER VIEW OF THE MARKET</p>
-            <h1 id="hero-title">What do buyers<br /><em>actually</em> see?</h1>
+            <h1 id="hero-title">What do buyers <em>actually</em> see?</h1>
             <p class="hero-description">Compare the companies that appear in traditional search with those that show up in AI answers. Same neutral questions. Sometimes, a very different picture.</p>
             <div class="hero-footnote"><span class="footnote-star">✳</span> A live snapshot, not a market-share score.</div>
           </div>
@@ -44,6 +47,7 @@
           </div>
         </section>
 
+        <div class="workspace-layout">
         <section class="workbench" aria-label="Audit workbench">
           <div class="section-heading">
             <div>
@@ -89,7 +93,7 @@
                   </label>
                 </div>
                 <label class="social-option">
-                  <span class="social-copy"><strong>Add Reddit conversations</strong><small>Include a small sample of public posts and comments. This can substantially increase the runtime and Bright Data usage.</small></span>
+                  <span class="social-copy"><strong>Add Reddit conversations</strong><small>A small public sample; increases runtime and Bright Data usage.</small></span>
                   <span class="switch-wrap"><input name="include_reddit_analysis" type="checkbox" /><span class="switch" aria-hidden="true"></span></span>
                 </label>
               </fieldset>
@@ -100,16 +104,17 @@
               </div>
               <p id="form-message" class="form-message" role="alert" hidden></p>
             </form>
-            <aside class="method-note" aria-label="How the audit works">
-              <p class="note-topline">FIELD NOTE / THE METHOD</p>
+            <details class="method-note">
+              <summary>How the audit works <span aria-hidden="true">↗</span></summary>
               <div class="method-item"><span>01</span><p>Find neutral buyer questions about the category.</p></div>
               <div class="method-item"><span>02</span><p>Discover two direct competitors from live search evidence.</p></div>
               <div class="method-item"><span>03</span><p>Compare search results, AI answers, and the sources behind them.</p></div>
               <div class="note-bottom">No separate AI accounts needed.<br />Powered by Bright Data collection.</div>
-            </aside>
+            </details>
           </div>
         </section>
 
+        <div class="workspace-results">
         <section id="active-audit" class="active-audit" aria-labelledby="active-heading" hidden>
           <div class="section-heading active-heading-row">
             <div>
@@ -131,6 +136,8 @@
           <div class="section-heading"><div><p class="eyebrow">03 / YOUR FIELD NOTES</p><h2 id="history-heading">Previous audits.</h2></div><p>Come back on this device to see the audits linked to your workshop session.</p></div>
           <div id="history-list" class="history-list"><p class="empty-state">Your audits will appear here after your first run.</p></div>
         </section>
+        </div>
+        </div>
       </main>
 
       <footer class="site-footer"><span>COMPETITIVE VISIBILITY / A BRIGHT DATA FIELD TOOL</span><span>PUBLIC WEB DATA · POINT-IN-TIME SNAPSHOT</span></footer>
