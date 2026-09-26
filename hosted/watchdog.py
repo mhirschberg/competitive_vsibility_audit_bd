@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException
 
 from hosted.cloud_run import CloudRunDispatcher
+from hosted.purge import purge_once
 from hosted.reconcile import reconcile_once
 from hosted.supabase_gateway import BackendError, SupabaseGateway
 from hosted.watchdog_tasks import AuditWatchdogTasks, WatchdogError
@@ -56,6 +57,15 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             return {"status": "terminal"}
         except (BackendError, WatchdogError) as exc:
             # Cloud Tasks retries non-2xx responses, preserving the same task ID.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.post("/purge")
+    def purge(dry_run: bool = False):
+        if not dry_run and settings.get("PURGE_ENABLED") != "true":
+            raise HTTPException(status_code=503, detail="Workshop purge is not enabled")
+        try:
+            return purge_once(gateway, dry_run=dry_run)
+        except BackendError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return app

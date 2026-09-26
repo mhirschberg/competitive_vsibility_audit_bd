@@ -155,7 +155,7 @@ class SupabaseGateway:
             "GET",
             "/rest/v1/workshops",
             params={
-                "select": "id,name,slug,opens_at,closes_at",
+                "select": "id,name,slug,opens_at,closes_at,anonymous_retention_hours,purged_at",
                 "slug": f"eq.{slug}",
                 "limit": "1",
             },
@@ -185,6 +185,104 @@ class SupabaseGateway:
             return UUID(result)
         except (TypeError, ValueError) as exc:
             raise BackendError("Invalid workshop ID from database") from exc
+
+    def admin_set_workshop_retention(self, **payload) -> UUID:
+        result = self._rpc("admin_set_workshop_retention", payload)
+        try:
+            return UUID(result)
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid workshop ID from database") from exc
+
+    def purge_due_workshops(self, limit: int = 20) -> list[UUID]:
+        result = self._rpc("purge_due_workshops", {"p_limit": limit})
+        try:
+            if not isinstance(result, list):
+                raise TypeError("Expected workshop IDs")
+            return [UUID(value) for value in result]
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid purge candidate response") from exc
+
+    def purge_workshop_batch(
+        self, workshop_id: UUID, *, limit: int = 100, dry_run: bool = False
+    ) -> dict:
+        result = self._rpc(
+            "purge_workshop_batch",
+            {
+                "p_workshop_id": str(workshop_id),
+                "p_limit": limit,
+                "p_dry_run": dry_run,
+            },
+        )
+        if not isinstance(result, dict) or result.get("state") not in {
+            "ready", "not_due", "active"
+        }:
+            raise BackendError("Invalid purge batch response")
+        if result["state"] == "ready":
+            try:
+                result["audit_ids"] = [UUID(value) for value in result["audit_ids"]]
+                paths = result["object_paths"]
+                if not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
+                    raise TypeError("Expected Storage paths")
+            except (KeyError, TypeError, ValueError) as exc:
+                raise BackendError("Invalid purge batch response") from exc
+        return result
+
+    def delete_storage_objects(self, paths: list[str]) -> None:
+        if not paths:
+            return
+        if len(paths) > 1000 or any(not isinstance(p, str) or not p for p in paths):
+            raise ValueError("Invalid Storage deletion batch")
+        self._admin_request(
+            "DELETE",
+            "/storage/v1/object/audit-artifacts",
+            json={"prefixes": paths},
+        )
+
+    def purge_finalize_batch(self, workshop_id: UUID, audit_ids: list[UUID]) -> int:
+        result = self._rpc(
+            "purge_finalize_batch",
+            {
+                "p_workshop_id": str(workshop_id),
+                "p_audit_ids": [str(audit_id) for audit_id in audit_ids],
+            },
+        )
+        if not isinstance(result, dict) or not isinstance(result.get("deleted"), int):
+            raise BackendError("Invalid purge completion response")
+        return result["deleted"]
+
+    def purge_workshop_users(self, workshop_id: UUID) -> list[UUID]:
+        result = self._rpc("purge_workshop_users", {"p_workshop_id": str(workshop_id)})
+        try:
+            if not isinstance(result, list):
+                raise TypeError("Expected user IDs")
+            return [UUID(value) for value in result]
+        except (TypeError, ValueError) as exc:
+            raise BackendError("Invalid purge user response") from exc
+
+    def delete_queued_anonymous_user(self, user_id: UUID) -> None:
+        response = self._admin_request("GET", f"/auth/v1/admin/users/{user_id}")
+        try:
+            user = response.json()
+            if UUID(user["id"]) != user_id:
+                raise ValueError("Wrong user")
+            is_anonymous = user["is_anonymous"] is True
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BackendError("Invalid Auth user response") from exc
+        if is_anonymous:
+            self._admin_request("DELETE", f"/auth/v1/admin/users/{user_id}")
+        else:
+            # The identity was upgraded after it was queued: preserve it.
+            self._admin_request(
+                "DELETE",
+                "/rest/v1/workshop_purge_users",
+                params={"user_id": f"eq.{user_id}"},
+            )
+
+    def purge_complete_workshop(self, workshop_id: UUID) -> bool:
+        result = self._rpc("purge_complete_workshop", {"p_workshop_id": str(workshop_id)})
+        if not isinstance(result, bool):
+            raise BackendError("Invalid purge completion response")
+        return result
 
     def reserve_dispatch(self, audit_id: UUID) -> bool:
         result = self._rpc(

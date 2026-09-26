@@ -50,6 +50,7 @@
                   <div><span>ACTIVE NOW</span><strong id="metric-active">—</strong><small id="metric-queued">Workers starting or running</small></div>
                   <div><span>COMPLETED</span><strong id="metric-completed">—</strong><small>finished reports</small></div>
                 </div>
+                <p id="usage-summary" class="usage-summary" hidden></p>
                 <div id="participant-link-row" class="participant-link-row" hidden><div><span>PARTICIPANT LINK</span><a id="participant-link" target="_blank" rel="noopener noreferrer"></a></div><button id="copy-participant-link" type="button">Copy link ↗</button></div>
                 <form id="workshop-form">
                   <div class="form-section"><span class="form-section-index">01 / IDENTITY</span><div class="admin-field-grid">
@@ -68,6 +69,21 @@
                   </div></div>
                   <div class="editor-footer"><button id="save-workshop" class="admin-primary" type="submit">Save workshop <span>↗</span></button><p>Changes to limits affect new admissions. Existing audits keep running.</p></div>
                 </form>
+                <div class="retention-section">
+                  <div><span class="form-section-index">04 / AFTER THE WORKSHOP</span><h3>Leave time to take it home.</h3><p>Anonymous reports stay available after closing, then their files and personal data are removed. Aggregate workshop totals remain.</p></div>
+                  <div class="retention-controls">
+                    <label class="admin-field"><span>Delete anonymous data after</span><select id="retention-hours">
+                      <option value="">Not scheduled</option>
+                      <option value="12">12 hours</option>
+                      <option value="24">24 hours</option>
+                      <option value="48">48 hours</option>
+                      <option value="72">72 hours</option>
+                      <option value="168">7 days</option>
+                    </select></label>
+                    <button id="save-retention" class="admin-secondary" type="button">Save retention ↗</button>
+                    <p id="retention-note" class="retention-note"></p>
+                  </div>
+                </div>
               </div>
             </section>
           </div>

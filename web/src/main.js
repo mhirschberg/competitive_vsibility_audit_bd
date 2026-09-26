@@ -368,6 +368,11 @@ async function initialize() {
       if (!uuidPattern.test(workshop.id || "")) throw new Error("Invalid workshop configuration");
       config.workshop_id = workshop.id;
       document.querySelector(".issue-label").textContent = workshop.name;
+      if (workshop.anonymous_retention_hours != null) {
+        const note = document.querySelector("#workshop-retention-note");
+        note.textContent = `Workshop reports are available for at least ${workshop.anonymous_retention_hours} hours after closing or the last audit finishes. Download your files before anonymous data is removed.`;
+        note.hidden = false;
+      }
     }
     supabase = createClient(config.supabase_url, config.supabase_publishable_key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },

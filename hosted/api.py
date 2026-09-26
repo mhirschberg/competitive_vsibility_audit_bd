@@ -52,6 +52,10 @@ class CreateWorkshop(WorkshopSettings):
     slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=100)
 
 
+class RetentionSettings(BaseModel):
+    anonymous_retention_hours: int | None = Field(default=None, ge=12, le=168)
+
+
 def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) -> FastAPI:
     settings = settings or os.environ
     if gateway is None:
@@ -173,6 +177,27 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                 p_max_total_audits=request.max_total_audits,
                 p_max_concurrent_audits=request.max_concurrent_audits,
                 p_max_audits_per_user=request.max_audits_per_user,
+            )
+            return {"id": workshop_id}
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except SubmissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.patch("/admin/workshops/{workshop_id}/retention")
+    def admin_set_workshop_retention(
+        workshop_id: UUID,
+        request: RetentionSettings,
+        authorization: str | None = Header(default=None),
+    ):
+        user_id = organizer_id(authorization)
+        try:
+            gateway.admin_set_workshop_retention(
+                p_user_id=str(user_id),
+                p_workshop_id=str(workshop_id),
+                p_hours=request.anonymous_retention_hours,
             )
             return {"id": workshop_id}
         except AuthorizationError as exc:
