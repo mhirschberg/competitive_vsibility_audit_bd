@@ -7,6 +7,17 @@ completed on 2026-09-26 and produced downloadable report artifacts. The
 notebook was not changed for hosting. This is still a workshop deployment:
 raise the workshop admission caps deliberately before inviting attendees.
 
+## Live smoke deployment
+
+- Web UI: `https://competitive-audit-web-4lvms3qmsa-ew.a.run.app`
+- API health: `https://competitive-audit-api-4lvms3qmsa-ew.a.run.app/health`
+- Google Cloud project/region: `getmuzoboz` / `europe-west1`
+- Supabase project ref: `xhntpuwntpftjqmlzxgk` (the separate Competitive Audit project)
+- Web UI currently points to the bounded `deployment-smoke-test-20260926`
+  workshop. Its cap is two total audits, both used by deployment tests. Before
+  inviting attendees, create a new finite-cap workshop and rebuild only the
+  web image with its `WORKSHOP_ID`. Do not simply remove the caps.
+
 ## Intended flow
 
 1. A visitor signs in with Supabase Auth and submits one audit to the API.
@@ -101,7 +112,8 @@ its build environment. The worker does not receive any user's Auth token.
    deterministic task name makes duplicate API submissions safe. Keep the
    manual `python -m hosted.reconcile` Job for recovery. The deployed
    `competitive-audit-daily-recovery` Cloud Scheduler trigger runs that Job
-   once per day as a low-frequency fallback if a check was never enqueued.
+   once per day as a low-frequency safety sweep for stranded dispatches and
+   stale workers. It does not recreate a lost per-audit check chain.
 6. Build the static UI container with `hosted/cloudbuild-web.yaml` and publish
    it only after its `AUDIT_API_URL` and `WORKSHOP_ID` exist. The image bakes in
    **public** configuration only. It signs in anonymously only when someone submits,
