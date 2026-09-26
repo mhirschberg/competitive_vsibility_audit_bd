@@ -1,0 +1,16 @@
+# Rebuild only the API when its HTTP wrapper changes; the pinned worker image
+# and notebook remain untouched.
+substitutions:
+  _REGISTRY: europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit
+  _TAG: development
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - hosted/Dockerfile.api
+      - -t
+      - ${_REGISTRY}/api:${_TAG}
+      - .
+images:
+  - ${_REGISTRY}/api:${_TAG}

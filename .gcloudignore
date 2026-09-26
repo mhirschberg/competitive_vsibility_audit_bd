@@ -1,0 +1,7 @@
+.git/
+#!include:.gitignore
+
+# Build recipes use app.py, the notebook, scripts/, hosted/, and web/ only.
+docs/
+tests/
+supabase/

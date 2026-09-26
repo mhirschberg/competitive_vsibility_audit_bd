@@ -64,7 +64,9 @@ def create_app(*, gateway=None, dispatcher=None, settings=None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
         )
 
-    @app.get("/healthz")
+    # Cloud Run reserves some URL paths ending in "z", including /healthz.
+    @app.get("/health")
+    @app.get("/healthz", include_in_schema=False)
     def healthz():
         return {"status": "ok"}
 
