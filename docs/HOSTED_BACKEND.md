@@ -1,19 +1,23 @@
 # Hosted audit backend: current state and deployment checklist
 
-This is a **local prototype, not a deployed replacement** for the current
-Gradio workshop app. The separate Competitive Audit Supabase project is
-connected to this repository and set to apply migrations from `main`, but this
-migration has not been merged or applied yet. No Cloud Run service/job has
-been created. The static UI exists locally but is not published. The notebook
-is unchanged.
+The separate Competitive Audit Supabase project applies migrations from
+`main`. The API, static UI, private watchdog service, and per-audit worker Job
+are deployed to Cloud Run in `getmuzoboz` / `europe-west1`. A full Notion audit
+completed on 2026-09-26 and produced downloadable report artifacts. The
+notebook was not changed for hosting. This is still a workshop deployment:
+raise the workshop admission caps deliberately before inviting attendees.
 
 ## Intended flow
 
 1. A visitor signs in with Supabase Auth and submits one audit to the API.
 2. `submit_audit` stores the request with a client UUID, making browser retries
    idempotent. Workshop total and per-user limits are checked transactionally.
-3. The API reserves a workshop concurrency slot and starts one Cloud Run Job.
-   A scheduled reconciler can retry a queued or uncertain dispatch.
+3. The API schedules one delayed, authenticated Cloud Task for that audit,
+   reserves a workshop concurrency slot, and starts one Cloud Run Job. The
+   private watchdog service checks that audit every two minutes while it is
+   active. Each successful check schedules exactly one successor; a terminal
+   audit ends the chain. Failed checks are retried by Cloud Tasks. A separate
+   manual reconciler Job can repair queued or uncertain dispatches.
 4. The Job claims the audit before any Bright Data call, runs the existing
    notebook through the existing web wrapper, sends heartbeats and stage
    events, and uploads the log and reports to private Supabase Storage.
@@ -29,6 +33,7 @@ is unchanged.
 | API | `hosted/api.py` |
 | One-audit worker | `hosted/worker.py` |
 | Dispatch reconciliation | `hosted/reconcile.py` |
+| Per-audit delayed checks | `hosted/watchdog_tasks.py`, `hosted/watchdog.py` |
 | Container definitions and Cloud Build recipes | `hosted/Dockerfile.api`, `hosted/Dockerfile.worker`, `hosted/cloudbuild.yaml`, `hosted/cloudbuild-web.yaml`, `web/Dockerfile` |
 | Static participant UI | `web/` |
 | Database design and remaining risks | `docs/SUPABASE_DATABASE.md` |
@@ -42,14 +47,17 @@ site. The repository's `.dockerignore` also excludes `.env` files from images.
 
 | Variable | Where it goes | Source |
 | --- | --- | --- |
-| `SUPABASE_URL` | API, worker, future browser UI | Supabase project's API URL |
-| `SUPABASE_PUBLISHABLE_KEY` | API, worker, future browser UI | Supabase publishable key (`sb_publishable_…`) |
-| `SUPABASE_SECRET_KEY` | API and worker **only** | Supabase secret key (`sb_secret_…`), supplied through Google Secret Manager |
+| `SUPABASE_URL` | API, watchdog, worker, browser UI | Supabase project's API URL |
+| `SUPABASE_PUBLISHABLE_KEY` | API, watchdog, worker, browser UI | Supabase publishable key (`sb_publishable_…`) |
+| `SUPABASE_SECRET_KEY` | API, watchdog, worker **only** | Supabase secret key (`sb_secret_…`), supplied through Google Secret Manager |
 | `BRIGHTDATA_API_TOKEN` | Worker **only** | Existing Bright Data token, supplied through Secret Manager |
 | `SERP_ZONE` | Worker **only** | Existing Bright Data SERP zone name |
-| `GOOGLE_CLOUD_PROJECT` | API and reconciler | Google Cloud project ID, not display name |
-| `CLOUD_RUN_REGION` | API and reconciler | Region of the worker Job |
-| `CLOUD_RUN_JOB_NAME` | API and reconciler | Deployed worker Job name |
+| `GOOGLE_CLOUD_PROJECT` | API, watchdog, reconciler | Google Cloud project ID, not display name |
+| `CLOUD_RUN_REGION` | API, watchdog, reconciler | Region of the worker Job and Cloud Tasks queue |
+| `CLOUD_RUN_JOB_NAME` | API, watchdog, reconciler | Deployed worker Job name |
+| `WATCHDOG_QUEUE` | API and watchdog | Cloud Tasks queue name |
+| `WATCHDOG_URL` | API and watchdog | Default URL of the private watchdog Cloud Run service |
+| `WATCHDOG_INVOKER_EMAIL` | API and watchdog | Task identity allowed to invoke only the private watchdog service |
 | `ENGINE_COMMIT` | API | Git commit SHA of the code inside the worker image |
 | `METHODOLOGY_VERSION` | API | Explicit method label, initially `v1` |
 | `WEB_ORIGIN` | API | Exact HTTPS origin of the future static UI, for CORS |
@@ -84,21 +92,25 @@ its build environment. The worker does not receive any user's Auth token.
    overridden). Give each service identity access only to its required secrets.
    Configure the worker Job as one task with **zero automatic retries** and a
    timeout long enough for a complete audit; a retry must not repeat paid work.
-5. Schedule `python -m hosted.reconcile` with the API image and the same
-   configuration as the API. The first version should run every minute or two.
-   Without this schedule, a dispatch error can leave a request pending.
+5. Create a Cloud Tasks queue and private watchdog Cloud Run service. Give API
+   and watchdog identities `roles/cloudtasks.enqueuer` on that queue and
+   `roles/iam.serviceAccountUser` only on the task-invoker identity. Give the
+   task-invoker identity `roles/run.invoker` only on the private service. The
+   watchdog identity also needs the Supabase secret and permission to execute
+   the worker Job with overrides. Cloud Tasks retries transient failures; the
+   deterministic task name makes duplicate API submissions safe. Keep the
+   manual `python -m hosted.reconcile` Job for recovery. The deployed
+   `competitive-audit-daily-recovery` Cloud Scheduler trigger runs that Job
+   once per day as a low-frequency fallback if a check was never enqueued.
 6. Build the static UI container with `hosted/cloudbuild-web.yaml` and publish
    it only after its `AUDIT_API_URL` and `WORKSHOP_ID` exist. The image bakes in
    **public** configuration only. It signs in anonymously only when someone submits,
    keeps the audit ID across reloads, and reads history under that user's RLS
-   policy. Implement Storage retention cleanup. Test a full audit and a concurrent room-sized
+   policy. Implement Storage retention cleanup. Test a concurrent room-sized
    burst before replacing the current Gradio app.
 
-Locally verified so far: Python unit tests, API and worker container builds,
-static UI build and desktop/mobile visual inspection, runner generation/
-compilation inside the worker image, SQL migration/RLS tests in a throwaway
-PostgreSQL 16 container, and an opt-in local Supabase Auth/REST/RLS/Storage
-integration test (`RUN_SUPABASE_INTEGRATION=1`). The latter checks real
-anonymous sign-in, idempotent submission, cross-user isolation, worker claim,
-private upload, and signed download without calling Bright Data.
-No live Supabase, Cloud Run, or Bright Data end-to-end test has been run.
+Verified so far: Python unit tests, SQL migration/RLS tests, a full live audit
+through the public UI/API/worker/Supabase path, refresh recovery, and a private
+Cloud Task invocation that ended when it found a completed audit, and a live
+Canva audit whose first private check scheduled its successor. Room-sized
+concurrency still needs a deliberate live test.

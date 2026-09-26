@@ -17,6 +17,7 @@ from hosted.supabase_gateway import (
     SubmissionError,
     SupabaseGateway,
 )
+from hosted.watchdog_tasks import AuditWatchdogTasks, WatchdogError
 
 
 class AuditRequest(BaseModel):
@@ -35,7 +36,7 @@ class AuditAccepted(BaseModel):
     dispatch_state: Literal["started", "already_pending", "pending_retry"]
 
 
-def create_app(*, gateway=None, dispatcher=None, settings=None) -> FastAPI:
+def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) -> FastAPI:
     settings = settings or os.environ
     if gateway is None:
         gateway = SupabaseGateway(
@@ -48,6 +49,14 @@ def create_app(*, gateway=None, dispatcher=None, settings=None) -> FastAPI:
             settings["GOOGLE_CLOUD_PROJECT"],
             settings["CLOUD_RUN_REGION"],
             settings["CLOUD_RUN_JOB_NAME"],
+        )
+    if scheduler is None and settings.get("WATCHDOG_QUEUE"):
+        scheduler = AuditWatchdogTasks(
+            settings["GOOGLE_CLOUD_PROJECT"],
+            settings["CLOUD_RUN_REGION"],
+            settings["WATCHDOG_QUEUE"],
+            settings["WATCHDOG_URL"],
+            settings["WATCHDOG_INVOKER_EMAIL"],
         )
     engine_commit = settings.get("ENGINE_COMMIT", "").strip()
     methodology_version = settings.get("METHODOLOGY_VERSION", "").strip()
@@ -97,6 +106,10 @@ def create_app(*, gateway=None, dispatcher=None, settings=None) -> FastAPI:
                 p_methodology_version=methodology_version,
                 p_workshop_id=str(request.workshop_id),
             )
+            if scheduler is not None:
+                # Schedule before dispatch: a failed enqueue leaves a retryable
+                # request and never strands an unmonitored worker.
+                scheduler.schedule(audit_id)
             if not gateway.reserve_dispatch(audit_id):
                 return AuditAccepted(
                     audit_id=audit_id, dispatch_state="already_pending"
@@ -115,6 +128,8 @@ def create_app(*, gateway=None, dispatcher=None, settings=None) -> FastAPI:
         except SubmissionError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except WatchdogError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/audits/{audit_id}")

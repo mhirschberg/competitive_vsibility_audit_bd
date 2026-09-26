@@ -7,6 +7,7 @@ from hosted.api import create_app
 from hosted.cloud_run import CloudRunDispatcher, DispatchError
 from hosted.reconcile import reconcile_once
 from hosted.supabase_gateway import SupabaseGateway
+from hosted.watchdog_tasks import WatchdogError
 
 
 AUDIT_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -66,6 +67,17 @@ class FakeDispatcher:
         return "operations/test"
 
 
+class FakeWatchdog:
+    def __init__(self):
+        self.calls = []
+        self.fail = False
+
+    def schedule(self, audit_id, sequence=0):
+        self.calls.append((audit_id, sequence))
+        if self.fail:
+            raise WatchdogError("mock failure")
+
+
 class HostedApiTests(unittest.TestCase):
     def setUp(self):
         self.gateway = FakeGateway()
@@ -112,6 +124,36 @@ class HostedApiTests(unittest.TestCase):
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_watchdog_is_scheduled_before_dispatch(self):
+        watchdog = FakeWatchdog()
+        app = create_app(
+            gateway=self.gateway,
+            dispatcher=self.dispatcher,
+            scheduler=watchdog,
+            settings={"ENGINE_COMMIT": "test-commit", "METHODOLOGY_VERSION": "v1"},
+        )
+        response = TestClient(app).post(
+            "/audits", headers={"Authorization": "Bearer user-jwt"}, json=self.request
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(watchdog.calls, [(AUDIT_ID, 0)])
+        self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
+
+    def test_failed_watchdog_enqueue_does_not_start_worker(self):
+        watchdog = FakeWatchdog()
+        watchdog.fail = True
+        app = create_app(
+            gateway=self.gateway,
+            dispatcher=self.dispatcher,
+            scheduler=watchdog,
+            settings={"ENGINE_COMMIT": "test-commit", "METHODOLOGY_VERSION": "v1"},
+        )
+        response = TestClient(app).post(
+            "/audits", headers={"Authorization": "Bearer user-jwt"}, json=self.request
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(self.dispatcher.calls, [])
 
     def test_missing_authentication_or_workshop_is_rejected(self):
         no_auth = self.client.post("/audits", json=self.request)
