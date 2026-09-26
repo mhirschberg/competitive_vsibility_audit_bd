@@ -359,6 +359,16 @@ async function initialize() {
     if (!config.supabase_url || !config.supabase_publishable_key || !config.api_url || !uuidPattern.test(config.workshop_id || "")) {
       throw new Error("Workshop configuration is incomplete");
     }
+    const workshopSlug = new URLSearchParams(location.search).get("workshop");
+    if (workshopSlug) {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(workshopSlug)) throw new Error("Invalid workshop link");
+      const workshopResponse = await fetch(`${config.api_url}/workshops/${encodeURIComponent(workshopSlug)}`, { cache: "no-store" });
+      if (!workshopResponse.ok) throw new Error("This workshop link is not available");
+      const workshop = await workshopResponse.json();
+      if (!uuidPattern.test(workshop.id || "")) throw new Error("Invalid workshop configuration");
+      config.workshop_id = workshop.id;
+      document.querySelector(".issue-label").textContent = workshop.name;
+    }
     supabase = createClient(config.supabase_url, config.supabase_publishable_key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
     });
