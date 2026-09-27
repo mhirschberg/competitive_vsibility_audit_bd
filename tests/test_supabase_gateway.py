@@ -36,6 +36,7 @@ class FakeSession:
         }
         self.auth_payload = {"id": "00000000-0000-0000-0000-000000000001"}
         self.auth_responses = []
+        self.post_payload = str(AUDIT_ID)
 
     def get(self, url, **kwargs):
         self.calls.append(("GET", url, kwargs))
@@ -50,7 +51,7 @@ class FakeSession:
 
     def post(self, url, **kwargs):
         self.calls.append(("POST", url, kwargs))
-        return FakeResponse(str(AUDIT_ID))
+        return FakeResponse(self.post_payload)
 
     def request(self, method, url, **kwargs):
         self.calls.append((method, url, kwargs))
@@ -76,6 +77,18 @@ class SupabaseGatewayTests(unittest.TestCase):
         self.assertEqual(auth_headers["Authorization"], "Bearer user-jwt")
         self.assertEqual(rpc_headers["apikey"], SECRET_KEY)
         self.assertNotIn("Authorization", rpc_headers)
+
+    def test_registered_users_rpc_is_service_only_and_paged(self):
+        self.session.post_payload = {"total": 1, "users": [{"email": "member@example.com"}]}
+        result = self.gateway.admin_list_registered_users(
+            UUID("00000000-0000-0000-0000-000000000001"), 25, 50
+        )
+        self.assertEqual(result["total"], 1)
+        method, url, options = self.session.calls[-1]
+        self.assertEqual(method, "POST")
+        self.assertTrue(url.endswith("/rpc/admin_list_registered_users"))
+        self.assertEqual(options["json"]["p_offset"], 50)
+        self.assertEqual(options["headers"]["apikey"], SECRET_KEY)
 
     def test_admin_requires_verified_google_provider_not_user_metadata(self):
         with self.assertRaises(AuthorizationError):

@@ -25,6 +25,7 @@ class FakeGateway:
         self.status_result = {"id": str(AUDIT_ID), "status": "running", "steps": []}
         self.signed_url = "https://test-project.supabase.co/storage/v1/object/sign/test"
         self.organizer_allowed = True
+        self.site_admin_allowed = True
         self.trial_allowed = True
         self.trial_quota_error = None
         self.admin_payload = None
@@ -61,6 +62,13 @@ class FakeGateway:
             "workspaces": [{"id": str(USER_ID), "name": "Organizer"}],
             "workshops": [],
         }
+
+    def admin_list_registered_users(self, user_id, limit, offset):
+        assert user_id == USER_ID
+        if not self.site_admin_allowed:
+            raise AuthorizationError("Site admin access required")
+        return {"total": 1, "users": [{"id": str(USER_ID), "email": "member@example.com",
+                                       "audit_count": 1, "completed_count": 1}]}
 
     def admin_create_workshop(self, **payload):
         self.admin_payload = payload
@@ -196,6 +204,27 @@ class HostedApiTests(unittest.TestCase):
             "/admin/workshops", headers={"Authorization": "Bearer google-jwt"}
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_registered_users_requires_google_and_separate_site_admin_access(self):
+        self.assertEqual(self.client.get("/admin/users").status_code, 401)
+        self.gateway.organizer_allowed = False
+        self.assertEqual(self.client.get(
+            "/admin/users", headers={"Authorization": "Bearer anonymous-jwt"}
+        ).status_code, 403)
+        self.gateway.organizer_allowed = True
+        self.gateway.site_admin_allowed = False
+        self.assertEqual(self.client.get(
+            "/admin/users", headers={"Authorization": "Bearer organizer-jwt"}
+        ).status_code, 403)
+        self.gateway.site_admin_allowed = True
+        response = self.client.get(
+            "/admin/users?limit=25&offset=0", headers={"Authorization": "Bearer owner-jwt"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 1)
+        self.assertEqual(self.client.get(
+            "/admin/users?limit=101", headers={"Authorization": "Bearer owner-jwt"}
+        ).status_code, 422)
 
     def test_admin_can_create_and_update_finite_workshop_limits(self):
         settings = {

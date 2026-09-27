@@ -200,6 +200,16 @@ class SupabaseGateway:
             raise BackendError("Invalid organizer response")
         return result
 
+    def admin_list_registered_users(self, user_id: UUID, limit: int, offset: int) -> dict:
+        result = self._rpc("admin_list_registered_users", {
+            "p_user_id": str(user_id),
+            "p_limit": limit,
+            "p_offset": offset,
+        })
+        if not isinstance(result, dict) or not isinstance(result.get("users"), list):
+            raise BackendError("Invalid registered users response")
+        return result
+
     def admin_create_workshop(self, **payload) -> UUID:
         result = self._rpc("admin_create_workshop", payload)
         try:

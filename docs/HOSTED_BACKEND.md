@@ -45,6 +45,7 @@ raise the workshop admission caps deliberately before inviting attendees.
 | Organizer permissions, settings functions, and change log | `supabase/migrations/20260926010000_workshop_admin.sql` |
 | Workshop retention, aggregate counters, and purge functions | `supabase/migrations/20260926020000_workshop_anonymous_purge.sql` |
 | Registered-trial admission and status | `supabase/migrations/20260926030000_google_trial_audits.sql` |
+| Private registered-user list and site-owner grant | `supabase/migrations/20260927000000_registered_users_admin.sql` |
 | API | `hosted/api.py` |
 | One-audit worker | `hosted/worker.py` |
 | Dispatch reconciliation | `hosted/reconcile.py` |
@@ -106,6 +107,15 @@ workspace through a one-time admin operation. Never grant a role by matching
 an email passed from the browser. The browser never receives the Supabase
 secret key. New and changed workshop limits are recorded in
 `workshop_admin_events`.
+
+The **Registered users** tab is a separate project-wide privilege, not a
+workshop-organizer privilege. The migration grants `site_admins` only if there
+is exactly one existing owner of a team workspace with a workshop. If there
+are zero or multiple such owners, it grants nobody; an operator must insert
+the intended Auth user ID into `site_admins` using trusted database access.
+Never expose that table or the Supabase secret key to the browser. The
+server-only listing excludes anonymous accounts, includes Google signups even
+before their first audit, and counts only their personal trial audits.
 
 ## Personal trial
 

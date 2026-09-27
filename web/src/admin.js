@@ -10,6 +10,9 @@ let supabase;
 let session;
 let data = { workspaces: [], workshops: [] };
 let selectedId = null;
+let activeView = "workshops";
+let usersOffset = 0;
+const usersPageSize = 25;
 
 function message(target, value) {
   target.textContent = value || "";
@@ -25,6 +28,14 @@ function localDate(value) {
 
 function isoDate(value) {
   return value ? new Date(value).toISOString() : null;
+}
+
+function displayDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function workshopState(workshop) {
@@ -50,8 +61,95 @@ async function api(path, options = {}) {
     cache: "no-store",
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || "The server could not complete this request.");
+  if (!response.ok) {
+    const error = new Error(body.detail || "The server could not complete this request.");
+    error.status = response.status;
+    throw error;
+  }
   return body;
+}
+
+function setView(view) {
+  activeView = view;
+  $("#workshops-view").hidden = view !== "workshops";
+  $("#users-view").hidden = view !== "users";
+  $("#workshops-tab").setAttribute("aria-pressed", String(view === "workshops"));
+  $("#users-tab").setAttribute("aria-pressed", String(view === "users"));
+  message($("#dashboard-message"), "");
+  if (view === "users") refreshUsers();
+}
+
+function renderUsers(result) {
+  const list = $("#users-list");
+  list.replaceChildren();
+  const total = Number(result.total) || 0;
+  $("#users-total").textContent = total.toLocaleString();
+  $("#users-range").textContent = total
+    ? `Showing ${usersOffset + 1}–${usersOffset + result.users.length} of ${total}`
+    : "No Google registrations yet";
+  $("#users-prev").disabled = usersOffset === 0;
+  $("#users-next").disabled = usersOffset + usersPageSize >= total;
+  if (!result.users.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.className = "users-empty";
+    cell.textContent = "No registered Google accounts to show.";
+    row.append(cell);
+    list.append(row);
+    return;
+  }
+  for (const user of result.users) {
+    const row = document.createElement("tr");
+    const account = document.createElement("td");
+    const accountBody = document.createElement("div");
+    accountBody.className = "users-account";
+    const email = document.createElement("strong");
+    email.textContent = user.email || "Email unavailable";
+    accountBody.append(email);
+    if (user.name && user.name !== user.email) {
+      const name = document.createElement("span");
+      name.textContent = user.name;
+      accountBody.append(name);
+    }
+    account.append(accountBody);
+    const registered = document.createElement("td");
+    registered.textContent = displayDate(user.registered_at);
+    const signedIn = document.createElement("td");
+    signedIn.textContent = displayDate(user.last_sign_in_at);
+    const audits = document.createElement("td");
+    const count = document.createElement("strong");
+    count.className = "users-audit-count";
+    count.textContent = `${Number(user.audit_count) || 0}`;
+    audits.append(count, document.createTextNode(` / 3 · ${Number(user.completed_count) || 0} finished`));
+    const latest = document.createElement("td");
+    latest.textContent = user.last_audit_at
+      ? `${displayDate(user.last_audit_at)} · ${user.last_audit_status || "unknown"}`
+      : "—";
+    row.append(account, registered, signedIn, audits, latest);
+    list.append(row);
+  }
+}
+
+async function refreshUsers() {
+  message($("#dashboard-message"), "");
+  $("#users-range").textContent = "Loading registrations…";
+  try {
+    const result = await api(`/admin/users?limit=${usersPageSize}&offset=${usersOffset}`);
+    renderUsers(result);
+  } catch (error) {
+    $("#users-range").textContent = "Could not load registrations";
+    message($("#dashboard-message"), error.message);
+  }
+}
+
+async function checkUsersAccess() {
+  try {
+    await api("/admin/users?limit=1&offset=0");
+    $("#users-tab").hidden = false;
+  } catch (error) {
+    if (error.status !== 403) $("#users-tab").hidden = false;
+  }
 }
 
 function renderList() {
@@ -192,6 +290,7 @@ async function showSession() {
   if (session) {
     $("#signed-in-as").textContent = session.user.email || "Google account";
     await refresh();
+    await checkUsersAccess();
   }
 }
 
@@ -264,7 +363,17 @@ async function initialize() {
       dashboardView.hidden = true;
       $("#sign-out").hidden = true;
     });
-    $("#refresh").addEventListener("click", refresh);
+    $("#refresh").addEventListener("click", () => activeView === "users" ? refreshUsers() : refresh());
+    $("#workshops-tab").addEventListener("click", () => setView("workshops"));
+    $("#users-tab").addEventListener("click", () => setView("users"));
+    $("#users-prev").addEventListener("click", () => {
+      usersOffset = Math.max(0, usersOffset - usersPageSize);
+      refreshUsers();
+    });
+    $("#users-next").addEventListener("click", () => {
+      usersOffset += usersPageSize;
+      refreshUsers();
+    });
     $("#new-workshop").addEventListener("click", () => selectWorkshop(null));
     $("#save-retention").addEventListener("click", saveRetention);
     $("#copy-participant-link").addEventListener("click", async () => {

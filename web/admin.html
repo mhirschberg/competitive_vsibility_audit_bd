@@ -34,7 +34,12 @@
             <div><p class="eyebrow">WORKSHOP OPERATIONS</p><h1>Control room<span class="orange-dot">.</span></h1></div>
             <div class="dashboard-actions"><span id="signed-in-as"></span><button id="refresh" class="admin-secondary" type="button">Refresh ↻</button></div>
           </div>
+          <nav class="admin-tabs" aria-label="Control room sections">
+            <button id="workshops-tab" class="admin-tab" type="button" aria-pressed="true">Workshops <span>01</span></button>
+            <button id="users-tab" class="admin-tab" type="button" aria-pressed="false" hidden>Registered users <span>02</span></button>
+          </nav>
           <p id="dashboard-message" class="admin-message" role="status" hidden></p>
+          <div id="workshops-view">
           <div class="admin-layout">
             <aside class="workshop-rail">
               <div class="rail-heading"><div><span class="rail-index">01 / WORKSHOPS</span><h2>Your events</h2></div><button id="new-workshop" class="new-button" type="button" aria-label="New workshop">+</button></div>
@@ -88,6 +93,21 @@
             </section>
           </div>
           <p class="admin-disclaimer">Cost note: “total audits” is an admission limit, not a dollar cap. Bright Data usage and infrastructure costs are not stopped automatically by a monetary budget field.</p>
+          </div>
+          <section id="users-view" class="users-view" aria-labelledby="users-heading" hidden>
+            <div class="users-heading">
+              <div><p class="eyebrow">PRIVATE / SITE OWNER</p><h2 id="users-heading">Who signed up<span class="orange-dot">.</span></h2><p>Google accounts only. Anonymous workshop visitors are not listed here.</p></div>
+              <div class="users-total"><span>REGISTERED</span><strong id="users-total">—</strong></div>
+            </div>
+            <div class="users-table-wrap">
+              <table class="users-table">
+                <thead><tr><th scope="col">Account</th><th scope="col">Registered</th><th scope="col">Last sign-in</th><th scope="col">Personal audits</th><th scope="col">Last audit</th></tr></thead>
+                <tbody id="users-list"></tbody>
+              </table>
+            </div>
+            <div class="users-footer"><span id="users-range"></span><div><button id="users-prev" class="admin-secondary" type="button">← Previous</button><button id="users-next" class="admin-secondary" type="button">Next →</button></div></div>
+            <p class="admin-disclaimer">This is a private operational view, not a mailing list. It shows personal trial audits, not anonymous workshop runs.</p>
+          </section>
         </section>
       </main>
     </div>

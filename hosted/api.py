@@ -135,6 +135,22 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         except BackendError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.get("/admin/users")
+    def admin_list_registered_users(
+        limit: int = 25,
+        offset: int = 0,
+        authorization: str | None = Header(default=None),
+    ):
+        user_id = organizer_id(authorization)
+        if not 1 <= limit <= 100 or offset < 0:
+            raise HTTPException(status_code=422, detail="Invalid page")
+        try:
+            return gateway.admin_list_registered_users(user_id, limit, offset)
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail="Site owner access required") from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.post("/admin/workshops", status_code=201)
     def admin_create_workshop(
         request: CreateWorkshop,

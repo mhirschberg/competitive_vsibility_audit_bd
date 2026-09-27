@@ -13,6 +13,7 @@ MIGRATION = (
 )
 ADMIN_MIGRATION = MIGRATION.with_name("20260926010000_workshop_admin.sql")
 PURGE_MIGRATION = MIGRATION.with_name("20260926020000_workshop_anonymous_purge.sql")
+USERS_MIGRATION = MIGRATION.with_name("20260927000000_registered_users_admin.sql")
 
 
 class SupabaseMigrationTests(unittest.TestCase):
@@ -83,6 +84,19 @@ class SupabaseMigrationTests(unittest.TestCase):
             )
         self.assertIn("u.is_anonymous is true", sql)
         self.assertIn("w.purged_at is null", sql)
+
+    def test_registered_users_are_site_admin_only_and_exclude_anonymous_accounts(self):
+        sql = USERS_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("create table public.site_admins", sql)
+        self.assertIn("(select count(*) from existing_owners) = 1", sql)
+        self.assertIn("alter table public.site_admins enable row level security", sql)
+        self.assertIn("revoke all on public.site_admins from public, anon, authenticated", sql)
+        self.assertIn("from public.site_admins sa where sa.user_id = p_user_id", sql)
+        self.assertIn("u.is_anonymous is not true", sql)
+        self.assertIn("i.provider = 'google'", sql)
+        self.assertIn("a.workshop_id is null", sql)
+        self.assertRegex(sql, r"revoke all on function public\.admin_list_registered_users\([^;]+from public, anon, authenticated")
+        self.assertRegex(sql, r"grant execute on function public\.admin_list_registered_users\([^;]+to service_role")
 
 
 if __name__ == "__main__":
