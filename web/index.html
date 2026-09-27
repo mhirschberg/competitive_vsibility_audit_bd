@@ -89,12 +89,16 @@
                   <small>Useful when the company offers more than one thing.</small>
                 </label>
                 <div class="field-grid two-up settings-row">
-                  <label class="field">
-                    <span>Country</span>
-                    <input name="country_code" type="text" maxlength="2" pattern="[A-Za-z]{2}" list="country-suggestions" value="US" required aria-describedby="country-hint" />
-                    <small id="country-hint">Two-letter code, e.g. DE or GB.</small>
-                    <datalist id="country-suggestions"><option value="US"></option><option value="DE"></option><option value="GB"></option><option value="FR"></option><option value="NL"></option><option value="CH"></option><option value="AT"></option><option value="CA"></option><option value="AU"></option></datalist>
-                  </label>
+                  <div class="field country-field" id="country-picker">
+                    <label for="country-search">Country</label>
+                    <div class="country-control">
+                      <input id="country-search" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="country-options" aria-describedby="country-hint" autocomplete="off" spellcheck="false" value="United States (US)" required />
+                      <button id="country-toggle" type="button" aria-label="Show country list" aria-controls="country-options" aria-expanded="false"><span aria-hidden="true">⌄</span></button>
+                      <div id="country-options" class="country-options" role="listbox" aria-label="Countries" hidden></div>
+                    </div>
+                    <input id="country-code" name="country_code" type="hidden" value="US" />
+                    <small id="country-hint">Search by country name or two-letter code.</small>
+                  </div>
                   <label class="field">
                     <span>Traditional search engine</span>
                     <select name="search_engine">

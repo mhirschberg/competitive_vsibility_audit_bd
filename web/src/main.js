@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { initCountryPicker } from "./countries.js";
 import "./style.css";
 
 const form = document.querySelector("#audit-form");
@@ -22,6 +23,7 @@ const trialTitle = document.querySelector("#trial-title");
 const trialDescription = document.querySelector("#trial-description");
 const trialGoogle = document.querySelector("#trial-google");
 const trialSignout = document.querySelector("#trial-signout");
+const countryPicker = initCountryPicker(document.querySelector("#country-picker"));
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const terminalStatuses = new Set(["completed", "failed", "interrupted", "cancelled"]);
@@ -100,6 +102,7 @@ function setFormState(mode) {
   const running = mode === "running";
   const trialBlocked = trialMode && (!trialSession || (!trialStatus?.can_submit && !pending));
   fields.disabled = pending || running || trialBlocked;
+  if (fields.disabled) countryPicker.close();
   submitButton.disabled = running || requestInFlight || trialBlocked;
   pendingNote.hidden = !pending;
   submitButton.querySelector("span").textContent = pending
@@ -125,6 +128,10 @@ function collectRequest() {
 
 function restoreRequest(request) {
   for (const [name, value] of Object.entries(request)) {
+    if (name === "country_code") {
+      countryPicker.selectCode(value, false);
+      continue;
+    }
     const control = form.elements.namedItem(name);
     if (!control) continue;
     if (control.type === "checkbox") control.checked = Boolean(value);
