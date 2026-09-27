@@ -73,10 +73,50 @@ function setView(view) {
   activeView = view;
   $("#workshops-view").hidden = view !== "workshops";
   $("#users-view").hidden = view !== "users";
+  $("#costs-view").hidden = view !== "costs";
   $("#workshops-tab").setAttribute("aria-pressed", String(view === "workshops"));
   $("#users-tab").setAttribute("aria-pressed", String(view === "users"));
+  $("#costs-tab").setAttribute("aria-pressed", String(view === "costs"));
   message($("#dashboard-message"), "");
   if (view === "users") refreshUsers();
+  if (view === "costs") refreshCosts();
+}
+
+const count = (value) => (Number(value) || 0).toLocaleString("en-US");
+
+function renderCostModel() {
+  const audits = Math.max(1, Math.min(1000, Number($("#model-audits").value) || 1));
+  const minutes = Math.max(1, Math.min(60, Number($("#model-minutes").value) || 1));
+  const seconds = audits * minutes * 60;
+  const gross = seconds * (2 * 0.000018 + 2 * 0.000002);
+  $("#model-price").textContent = `~$${gross.toFixed(2)}`;
+  $("#model-resources").textContent = `${count(audits * 2)} vCPU · ${count(audits * 2)} GiB · ${minutes} min`;
+}
+
+function renderCosts(result) {
+  const estimate = Number(result.brightdata_estimated_cost_usd) || 0;
+  const unknown = Number(result.brightdata_unknown_cost_operations) || 0;
+  const lower = Number(result.brightdata_lower_bound_operations) || 0;
+  $("#cost-bd").textContent = `$${estimate.toFixed(3)}`;
+  $("#cost-caveat").textContent = `${count(unknown)} retained operations have no price; ${count(lower)} retained estimates are lower bounds. Uncertainty for purged runs is unavailable. Check the provider invoice.`;
+  $("#cost-audits").textContent = count(result.audits);
+  $("#cost-audit-detail").textContent = `${count(result.completed_audits)} completed · ${count(result.active_audits)} active · ${count(result.purged_audits)} purged`;
+  $("#cost-operations").textContent = count(result.brightdata_operations);
+  $("#cost-accepted").textContent = `${count(result.brightdata_accepted)} accepted`;
+  $("#cost-results").textContent = count(result.brightdata_confirmed_results);
+  $("#cost-files").textContent = `${((Number(result.retained_artifact_bytes) || 0) / 1048576).toFixed(1)} MiB`;
+  $("#cost-worker-time").textContent = `${((Number(result.retained_worker_seconds) || 0) / 3600).toFixed(1)} h`;
+  $("#costs-updated").textContent = `Updated ${displayDate(result.calculated_at)}`;
+}
+
+async function refreshCosts() {
+  $("#costs-updated").textContent = "Loading usage…";
+  try {
+    renderCosts(await api("/admin/costs"));
+  } catch (error) {
+    $("#costs-updated").textContent = "Could not load usage";
+    message($("#dashboard-message"), error.message);
+  }
 }
 
 function renderUsers(result) {
@@ -145,10 +185,14 @@ async function refreshUsers() {
 
 async function checkUsersAccess() {
   try {
-    await api("/admin/users?limit=1&offset=0");
+    await api("/admin/costs");
     $("#users-tab").hidden = false;
+    $("#costs-tab").hidden = false;
   } catch (error) {
-    if (error.status !== 403) $("#users-tab").hidden = false;
+    if (error.status !== 403) {
+      $("#users-tab").hidden = false;
+      $("#costs-tab").hidden = false;
+    }
   }
 }
 
@@ -363,9 +407,13 @@ async function initialize() {
       dashboardView.hidden = true;
       $("#sign-out").hidden = true;
     });
-    $("#refresh").addEventListener("click", () => activeView === "users" ? refreshUsers() : refresh());
+    $("#refresh").addEventListener("click", () => activeView === "users" ? refreshUsers() : activeView === "costs" ? refreshCosts() : refresh());
     $("#workshops-tab").addEventListener("click", () => setView("workshops"));
     $("#users-tab").addEventListener("click", () => setView("users"));
+    $("#costs-tab").addEventListener("click", () => setView("costs"));
+    $("#model-audits").addEventListener("input", renderCostModel);
+    $("#model-minutes").addEventListener("input", renderCostModel);
+    renderCostModel();
     $("#users-prev").addEventListener("click", () => {
       usersOffset = Math.max(0, usersOffset - usersPageSize);
       refreshUsers();

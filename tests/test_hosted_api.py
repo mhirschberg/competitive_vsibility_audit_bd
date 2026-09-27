@@ -70,6 +70,12 @@ class FakeGateway:
         return {"total": 1, "users": [{"id": str(USER_ID), "email": "member@example.com",
                                        "audit_count": 1, "completed_count": 1}]}
 
+    def admin_cost_overview(self, user_id):
+        assert user_id == USER_ID
+        if not self.site_admin_allowed:
+            raise AuthorizationError("Site admin access required")
+        return {"audits": 2, "brightdata_estimated_cost_usd": 0.243}
+
     def admin_create_workshop(self, **payload):
         self.admin_payload = payload
         return WORKSHOP_ID
@@ -225,6 +231,19 @@ class HostedApiTests(unittest.TestCase):
         self.assertEqual(self.client.get(
             "/admin/users?limit=101", headers={"Authorization": "Bearer owner-jwt"}
         ).status_code, 422)
+
+    def test_costs_require_google_and_site_admin_access(self):
+        self.assertEqual(self.client.get("/admin/costs").status_code, 401)
+        self.gateway.site_admin_allowed = False
+        self.assertEqual(self.client.get(
+            "/admin/costs", headers={"Authorization": "Bearer organizer-jwt"}
+        ).status_code, 403)
+        self.gateway.site_admin_allowed = True
+        response = self.client.get(
+            "/admin/costs", headers={"Authorization": "Bearer owner-jwt"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["audits"], 2)
 
     def test_admin_can_create_and_update_finite_workshop_limits(self):
         settings = {

@@ -37,6 +37,7 @@
           <nav class="admin-tabs" aria-label="Control room sections">
             <button id="workshops-tab" class="admin-tab" type="button" aria-pressed="true">Workshops <span>01</span></button>
             <button id="users-tab" class="admin-tab" type="button" aria-pressed="false" hidden>Registered users <span>02</span></button>
+            <button id="costs-tab" class="admin-tab" type="button" aria-pressed="false" hidden>Cost &amp; capacity <span>03</span></button>
           </nav>
           <p id="dashboard-message" class="admin-message" role="status" hidden></p>
           <div id="workshops-view">
@@ -107,6 +108,35 @@
             </div>
             <div class="users-footer"><span id="users-range"></span><div><button id="users-prev" class="admin-secondary" type="button">← Previous</button><button id="users-next" class="admin-secondary" type="button">Next →</button></div></div>
             <p class="admin-disclaimer">This is a private operational view, not a mailing list. It shows personal trial audits, not anonymous workshop runs.</p>
+          </section>
+          <section id="costs-view" class="costs-view" aria-labelledby="costs-heading" hidden>
+            <div class="costs-heading">
+              <div><p class="eyebrow">PRIVATE / SITE OWNER</p><h2 id="costs-heading">The running tab<span class="orange-dot">.</span></h2><p>What the application has measured so far. Provider invoices remain the final word.</p></div>
+              <span id="costs-updated" class="costs-updated">Waiting for data</span>
+            </div>
+            <div class="cost-hero">
+              <div class="cost-main"><span>BRIGHT DATA / RECORDED ESTIMATE</span><strong id="cost-bd">—</strong><p id="cost-caveat">This is not your Bright Data invoice.</p></div>
+              <div class="cost-main cost-main-dark"><span>AUDITS / ALL TIME</span><strong id="cost-audits">—</strong><p id="cost-audit-detail">—</p></div>
+            </div>
+            <div class="cost-metrics">
+              <div><span>OPERATIONS</span><strong id="cost-operations">—</strong><small id="cost-accepted">—</small></div>
+              <div><span>CONFIRMED RESULTS</span><strong id="cost-results">—</strong><small>Billable units depend on your Bright Data plan</small></div>
+              <div><span>REPORT FILES</span><strong id="cost-files">—</strong><small>Retained files only; excludes database size</small></div>
+              <div><span>WORKER TIME</span><strong id="cost-worker-time">—</strong><small>Recorded executions only; not billed time</small></div>
+            </div>
+            <div class="cost-bottom">
+              <div class="cost-model">
+                <p class="eyebrow">SCENARIO / GROSS LIST PRICE</p><h3>What if the room presses Run?</h3>
+                <div class="model-fields"><label>Audits at once <input id="model-audits" type="number" min="1" max="1000" value="20" /></label><label>Minutes each <input id="model-minutes" type="number" min="1" max="60" value="10" /></label></div>
+                <div class="model-result"><strong id="model-price">—</strong><span id="model-resources">—</span></div>
+                <p>Worker compute only: 2 vCPU + 2 GiB per audit, at current Cloud Run Jobs list prices. Before monthly free tier and trial credits; excludes Bright Data, API/web, network and Supabase. Actual billing may differ.</p>
+              </div>
+              <div class="cost-ledger"><p class="eyebrow">THE ACTUAL BILLS</p><h3>Three places to check.</h3>
+                <a href="https://console.cloud.google.com/billing?project=getmuzoboz" target="_blank" rel="noopener noreferrer"><span>01 / GOOGLE CLOUD</span><strong>Billing reports ↗</strong><small>Cloud Run, build, storage, tasks</small></a>
+                <a href="https://supabase.com/dashboard/project/xhntpuwntpftjqmlzxgk" target="_blank" rel="noopener noreferrer"><span>02 / SUPABASE</span><strong>Project usage ↗</strong><small>Database, file storage, egress</small></a>
+                <a href="https://brightdata.com/cp" target="_blank" rel="noopener noreferrer"><span>03 / BRIGHT DATA</span><strong>Account billing ↗</strong><small>Final usage and charges</small></a>
+              </div>
+            </div>
           </section>
         </section>
       </main>

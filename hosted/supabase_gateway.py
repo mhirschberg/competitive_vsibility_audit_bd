@@ -210,6 +210,12 @@ class SupabaseGateway:
             raise BackendError("Invalid registered users response")
         return result
 
+    def admin_cost_overview(self, user_id: UUID) -> dict:
+        result = self._rpc("admin_cost_overview", {"p_user_id": str(user_id)})
+        if not isinstance(result, dict) or "brightdata_estimated_cost_usd" not in result:
+            raise BackendError("Invalid cost overview response")
+        return result
+
     def admin_create_workshop(self, **payload) -> UUID:
         result = self._rpc("admin_create_workshop", payload)
         try:

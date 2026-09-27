@@ -14,6 +14,7 @@ MIGRATION = (
 ADMIN_MIGRATION = MIGRATION.with_name("20260926010000_workshop_admin.sql")
 PURGE_MIGRATION = MIGRATION.with_name("20260926020000_workshop_anonymous_purge.sql")
 USERS_MIGRATION = MIGRATION.with_name("20260927000000_registered_users_admin.sql")
+COST_MIGRATION = MIGRATION.with_name("20260927010000_admin_cost_overview.sql")
 
 
 class SupabaseMigrationTests(unittest.TestCase):
@@ -97,6 +98,14 @@ class SupabaseMigrationTests(unittest.TestCase):
         self.assertIn("a.workshop_id is null", sql)
         self.assertRegex(sql, r"revoke all on function public\.admin_list_registered_users\([^;]+from public, anon, authenticated")
         self.assertRegex(sql, r"grant execute on function public\.admin_list_registered_users\([^;]+to service_role")
+
+    def test_cost_overview_is_site_admin_only_and_includes_purged_totals(self):
+        sql = COST_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("from public.site_admins where user_id = p_user_id", sql)
+        self.assertIn("from public.workshop_purge_totals", sql)
+        self.assertIn("brightdata_unknown_cost_operations", sql)
+        self.assertRegex(sql, r"revoke all on function public\.admin_cost_overview\([^;]+from public, anon, authenticated")
+        self.assertRegex(sql, r"grant execute on function public\.admin_cost_overview\([^;]+to service_role")
 
 
 if __name__ == "__main__":

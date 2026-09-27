@@ -151,6 +151,16 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         except BackendError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.get("/admin/costs")
+    def admin_cost_overview(authorization: str | None = Header(default=None)):
+        user_id = organizer_id(authorization)
+        try:
+            return gateway.admin_cost_overview(user_id)
+        except AuthorizationError as exc:
+            raise HTTPException(status_code=403, detail="Site owner access required") from exc
+        except BackendError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.post("/admin/workshops", status_code=201)
     def admin_create_workshop(
         request: CreateWorkshop,
