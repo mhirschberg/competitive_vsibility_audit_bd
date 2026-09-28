@@ -3,7 +3,7 @@ markdown
 weasyprint
 requests
 pydantic
-pandas
+pandas>=3.0,<4
 rich
 tldextract
 json-repair

@@ -67,9 +67,9 @@ The optional audit focus narrows the purchase decision used throughout the audit
 
 ### Traditional search
 
-The eight buyer queries run in parallel through Bright Data SERP API.
+The eight buyer queries run through Bright Data SERP API in two bounded waves of four. If the first wave is incomplete, the second is not sent to the failing provider.
 
-`SEARCH_ENGINE = "auto"` tries Google first and falls back to Bing if Google remains unavailable. A single audit uses one coherent traditional search engine rather than mixing rankings from different engines.
+`SEARCH_ENGINE = "auto"` tries Google first and falls back to Bing if Google remains unavailable. If Google passes its initial check but the eight-query batch is incomplete, the engine retries the entire batch on Bing rather than mixing rankings. If neither engine completes the batch, traditional search is marked unavailable and its partial results are excluded from visibility scores. Bright Data's Google `#main` selector timeout is treated as a provider failure, not an empty search result, and is not repeated three times for the same query.
 
 Available settings:
 
@@ -252,7 +252,7 @@ A successful core audit may trigger:
 
 - 3 Google AI Mode target-research snapshots
 - 1 Gemini and 1 ChatGPT structuring request
-- Up to 8 Google or Bing searches, plus a health check and retries
+- 8 Google or Bing searches, plus health checks and bounded retries; automatic fallback can run a second complete eight-query batch
 - 9 Google AI Mode question snapshots: 3 questions by 3 snapshots
 - 3 Google AI Mode competitor-research snapshots
 - 9 Google AI Mode profile snapshots: 3 brands by 3 snapshots

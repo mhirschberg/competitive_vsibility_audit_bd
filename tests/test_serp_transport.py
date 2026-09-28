@@ -125,6 +125,23 @@ class SerpTransportTests(unittest.TestCase):
             "failed", "failed", "failed"
         ])
 
+    def test_google_selector_timeout_is_not_repeated_three_times(self):
+        client = FakeClient()
+        selector_error = fake_response(
+            None,
+            {
+                "x-brd-error-code": "expect_element",
+                "x-brd-error": 'waiting for selector "#main" failed: timeout 30000ms exceeded',
+            },
+        )
+        with mock.patch.object(requests, "post", return_value=selector_error) as post:
+            with self.assertRaises(BrightDataAPIError) as raised:
+                self.search(client, "website builders", "google")
+
+        self.assertEqual(post.call_count, 1)
+        self.assertTrue(raised.exception.selector_timeout)
+        self.assertEqual([event["status"] for event in client.events], ["failed"])
+
     def test_bing_uses_raw_markdown_when_parsed_light_is_unsupported(self):
         client = FakeClient()
         response = SimpleNamespace(
