@@ -15,6 +15,7 @@ ADMIN_MIGRATION = MIGRATION.with_name("20260926010000_workshop_admin.sql")
 PURGE_MIGRATION = MIGRATION.with_name("20260926020000_workshop_anonymous_purge.sql")
 USERS_MIGRATION = MIGRATION.with_name("20260927000000_registered_users_admin.sql")
 COST_MIGRATION = MIGRATION.with_name("20260927010000_admin_cost_overview.sql")
+EMAIL_MIGRATION = MIGRATION.with_name("20260928000000_audit_email_notifications.sql")
 
 
 class SupabaseMigrationTests(unittest.TestCase):
@@ -106,6 +107,19 @@ class SupabaseMigrationTests(unittest.TestCase):
         self.assertIn("brightdata_unknown_cost_operations", sql)
         self.assertRegex(sql, r"revoke all on function public\.admin_cost_overview\([^;]+from public, anon, authenticated")
         self.assertRegex(sql, r"grant execute on function public\.admin_cost_overview\([^;]+to service_role")
+
+    def test_completion_email_outbox_is_opt_in_and_service_only(self):
+        sql = EMAIL_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("create table public.audit_email_notifications", sql)
+        self.assertIn("alter table public.audit_email_notifications enable row level security", sql)
+        self.assertIn("revoke all on public.audit_email_notifications from public, anon, authenticated", sql)
+        self.assertIn("new.workshop_id is null", sql)
+        self.assertIn("new.input_options ->> 'email_when_ready' = 'true'", sql)
+        self.assertIn("on conflict (audit_id) do nothing", sql)
+        self.assertIn("and claim_token = p_claim_token", sql)
+        for name in ("claim_audit_ready_email", "finish_audit_ready_email", "defer_audit_ready_email"):
+            self.assertRegex(sql, rf"revoke all on function public\.{name}\([^;]+from public, anon, authenticated")
+            self.assertRegex(sql, rf"grant execute on function public\.{name}\([^;]+to service_role")
 
 
 if __name__ == "__main__":

@@ -211,6 +211,45 @@ class HostedApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
+    def test_email_opt_in_stays_unavailable_without_sender(self):
+        self.assertEqual(
+            self.client.get("/notification-capabilities").json(),
+            {"email_when_ready": False},
+        )
+        response = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "workshop_id": None, "email_when_ready": True},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.gateway.payload)
+
+    def test_email_opt_in_requires_personal_google_audit(self):
+        app = create_app(
+            gateway=self.gateway,
+            dispatcher=self.dispatcher,
+            settings={
+                "ENGINE_COMMIT": "test-commit",
+                "METHODOLOGY_VERSION": "v1",
+                "EMAIL_NOTIFICATIONS_ENABLED": "true",
+            },
+        )
+        client = TestClient(app)
+        self.assertTrue(client.get("/notification-capabilities").json()["email_when_ready"])
+        workshop = client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "email_when_ready": True},
+        )
+        self.assertEqual(workshop.status_code, 400)
+        personal = client.post(
+            "/audits",
+            headers={"Authorization": "Bearer google-jwt"},
+            json={**self.request, "workshop_id": None, "email_when_ready": True},
+        )
+        self.assertEqual(personal.status_code, 202)
+        self.assertTrue(self.gateway.payload["p_input_options"]["email_when_ready"])
+
     def test_public_workshop_link_resolves_without_auth(self):
         response = self.client.get("/workshops/test-event")
         self.assertEqual(response.status_code, 200)

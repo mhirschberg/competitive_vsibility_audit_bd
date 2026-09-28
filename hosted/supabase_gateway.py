@@ -565,6 +565,62 @@ class SupabaseGateway:
             raise BackendError("Invalid audit completion response")
         return result
 
+    def audit_email_state(self, audit_id: UUID) -> str | None:
+        response = self._admin_request(
+            "GET",
+            "/rest/v1/audit_email_notifications",
+            params={
+                "select": "status",
+                "audit_id": f"eq.{audit_id}",
+                "limit": "1",
+            },
+        )
+        try:
+            rows = response.json()
+            if not isinstance(rows, list) or len(rows) > 1:
+                raise ValueError("Unexpected rows")
+            return str(rows[0]["status"]) if rows else None
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BackendError("Invalid email notification state") from exc
+
+    def claim_audit_ready_email(self, audit_id: UUID) -> dict | None:
+        result = self._rpc("claim_audit_ready_email", {"p_audit_id": str(audit_id)})
+        if result is None:
+            return None
+        if not isinstance(result, dict):
+            raise BackendError("Invalid email notification claim")
+        try:
+            UUID(result["claim_token"])
+            if not result["email"] or not isinstance(result["email"], str):
+                raise ValueError("Missing recipient")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BackendError("Invalid email notification claim") from exc
+        return result
+
+    def finish_audit_ready_email(
+        self, audit_id: UUID, claim_token: UUID, provider_message_id: str
+    ) -> bool:
+        result = self._rpc("finish_audit_ready_email", {
+            "p_audit_id": str(audit_id),
+            "p_claim_token": str(claim_token),
+            "p_provider_message_id": provider_message_id,
+        })
+        if not isinstance(result, bool):
+            raise BackendError("Invalid email notification completion")
+        return result
+
+    def defer_audit_ready_email(
+        self, audit_id: UUID, claim_token: UUID, error_code: str
+    ) -> bool:
+        result = self._rpc("defer_audit_ready_email", {
+            "p_audit_id": str(audit_id),
+            "p_claim_token": str(claim_token),
+            "p_error_code": error_code,
+        })
+        if not isinstance(result, bool):
+            raise BackendError("Invalid email notification retry")
+        return result
+
     def record_event(
         self,
         audit_id: UUID,

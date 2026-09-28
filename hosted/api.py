@@ -32,6 +32,7 @@ class AuditRequest(BaseModel):
     search_engine: Literal["auto", "google", "bing", "none"] = "auto"
     include_reddit_analysis: bool = False
     wait_longer_for_google_ai_mode: bool = False
+    email_when_ready: bool = False
     workshop_id: UUID | None = None
 
 
@@ -82,6 +83,7 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         )
     engine_commit = settings.get("ENGINE_COMMIT", "").strip()
     methodology_version = settings.get("METHODOLOGY_VERSION", "").strip()
+    email_notifications_enabled = settings.get("EMAIL_NOTIFICATIONS_ENABLED") == "true"
     if not engine_commit or not methodology_version:
         raise ValueError("ENGINE_COMMIT and METHODOLOGY_VERSION are required")
 
@@ -100,6 +102,10 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
         return {"status": "ok"}
+
+    @app.get("/notification-capabilities")
+    def notification_capabilities():
+        return {"email_when_ready": email_notifications_enabled}
 
     def organizer_id(authorization: str | None) -> UUID:
         if not authorization or not authorization.startswith("Bearer "):
@@ -242,6 +248,13 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
     ):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Sign in required")
+        if request.email_when_ready and (
+            request.workshop_id is not None or not email_notifications_enabled
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Email notifications are available only for signed-in personal audits",
+            )
         bearer_token = authorization.removeprefix("Bearer ").strip()
         try:
             user_id = (
@@ -267,6 +280,7 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                         ["reddit"] if request.include_reddit_analysis else []
                     ),
                     "wait_longer_for_google_ai_mode": request.wait_longer_for_google_ai_mode,
+                    "email_when_ready": request.email_when_ready,
                 },
                 p_engine_commit=engine_commit,
                 p_methodology_version=methodology_version,

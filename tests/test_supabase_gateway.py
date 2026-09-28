@@ -90,6 +90,18 @@ class SupabaseGatewayTests(unittest.TestCase):
         self.assertEqual(options["json"]["p_offset"], 50)
         self.assertEqual(options["headers"]["apikey"], SECRET_KEY)
 
+    def test_email_outbox_read_and_claim_use_service_key(self):
+        self.session.sign_payload = [{"status": "pending"}]
+        self.assertEqual(self.gateway.audit_email_state(AUDIT_ID), "pending")
+        self.assertEqual(self.session.calls[-1][2]["headers"]["apikey"], SECRET_KEY)
+        self.session.post_payload = {
+            "email": "member@example.com",
+            "claim_token": "50000000-0000-0000-0000-000000000001",
+        }
+        claim = self.gateway.claim_audit_ready_email(AUDIT_ID)
+        self.assertEqual(claim["email"], "member@example.com")
+        self.assertTrue(self.session.calls[-1][1].endswith("/rpc/claim_audit_ready_email"))
+
     def test_admin_requires_verified_google_provider_not_user_metadata(self):
         with self.assertRaises(AuthorizationError):
             self.gateway.authenticate_google_organizer("anon-jwt")

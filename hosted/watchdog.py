@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException
 
 from hosted.cloud_run import CloudRunDispatcher
+from hosted.notifications import ResendEmailSender, deliver_ready_email_once
 from hosted.purge import purge_once
 from hosted.reconcile import reconcile_once
 from hosted.supabase_gateway import BackendError, SupabaseGateway
@@ -16,7 +17,7 @@ from hosted.watchdog_tasks import AuditWatchdogTasks, WatchdogError
 ACTIVE = {"queued", "dispatching", "running"}
 
 
-def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) -> FastAPI:
+def create_app(*, gateway=None, dispatcher=None, scheduler=None, notifier=None, settings=None) -> FastAPI:
     settings = settings or os.environ
     if gateway is None:
         gateway = SupabaseGateway(
@@ -38,8 +39,26 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             settings["WATCHDOG_URL"],
             settings["WATCHDOG_INVOKER_EMAIL"],
         )
+    if notifier is None and all(settings.get(key) for key in (
+        "RESEND_API_KEY", "NOTIFICATION_FROM_EMAIL", "NOTIFICATION_WEB_URL"
+    )):
+        notifier = ResendEmailSender(
+            settings["RESEND_API_KEY"],
+            settings["NOTIFICATION_FROM_EMAIL"],
+            settings["NOTIFICATION_WEB_URL"],
+        )
 
     app = FastAPI(title="Competitive Audit Watchdog")
+
+    def finish_or_continue_notification(audit_id: UUID, sequence: int):
+        if notifier is not None:
+            delivery = deliver_ready_email_once(gateway, notifier, audit_id)
+            if delivery == "pending":
+                scheduler.schedule(audit_id, sequence + 1)
+                return {"status": "notification_pending"}
+            if delivery == "sent":
+                return {"status": "notification_sent"}
+        return {"status": "terminal"}
 
     @app.post("/watch/{audit_id}/{sequence}")
     def watch(audit_id: UUID, sequence: int):
@@ -48,13 +67,13 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         try:
             audit = gateway.get_audit(audit_id)
             if audit["status"] not in ACTIVE:
-                return {"status": "terminal"}
+                return finish_or_continue_notification(audit_id, sequence)
             reconcile_once(gateway, dispatcher)
             audit = gateway.get_audit(audit_id)
             if audit["status"] in ACTIVE:
                 scheduler.schedule(audit_id, sequence + 1)
                 return {"status": "rescheduled"}
-            return {"status": "terminal"}
+            return finish_or_continue_notification(audit_id, sequence)
         except (BackendError, WatchdogError) as exc:
             # Cloud Tasks retries non-2xx responses, preserving the same task ID.
             raise HTTPException(status_code=503, detail=str(exc)) from exc

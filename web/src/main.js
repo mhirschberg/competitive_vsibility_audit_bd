@@ -23,6 +23,9 @@ const trialTitle = document.querySelector("#trial-title");
 const trialDescription = document.querySelector("#trial-description");
 const trialGoogle = document.querySelector("#trial-google");
 const trialSignout = document.querySelector("#trial-signout");
+const emailOption = document.querySelector("#email-option");
+const emailTarget = document.querySelector("#email-target");
+const emailCheckbox = form.elements.namedItem("email_when_ready");
 const countryPicker = initCountryPicker(document.querySelector("#country-picker"));
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -56,6 +59,7 @@ let requestInFlight = false;
 let trialMode = false;
 let trialSession = null;
 let trialStatus = null;
+let emailNotificationsEnabled = false;
 
 function auditIdFromHash() {
   return location.hash.match(/^#audit\/([0-9a-f-]{36})$/i)?.[1] || null;
@@ -123,6 +127,7 @@ function collectRequest() {
     search_engine: String(data.get("search_engine") || "auto"),
     include_reddit_analysis: data.get("include_reddit_analysis") === "on",
     wait_longer_for_google_ai_mode: data.get("wait_longer_for_google_ai_mode") === "on",
+    email_when_ready: !emailOption.hidden && data.get("email_when_ready") === "on",
     workshop_id: trialMode ? null : config.workshop_id,
   };
 }
@@ -226,6 +231,9 @@ async function submitAudit(event) {
 
 function renderTrialPass() {
   if (!trialMode) return;
+  emailOption.hidden = !(emailNotificationsEnabled && trialSession?.user?.email);
+  if (emailOption.hidden) emailCheckbox.checked = false;
+  else emailTarget.textContent = `One private link to ${trialSession.user.email}. No report attached.`;
   trialPass.hidden = false;
   trialGoogle.hidden = Boolean(trialSession);
   trialSignout.hidden = !trialSession;
@@ -424,6 +432,12 @@ async function initialize() {
     config = await response.json();
     if (!config.supabase_url || !config.supabase_publishable_key || !config.api_url) {
       throw new Error("Workshop configuration is incomplete");
+    }
+    try {
+      const capabilities = await fetch(`${config.api_url}/notification-capabilities`, { cache: "no-store" });
+      if (capabilities.ok) emailNotificationsEnabled = Boolean((await capabilities.json()).email_when_ready);
+    } catch {
+      emailNotificationsEnabled = false;
     }
     const workshopSlug = new URLSearchParams(location.search).get("workshop");
     trialMode = !workshopSlug;
