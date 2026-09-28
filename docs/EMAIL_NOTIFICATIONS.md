@@ -24,3 +24,22 @@ The feature is **off by default**. Do not set `EMAIL_NOTIFICATIONS_ENABLED=true`
 6. Deploy the API and web code. Only after the end-to-end test, set `EMAIL_NOTIFICATIONS_ENABLED=true` on the API. The web switch then appears automatically for signed-in personal users.
 
 Supabase's default Auth SMTP is not used for these report emails. Its built-in sender is intended for development and is not a production transactional mail service.
+
+## Live deployment status (2026-09-28)
+
+The migration is applied in the separate Competitive Audit Supabase project.
+The API, private watchdog, and web UI run image tag `c199ae5` in Google Cloud
+project `getmuzoboz` (`europe-west1`). Among application service identities,
+only the watchdog can read Secret Manager secret
+`competitive-audit-resend-api-key:1`; its sender is
+`no-reply@notify.qaviso.com`. The web UI shows the opt-in only for signed-in
+personal trials, and the API rejects it for workshop audits. The original Cloud Run
+web URL remains the private-history link
+until a branded web domain is configured.
+
+The verified sending domain accepted a Resend delivery-sink test, and a separate
+test message reached the owner's mailbox. The Supabase outbox table and
+service-only RPCs respond correctly; an anonymous claim is denied. The checkbox
+is visible in the signed-in personal-trial form. A full real-audit completion
+and subsequent watchdog delivery has **not** yet been exercised; observe the
+first opted-in completion before calling the flow end-to-end verified.
