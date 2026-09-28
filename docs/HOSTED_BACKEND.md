@@ -11,7 +11,7 @@ raise the workshop admission caps deliberately before inviting attendees.
 
 ## Live smoke deployment
 
-- Branded Web UI: `https://audit.qaviso.com` (Firebase Hosting, after DNS and TLS provisioning)
+- Branded Web UI: `https://audit.qaviso.com` (Firebase Hosting; DNS and TLS connected on 2026-09-28)
 - Original Web UI: `https://competitive-audit-web-4lvms3qmsa-ew.a.run.app`
 - API health: `https://competitive-audit-api-4lvms3qmsa-ew.a.run.app/health`
 - Google Cloud project/region: `getmuzoboz` / `europe-west1`
@@ -115,8 +115,9 @@ remains an independent fallback. `audit.qaviso.com` has an explicit Porkbun
 CNAME to `qaviso-web.web.app`, which overrides the unrelated wildcard record.
 Both UI origins must remain in the API's `WEB_ORIGIN` and in Supabase Auth's
 redirect allow-list while both frontends are active. The watchdog's
-`NOTIFICATION_WEB_URL` controls links in report-ready emails and should be
-changed to the branded address only after HTTPS is ready.
+`NOTIFICATION_WEB_URL` controls links in report-ready emails and is set to
+`https://audit.qaviso.com`. Supabase Auth's Site URL is also the branded root;
+the original Cloud Run root and `/admin` remain allowed redirect URLs.
 
 ## Organizer access
 

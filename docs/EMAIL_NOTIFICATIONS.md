@@ -28,14 +28,16 @@ Supabase's default Auth SMTP is not used for these report emails. Its built-in s
 ## Live deployment status (2026-09-28)
 
 The migration is applied in the separate Competitive Audit Supabase project.
-The API, private watchdog, and web UI run image tag `c199ae5` in Google Cloud
-project `getmuzoboz` (`europe-west1`). Among application service identities,
+The API, private watchdog, and original Cloud Run web UI run in Google Cloud
+project `getmuzoboz` (`europe-west1`); the branded static UI runs in Firebase
+Hosting project `qaviso-web`. Among application service identities,
 only the watchdog can read Secret Manager secret
 `competitive-audit-resend-api-key:1`; its sender is
 `no-reply@notify.qaviso.com`. The web UI shows the opt-in only for signed-in
-personal trials, and the API rejects it for workshop audits. The original Cloud Run
-web URL remains the private-history link
-until a branded web domain is configured.
+personal trials, and the API rejects it for workshop audits. Since 2026-09-28,
+the watchdog uses `https://audit.qaviso.com` for private-history links in
+report-ready emails. Supabase Auth uses the same branded origin as its Site URL;
+the original Cloud Run web URL remains an allowed redirect fallback.
 
 The verified sending domain accepted a Resend delivery-sink test, and a separate
 test message reached the owner's mailbox. The Supabase outbox table and
