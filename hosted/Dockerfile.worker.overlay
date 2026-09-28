@@ -1,0 +1,7 @@
+# Emergency release path when PyPI is unavailable. The pinned base is the
+# already deployed 2abce23 worker; this change set modifies only the notebook
+# runtime code, not app.py, hosted/, or Python dependencies used at runtime.
+FROM europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit/worker@sha256:2454437f01edfdb32b55eb6073443297b36c3d642e7f61a04e57587251a6af82
+
+COPY competitive_visibility_audit_bd.ipynb /app/competitive_visibility_audit_bd.ipynb
+RUN python -c 'from app import _build_runner_script; a=("Acme", "example.com", "widgets", "US", "auto", False, False); compile(_build_runner_script(*a), "<runner>", "exec"); compile(_build_runner_script(*a, True), "<long-runner>", "exec")'
