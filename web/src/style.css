@@ -1,5 +1,10 @@
+@import "@fontsource-variable/dm-sans/wght.css";
+@import "@fontsource/dm-mono/latin-400.css";
+@import "@fontsource/dm-mono/latin-500.css";
+@import "@fontsource-variable/fraunces/wght.css";
+
 :root {
-  font-family: "DM Sans", sans-serif;
+  font-family: "DM Sans Variable", sans-serif;
   color: #1b2825;
   background: #f4f0e7;
   font-synthesis: none;
@@ -11,7 +16,7 @@
   --orange: #ee6f40;
   --deep: #153f38;
   --mono: "DM Mono", monospace;
-  --display: "Fraunces", Georgia, serif;
+  --display: "Fraunces Variable", Georgia, serif;
 }
 
 * { box-sizing: border-box; }
