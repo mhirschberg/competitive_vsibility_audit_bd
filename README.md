@@ -293,6 +293,7 @@ Unavailable values are displayed as an em dash rather than `NaN`; the correspond
 - Reddit comments dataset when social analysis is enabled
 
 Concurrent races reduce elapsed time and improve resilience, but every triggered snapshot may contribute to API usage, including snapshots that do not win a race.
+If Google AI Mode snapshots are still pending at the wait limit, the audit records their IDs and does not start another paid race for the same market question. A one- or two-answer sample is marked partial and excluded from comparative visibility and source counts; it must not be interpreted as absence. The hosted “Wait longer” option raises the Google AI Mode wait, but a Cloud Run job still has a finite deadline. Automatic resume from a killed worker is not yet implemented.
 
 ---
 
