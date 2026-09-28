@@ -77,6 +77,8 @@ SERP_ZONE = "serp_api1"
 
 AUTO_DOWNLOAD_REPORT = False
 INCLUDE_REDDIT_ANALYSIS = False
+CONTINUE_LAST_AUDIT = False
+RECOVERY_SNAPSHOT_IDS = ""
 DEBUG_MODE = False
 ```
 
@@ -90,6 +92,8 @@ DEBUG_MODE = False
 | `SERP_ZONE` | Yes | Bright Data SERP API zone name |
 | `AUTO_DOWNLOAD_REPORT` | No | Download the ZIP automatically when the audit finishes |
 | `INCLUDE_REDDIT_ANALYSIS` | No | Add competitive Reddit analysis; this increases runtime and request usage |
+| `CONTINUE_LAST_AUDIT` | No | Continue the latest incomplete audit for this company from its saved steps 1–2, reusing Google AI Mode snapshot IDs |
+| `RECOVERY_SNAPSHOT_IDS` | No | Space-separated snapshot IDs from a run made before snapshot caching was added; leave blank for new runs |
 | `DEBUG_MODE` | No | Show snapshot, retry, prompt, parsing, and validation diagnostics |
 
 The domain may be entered as `example.com`, `www.example.com`, or a complete URL. It is normalized automatically.
@@ -118,6 +122,12 @@ A core audit normally has six visible stages. Enabling Reddit adds a separate se
 The social collection starts as soon as the competitors are known, but it remains a clearly labelled stage and is reported separately from AI visibility.
 
 A live audit can take several minutes. Reddit analysis may add up to 10 minutes depending on snapshot availability and retries.
+
+### Continue after an interrupted audit
+
+The notebook now saves Google AI Mode snapshot IDs as soon as they are triggered. If an audit stops after stage 2, keep the same Colab runtime open, enable `CONTINUE_LAST_AUDIT` in the configuration form, and rerun the configuration and audit cells. It reuses the company analysis, search results, and already-triggered Google AI Mode snapshots. During resumed competitor selection it does **not** launch replacement snapshots for candidates without saved IDs; it marks those candidates unvalidated instead. Later stages still make the requests needed to finish the report.
+
+On failure, the notebook creates a recovery ZIP in `/content`. Download it before disconnecting if you may lose the Colab runtime. In a new runtime, upload that ZIP to `/content`, use the same audit settings, enable `CONTINUE_LAST_AUDIT`, and run the notebook. The ZIP contains audit inputs and results; treat it as private. For runs made before this feature, paste the snapshot IDs from the old log into `RECOVERY_SNAPSHOT_IDS` so they can be matched to their original prompts without re-triggering them. If no matching checkpoint is present, continuation stops rather than starting a new paid audit.
 
 ---
 

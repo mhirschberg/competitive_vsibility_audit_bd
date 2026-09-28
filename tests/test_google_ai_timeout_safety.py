@@ -100,6 +100,9 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
             "GoogleAIRaceExecutor": ImmediateExecutor,
             "google_ai_as_completed": as_completed,
             "trigger_google_ai_race_snapshot": trigger,
+            "cached_google_ai_snapshot_ids": lambda _prompt: [],
+            "remember_google_ai_snapshot": lambda _prompt, _snapshot_id: None,
+            "_GOOGLE_AI_ONLY_REUSE": False,
         })
         exec(definition("race_google_ai_mode"), namespace)
         with self.assertRaises(namespace["GoogleAIRaceTimeoutError"]) as caught:
