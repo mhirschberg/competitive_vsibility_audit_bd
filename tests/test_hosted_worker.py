@@ -20,6 +20,7 @@ class FakeWorkerGateway:
         self.events = []
         self.usage_rows = []
         self.finishes = []
+        self.input_options = {"search_engine": "auto", "social_sources": ["reddit"]}
 
     def claim_audit(self, audit_id, platform_execution_id):
         assert audit_id == AUDIT_ID
@@ -32,7 +33,7 @@ class FakeWorkerGateway:
             "company_domain": "rayner.com",
             "audit_focus": "RayOne Galaxy",
             "country_code": "GB",
-            "input_options": {"search_engine": "auto", "social_sources": ["reddit"]},
+            "input_options": self.input_options,
         }
 
     def heartbeat_audit(self, execution_id, claim_token):
@@ -106,6 +107,7 @@ class HostedWorkerTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(arguments[0][0:4], ("Rayner", "rayner.com", "RayOne Galaxy", "GB"))
         self.assertTrue(arguments[0][5])  # Reddit selected.
+        self.assertFalse(arguments[0][7])  # Standard Google AI Mode wait.
         self.assertEqual(len(self.gateway.uploads), 2)  # Log and JSON.
         self.assertEqual(len(self.gateway.usage_rows), 3)
         self.assertEqual(self.gateway.usage_rows[0]["confirmed_result_count"], 1)
@@ -115,6 +117,23 @@ class HostedWorkerTests(unittest.TestCase):
         self.assertIsNone(self.gateway.usage_rows[2]["estimated_cost_usd"])
         self.assertEqual(self.gateway.finishes[0][0], "completed")
         self.assertEqual(self.gateway.finishes[0][1]["summary"]["target_name"], "Rayner")
+
+    def test_long_wait_reaches_runner(self):
+        self.gateway.input_options["wait_longer_for_google_ai_mode"] = True
+        arguments = []
+
+        def runner_source(*args):
+            arguments.append(args)
+            return SUCCESS_RUNNER
+
+        self.assertEqual(
+            run_worker(
+                self.gateway, AUDIT_ID, runner_source_factory=runner_source,
+                heartbeat_interval=3600,
+            ),
+            0,
+        )
+        self.assertTrue(arguments[0][7])
 
     def test_duplicate_cloud_run_invocation_does_no_paid_work(self):
         self.gateway.claim = None

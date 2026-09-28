@@ -37,6 +37,16 @@ raise the workshop admission caps deliberately before inviting attendees.
    own Supabase session and database row-level security. A dead worker is
    marked `interrupted`, not automatically rerun and re-billed.
 
+### Longer Google AI Mode waits
+
+The participant form offers an opt-in **Wait longer for Google AI Mode** switch.
+It is saved with that audit's input options, so a delayed dispatch keeps the
+same setting. The web runner alone raises Google AI Mode snapshot waits from
+720 to 1800 seconds; the standalone notebook retains its original default.
+Cloud Run overrides that execution's task timeout to two hours. Unchecked
+audits keep their existing snapshot and Job timeouts. This can increase worker
+runtime and cost, and cannot make an unavailable provider return an answer.
+
 ## Files
 
 | Purpose | File |
@@ -192,8 +202,9 @@ is exactly `http://127.0.0.1:54321`; it never targets the hosted project.
    but **not enforced**; the total cap is the present spend backstop.
 4. Build and deploy the API and worker images from the same commit with
    `hosted/cloudbuild.yaml`. Give the API service identity
-   permission to execute the worker Job **with overrides** (only `AUDIT_ID` is
-   overridden). Give each service identity access only to its required secrets.
+   permission to execute the worker Job **with overrides** (`AUDIT_ID` is
+   overridden; the opt-in long-wait mode also overrides that execution's task
+   timeout). Give each service identity access only to its required secrets.
    Configure the worker Job as one task with **zero automatic retries** and a
    timeout long enough for a complete audit; a retry must not repeat paid work.
 5. Create a Cloud Tasks queue and private watchdog Cloud Run service. Give API

@@ -32,7 +32,9 @@ class CloudRunDispatcher:
         self.job_name = job_name
         self.session = session or requests.Session()
 
-    def dispatch(self, audit_id: UUID) -> str:
+    def dispatch(
+        self, audit_id: UUID, *, wait_longer_for_google_ai_mode: bool = False
+    ) -> str:
         try:
             token_response = self.session.get(
                 "http://metadata.google.internal/computeMetadata/v1/"
@@ -42,6 +44,15 @@ class CloudRunDispatcher:
             )
             token_response.raise_for_status()
             access_token = token_response.json()["access_token"]
+            overrides = {
+                "containerOverrides": [
+                    {"env": [{"name": "AUDIT_ID", "value": str(audit_id)}]}
+                ],
+                "taskCount": 1,
+            }
+            if wait_longer_for_google_ai_mode:
+                # Applies to this execution only, not the shared Job definition.
+                overrides["timeout"] = "7200s"
             response = self.session.post(
                 "https://run.googleapis.com/v2/projects/"
                 f"{self.project_id}/locations/{self.region}/jobs/"
@@ -50,18 +61,7 @@ class CloudRunDispatcher:
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "overrides": {
-                        "containerOverrides": [
-                            {
-                                "env": [
-                                    {"name": "AUDIT_ID", "value": str(audit_id)}
-                                ]
-                            }
-                        ],
-                        "taskCount": 1,
-                    }
-                },
+                json={"overrides": overrides},
                 timeout=20,
             )
             response.raise_for_status()

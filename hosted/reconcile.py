@@ -16,7 +16,14 @@ def reconcile_once(gateway, dispatcher, limit=50):
         if not gateway.reserve_dispatch(audit_id):
             continue
         try:
-            dispatcher.dispatch(audit_id)
+            audit = gateway.get_audit(audit_id)
+            options = audit.get("input_options") or {}
+            dispatcher.dispatch(
+                audit_id,
+                wait_longer_for_google_ai_mode=(
+                    options.get("wait_longer_for_google_ai_mode") is True
+                ),
+            )
             started += 1
         except DispatchError:
             # Leave the row dispatching for the next timed retry.

@@ -122,6 +122,7 @@ function collectRequest() {
     country_code: String(data.get("country_code") || "US").trim().toUpperCase(),
     search_engine: String(data.get("search_engine") || "auto"),
     include_reddit_analysis: data.get("include_reddit_analysis") === "on",
+    wait_longer_for_google_ai_mode: data.get("wait_longer_for_google_ai_mode") === "on",
     workshop_id: trialMode ? null : config.workshop_id,
   };
 }

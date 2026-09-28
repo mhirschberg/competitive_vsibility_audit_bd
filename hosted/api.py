@@ -31,6 +31,7 @@ class AuditRequest(BaseModel):
     country_code: str = Field(default="US", pattern=r"^[A-Za-z]{2}$")
     search_engine: Literal["auto", "google", "bing", "none"] = "auto"
     include_reddit_analysis: bool = False
+    wait_longer_for_google_ai_mode: bool = False
     workshop_id: UUID | None = None
 
 
@@ -265,6 +266,7 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                     "social_sources": (
                         ["reddit"] if request.include_reddit_analysis else []
                     ),
+                    "wait_longer_for_google_ai_mode": request.wait_longer_for_google_ai_mode,
                 },
                 p_engine_commit=engine_commit,
                 p_methodology_version=methodology_version,
@@ -281,7 +283,10 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                     audit_id=audit_id, dispatch_state="already_pending"
                 )
             try:
-                dispatcher.dispatch(audit_id)
+                dispatcher.dispatch(
+                    audit_id,
+                    wait_longer_for_google_ai_mode=request.wait_longer_for_google_ai_mode,
+                )
             except DispatchError:
                 # The row remains dispatching; a scheduled reconciler must
                 # revisit it after the reservation timeout.

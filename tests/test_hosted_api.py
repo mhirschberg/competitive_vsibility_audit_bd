@@ -29,6 +29,7 @@ class FakeGateway:
         self.trial_allowed = True
         self.trial_quota_error = None
         self.admin_payload = None
+        self.audit_options = {}
 
     def authenticate(self, token):
         self.token = token
@@ -102,6 +103,10 @@ class FakeGateway:
         assert audit_id == AUDIT_ID
         return self.reserve_result
 
+    def get_audit(self, audit_id):
+        assert audit_id == AUDIT_ID
+        return {"input_options": self.audit_options}
+
     def list_dispatch_candidates(self, limit):
         return [AUDIT_ID]
 
@@ -123,10 +128,12 @@ class FakeGateway:
 class FakeDispatcher:
     def __init__(self):
         self.calls = []
+        self.long_wait_flags = []
         self.fail = False
 
-    def dispatch(self, audit_id):
+    def dispatch(self, audit_id, *, wait_longer_for_google_ai_mode=False):
         self.calls.append(audit_id)
+        self.long_wait_flags.append(wait_longer_for_google_ai_mode)
         if self.fail:
             raise DispatchError("mock failure")
         return "operations/test"
@@ -184,6 +191,20 @@ class HostedApiTests(unittest.TestCase):
             ["reddit"],
         )
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
+        self.assertEqual(self.dispatcher.long_wait_flags, [False])
+
+    def test_long_wait_is_saved_and_applied_to_first_dispatch(self):
+        response = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "wait_longer_for_google_ai_mode": True},
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertIs(
+            self.gateway.payload["p_input_options"]["wait_longer_for_google_ai_mode"],
+            True,
+        )
+        self.assertEqual(self.dispatcher.long_wait_flags, [True])
 
     def test_health_endpoint_avoids_cloud_run_reserved_suffix(self):
         response = self.client.get("/health")
@@ -447,6 +468,12 @@ class HostedApiTests(unittest.TestCase):
         self.assertEqual(result, {"started": 1, "failed": 0, "interrupted": 0})
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
 
+    def test_reconciler_preserves_long_wait_on_retry(self):
+        self.gateway.audit_options = {"wait_longer_for_google_ai_mode": True}
+        result = reconcile_once(self.gateway, self.dispatcher)
+        self.assertEqual(result["started"], 1)
+        self.assertEqual(self.dispatcher.long_wait_flags, [True])
+
     def test_reconciler_skips_audit_claimed_elsewhere(self):
         self.gateway.reserve_result = False
         result = reconcile_once(self.gateway, self.dispatcher)
@@ -491,6 +518,15 @@ class CloudRunDispatcherTests(unittest.TestCase):
             kwargs["json"]["overrides"]["containerOverrides"][0]["env"],
             [{"name": "AUDIT_ID", "value": str(AUDIT_ID)}],
         )
+        self.assertNotIn("timeout", kwargs["json"]["overrides"])
+
+    def test_long_wait_overrides_timeout_only_for_that_execution(self):
+        session = FakeHttpSession()
+        dispatcher = CloudRunDispatcher(
+            "test-project", "europe-west3", "audit-worker", session=session
+        )
+        dispatcher.dispatch(AUDIT_ID, wait_longer_for_google_ai_mode=True)
+        self.assertEqual(session.posts[0][1]["json"]["overrides"]["timeout"], "7200s")
 
 
 if __name__ == "__main__":

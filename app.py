@@ -48,6 +48,7 @@ def _build_config_cell(
     search_engine,
     include_reddit_analysis,
     debug_mode,
+    wait_longer_for_google_ai_mode=False,
 ):
     values = {
         "company_name": str(company_name or "").strip(),
@@ -57,6 +58,7 @@ def _build_config_cell(
         "search_engine": str(search_engine or "auto").strip().lower(),
         "include_reddit_analysis": bool(include_reddit_analysis),
         "debug_mode": bool(debug_mode),
+        "wait_longer_for_google_ai_mode": bool(wait_longer_for_google_ai_mode),
     }
     payload = json.dumps(values, ensure_ascii=False)
 
@@ -74,6 +76,7 @@ SEARCH_ENGINE = _WEB_CONFIG["search_engine"]
 AUTO_DOWNLOAD_REPORT = False
 INCLUDE_REDDIT_ANALYSIS = bool(_WEB_CONFIG["include_reddit_analysis"])
 DEBUG_MODE = bool(_WEB_CONFIG["debug_mode"])
+WAIT_LONGER_FOR_GOOGLE_AI_MODE = bool(_WEB_CONFIG["wait_longer_for_google_ai_mode"])
 
 BRIGHTDATA_API_TOKEN = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
 SERP_ZONE = os.getenv("SERP_ZONE", "").strip()
@@ -128,6 +131,10 @@ print(
     f"{{'enabled' if INCLUDE_REDDIT_ANALYSIS else 'skipped'}}"
 )
 print(f"Debug logging: {{'enabled' if DEBUG_MODE else 'disabled'}}")
+print(
+    f"Google AI Mode snapshot wait: "
+    f"{{'up to 30 minutes' if WAIT_LONGER_FOR_GOOGLE_AI_MODE else 'up to 12 minutes'}}"
+)
 '''
 
 
@@ -139,6 +146,7 @@ def _build_runner_script(
     search_engine,
     include_reddit_analysis,
     debug_mode,
+    wait_longer_for_google_ai_mode=False,
 ):
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
     chunks = [
@@ -165,6 +173,7 @@ def _build_runner_script(
                     search_engine,
                     include_reddit_analysis,
                     debug_mode,
+                    wait_longer_for_google_ai_mode,
                 )
             )
             continue
@@ -172,6 +181,16 @@ def _build_runner_script(
         source = _cell_source(cell)
         if not source.strip():
             continue
+
+        if wait_longer_for_google_ai_mode:
+            # Only the web runner changes these notebook call sites. Keep the
+            # standalone notebook's 12-minute default untouched.
+            source = source.replace("timeout_seconds=720", "timeout_seconds=1800")
+            source = re.sub(
+                r"(bd_client\.google_ai_mode,\s*\n\s*prompt,\s*\n\s*)720(\s*,)",
+                r"\g<1>1800\2",
+                source,
+            )
 
         source = re.sub(
             r"AUDIT_RESULT\s*=\s*await\s+run_competitive_visibility_audit\(\s*AUDIT_SETTINGS\s*\)",
