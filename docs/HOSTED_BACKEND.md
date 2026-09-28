@@ -1,15 +1,18 @@
 # Hosted audit backend: current state and deployment checklist
 
 The separate Competitive Audit Supabase project applies migrations from
-`main`. The API, static UI, private watchdog service, and per-audit worker Job
-are deployed to Cloud Run in `getmuzoboz` / `europe-west1`. A full Notion audit
+`main`. The API, private watchdog service, and per-audit worker Job are
+deployed to Cloud Run in `getmuzoboz` / `europe-west1`. The static UI is hosted
+in the separate Firebase project `qaviso-web`; the original Cloud Run web
+service remains available during the domain migration. A full Notion audit
 completed on 2026-09-26 and produced downloadable report artifacts. The
 notebook was not changed for hosting. This is still a workshop deployment:
 raise the workshop admission caps deliberately before inviting attendees.
 
 ## Live smoke deployment
 
-- Web UI: `https://competitive-audit-web-4lvms3qmsa-ew.a.run.app`
+- Branded Web UI: `https://audit.qaviso.com` (Firebase Hosting, after DNS and TLS provisioning)
+- Original Web UI: `https://competitive-audit-web-4lvms3qmsa-ew.a.run.app`
 - API health: `https://competitive-audit-api-4lvms3qmsa-ew.a.run.app/health`
 - Google Cloud project/region: `getmuzoboz` / `europe-west1`
 - Supabase project ref: `xhntpuwntpftjqmlzxgk` (the separate Competitive Audit project)
@@ -88,7 +91,7 @@ site. The repository's `.dockerignore` also excludes `.env` files from images.
 | `PURGE_ENABLED` | Watchdog | Set to `true` only after the migration and dry-run verification; otherwise mutating cleanup is disabled |
 | `ENGINE_COMMIT` | API | Git commit SHA of the code inside the worker image |
 | `METHODOLOGY_VERSION` | API | Explicit method label, initially `v1` |
-| `WEB_ORIGIN` | API | Exact HTTPS origin of the future static UI, for CORS |
+| `WEB_ORIGIN` | API | Comma-separated exact HTTPS origins of both the branded and original UIs, for CORS |
 | `AUDIT_ID` | Worker execution override | Set by the API for each Job; never configure as a fixed Job variable |
 | `AUDIT_API_URL` | Static UI build only | Public HTTPS URL of the deployed API |
 | `WORKSHOP_ID` | Static UI build only | Legacy default workshop UUID, retained for config compatibility; public trial does not use it |
@@ -99,12 +102,28 @@ reads the same root `.env.local` during local development and emits a public
 `config.json` without secrets; on a static host, set those four variables in
 its build environment. The worker does not receive any user's Auth token.
 
+### Branded static UI
+
+`firebase.json` publishes only `web/dist` to the default Hosting site in the
+separate Firebase project `qaviso-web`. Build with `npm run build --prefix web`
+after setting the four public build variables (`SUPABASE_URL`,
+`SUPABASE_PUBLISHABLE_KEY`, `AUDIT_API_URL`, `WORKSHOP_ID`), then deploy with
+`firebase deploy --only hosting --project qaviso-web`. Never place the
+Supabase secret key or Bright Data token in the Hosting configuration.
+Firebase serves `/admin` from `admin.html`; the original Cloud Run web service
+remains an independent fallback. `audit.qaviso.com` has an explicit Porkbun
+CNAME to `qaviso-web.web.app`, which overrides the unrelated wildcard record.
+Both UI origins must remain in the API's `WEB_ORIGIN` and in Supabase Auth's
+redirect allow-list while both frontends are active. The watchdog's
+`NOTIFICATION_WEB_URL` controls links in report-ready emails and should be
+changed to the branded address only after HTTPS is ready.
+
 ## Organizer access
 
 The `/admin` page signs in through Supabase Auth's Google provider, using an
 OAuth web client configured in the `getmuzoboz` Google Auth Platform project.
 The provider requests only `openid`, email, and profile. Allow the exact
-`https://competitive-audit-web-4lvms3qmsa-ew.a.run.app/admin` redirect in
+`https://audit.qaviso.com/admin` and original Cloud Run `/admin` redirects in
 Supabase Auth. Organizer login uses a separate browser session store, so it
 does not replace the anonymous session that owns a participant's audit history.
 
@@ -131,8 +150,9 @@ before their first audit, and counts only their personal trial audits.
 
 The public root page signs in with the existing Supabase Google provider and
 uses a separate browser session store from both `/admin` and anonymous workshop
-links. The root URL is already the Supabase Auth Site URL; keep it configured
-as the Google callback destination. The API
+links. Add the branded root URL to the Supabase Auth redirect allow-list;
+retain the original root as the Site URL until the branded domain is verified
+and then change the Site URL only after testing sign-in. The API
 checks the verified Google identity; the service-only `submit_trial_audit`
 function serializes submissions per Auth user, checks three total non-workshop
 audits and a rolling 24-hour gap, and preserves idempotent retries. Failed or

@@ -88,11 +88,11 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
         raise ValueError("ENGINE_COMMIT and METHODOLOGY_VERSION are required")
 
     app = FastAPI(title="Competitive Visibility Audit API")
-    web_origin = settings.get("WEB_ORIGIN", "").strip()
-    if web_origin:
+    web_origins = [origin.strip() for origin in settings.get("WEB_ORIGIN", "").split(",") if origin.strip()]
+    if web_origins:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=[web_origin],
+            allow_origins=web_origins,
             allow_methods=["GET", "POST", "PATCH"],
             allow_headers=["Authorization", "Content-Type"],
         )

@@ -175,6 +175,37 @@ class HostedApiTests(unittest.TestCase):
             "workshop_id": str(WORKSHOP_ID),
         }
 
+    def test_cors_accepts_both_web_origins(self):
+        app = create_app(
+            gateway=self.gateway,
+            dispatcher=self.dispatcher,
+            settings={
+                "ENGINE_COMMIT": "test-commit",
+                "METHODOLOGY_VERSION": "v1",
+                "WEB_ORIGIN": "https://old.example, https://audit.example",
+            },
+        )
+        client = TestClient(app)
+        for origin in ("https://old.example", "https://audit.example"):
+            response = client.options(
+                "/audits",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "POST",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+        response = client.options(
+            "/audits",
+            headers={
+                "Origin": "https://other.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_submission_uses_verified_identity_and_dispatches_once(self):
         response = self.client.post(
             "/audits",
