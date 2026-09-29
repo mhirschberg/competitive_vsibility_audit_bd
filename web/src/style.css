@@ -101,6 +101,16 @@ h2 { font-size: clamp(40px, 3.6vw, 58px); line-height: 1.02; margin-bottom: 0; }
 .trial-google { padding: 10px 12px; min-height: 40px; border: 1px solid var(--deep); color: white; background: var(--deep); font-size: 11px; font-weight: 700; }
 .trial-google:hover { background: #0c2e28; }
 .trial-signout { border: 0; padding: 2px 0; background: none; color: #526b5b; font: 10px var(--mono); text-decoration: underline; text-underline-offset: 3px; }
+.data-use-note { margin-bottom: 12px; border: 1px solid var(--line); background: #faf8f2; }
+.data-use-note summary { display: flex; align-items: baseline; gap: 12px; padding: 11px 15px; list-style: none; cursor: pointer; }
+.data-use-note summary::-webkit-details-marker { display: none; }
+.data-use-note summary > span { flex: none; color: #748177; font: 500 9px var(--mono); letter-spacing: .1em; }
+.data-use-note summary strong { color: var(--deep); font-size: 12px; font-weight: 700; }
+.data-use-note summary::after { content: "+"; margin-left: auto; color: var(--orange); font: 500 16px var(--mono); }
+.data-use-note[open] summary::after { content: "−"; }
+.data-use-note summary:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.data-use-body { padding: 1px 15px 11px; border-top: 1px solid var(--line); }
+.data-use-body p { margin: 9px 0 0; color: #46574d; font-size: 12px; line-height: 1.55; }
 .audit-form { padding: clamp(17px, 1.8vw, 24px); }
 fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .field-grid { display: grid; gap: 14px; }
