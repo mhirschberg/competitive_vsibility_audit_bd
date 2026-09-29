@@ -221,8 +221,31 @@ class HostedApiTests(unittest.TestCase):
             self.gateway.payload["p_input_options"]["social_sources"],
             ["reddit"],
         )
+        self.assertEqual(
+            self.gateway.payload["p_input_options"]["reddit_comment_posts_per_cohort"],
+            0,
+        )
+        self.assertTrue(self.gateway.payload["p_input_options"]["include_copilot_visibility"])
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
         self.assertEqual(self.dispatcher.long_wait_flags, [False])
+
+    def test_reddit_comment_choice_is_saved_and_validated(self):
+        response = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "reddit_comment_posts_per_cohort": 2},
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(
+            self.gateway.payload["p_input_options"]["reddit_comment_posts_per_cohort"],
+            2,
+        )
+        invalid = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "reddit_comment_posts_per_cohort": 11},
+        )
+        self.assertEqual(invalid.status_code, 422)
 
     def test_long_wait_is_saved_and_applied_to_first_dispatch(self):
         response = self.client.post(
@@ -236,6 +259,15 @@ class HostedApiTests(unittest.TestCase):
             True,
         )
         self.assertEqual(self.dispatcher.long_wait_flags, [True])
+
+    def test_copilot_can_be_disabled(self):
+        response = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={**self.request, "include_copilot_visibility": False},
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertFalse(self.gateway.payload["p_input_options"]["include_copilot_visibility"])
 
     def test_health_endpoint_avoids_cloud_run_reserved_suffix(self):
         response = self.client.get("/health")

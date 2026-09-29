@@ -35,6 +35,25 @@ class WebRedditToggleTests(unittest.TestCase):
 
         self.assertTrue(payload["include_reddit_analysis"])
 
+    def test_comment_collection_defaults_off_and_can_be_selected(self):
+        _, payload = self._web_config(True)
+        self.assertEqual(payload["reddit_comment_posts_per_cohort"], 0)
+        source = _build_config_cell(
+            "Acme", "example.com", "widgets", "US", "auto", True, False,
+            reddit_comment_posts_per_cohort=2,
+        )
+        self.assertIn('os.environ["REDDIT_COMMENT_POSTS_PER_COHORT"] = str(', source)
+        match = re.search(r"_WEB_CONFIG = json.loads\((.+)\)", source)
+        selected = json.loads(json.loads(match.group(1)))
+        self.assertEqual(selected["reddit_comment_posts_per_cohort"], 2)
+
+    def test_comment_collection_rejects_out_of_range_value(self):
+        with self.assertRaises(ValueError):
+            _build_config_cell(
+                "Acme", "example.com", "widgets", "US", "auto", True, False,
+                reddit_comment_posts_per_cohort=11,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

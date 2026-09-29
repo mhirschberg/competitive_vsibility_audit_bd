@@ -42,7 +42,12 @@ class LocalAuditRunnerTests(unittest.TestCase):
         )
 
         self.assertFalse(default_args.include_reddit)
+        self.assertEqual(default_args.reddit_comment_posts_per_cohort, 0)
         self.assertTrue(enabled_args.include_reddit)
+        selected_args = run_local_audit.build_parser().parse_args(
+            [*base_args, "--include-reddit", "--reddit-comment-posts-per-cohort", "2"]
+        )
+        self.assertEqual(selected_args.reddit_comment_posts_per_cohort, 2)
 
 
 if __name__ == "__main__":

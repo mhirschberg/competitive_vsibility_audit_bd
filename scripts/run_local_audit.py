@@ -66,6 +66,22 @@ def build_parser():
             "up to 10 minutes and uses additional Bright Data dataset requests"
         ),
     )
+    parser.add_argument(
+        "--reddit-comment-posts-per-cohort",
+        type=int,
+        choices=range(0, 11),
+        default=0,
+        metavar="0-10",
+        help=(
+            "Reddit posts per group to scrape comments from (default: 0/off). "
+            "This does not cap comments returned by each post."
+        ),
+    )
+    parser.add_argument(
+        "--no-copilot",
+        action="store_true",
+        help="Skip the optional Microsoft Copilot AI visibility answer",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable notebook debug logs")
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
@@ -131,6 +147,8 @@ def main(argv=None):
         args.search_engine,
         args.include_reddit,
         args.debug,
+        include_copilot_visibility=not args.no_copilot,
+        reddit_comment_posts_per_cohort=args.reddit_comment_posts_per_cohort,
     )
     compile(runner_source, "local-notebook-runner", "exec")
 

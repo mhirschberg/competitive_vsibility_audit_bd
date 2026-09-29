@@ -144,6 +144,8 @@ fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .social-copy { display: flex; flex-direction: column; gap: 5px; }
 .social-copy strong { font-size: 15px; }
 .social-copy small { max-width: 520px; font-size: 12px; line-height: 1.5; color: #5e6c61; }
+.reddit-comment-setting { max-width: 560px; margin: 12px 0 0 14px; }
+.reddit-comment-setting small { color: #5e6c61; font-size: 12px; line-height: 1.5; }
 .switch-wrap { flex: none; position: relative; display: inline-flex; align-items: center; }
 .switch-wrap input { position: absolute; width: 48px; height: 28px; opacity: 0; cursor: pointer; margin: 0; z-index: 2; }
 .switch { width: 48px; height: 28px; border-radius: 20px; background: #aab8ac; position: relative; transition: background .2s; }

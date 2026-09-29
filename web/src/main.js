@@ -126,6 +126,8 @@ function collectRequest() {
     country_code: String(data.get("country_code") || "US").trim().toUpperCase(),
     search_engine: String(data.get("search_engine") || "auto"),
     include_reddit_analysis: data.get("include_reddit_analysis") === "on",
+    reddit_comment_posts_per_cohort: Number(data.get("reddit_comment_posts_per_cohort") || 0),
+    include_copilot_visibility: data.get("include_copilot_visibility") === "on",
     wait_longer_for_google_ai_mode: data.get("wait_longer_for_google_ai_mode") === "on",
     email_when_ready: !emailOption.hidden && data.get("email_when_ready") === "on",
     workshop_id: trialMode ? null : config.workshop_id,

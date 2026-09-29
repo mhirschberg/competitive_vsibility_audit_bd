@@ -49,7 +49,12 @@ def _build_config_cell(
     include_reddit_analysis,
     debug_mode,
     wait_longer_for_google_ai_mode=False,
+    include_copilot_visibility=True,
+    reddit_comment_posts_per_cohort=0,
 ):
+    reddit_comment_posts_per_cohort = int(reddit_comment_posts_per_cohort)
+    if not 0 <= reddit_comment_posts_per_cohort <= 10:
+        raise ValueError("Reddit comment posts per group must be between 0 and 10.")
     values = {
         "company_name": str(company_name or "").strip(),
         "company_domain": str(company_domain or "").strip(),
@@ -59,6 +64,8 @@ def _build_config_cell(
         "include_reddit_analysis": bool(include_reddit_analysis),
         "debug_mode": bool(debug_mode),
         "wait_longer_for_google_ai_mode": bool(wait_longer_for_google_ai_mode),
+        "include_copilot_visibility": bool(include_copilot_visibility),
+        "reddit_comment_posts_per_cohort": reddit_comment_posts_per_cohort,
     }
     payload = json.dumps(values, ensure_ascii=False)
 
@@ -75,6 +82,9 @@ COUNTRY = _WEB_CONFIG["country"]
 SEARCH_ENGINE = _WEB_CONFIG["search_engine"]
 AUTO_DOWNLOAD_REPORT = False
 INCLUDE_REDDIT_ANALYSIS = bool(_WEB_CONFIG["include_reddit_analysis"])
+REDDIT_COMMENT_POSTS_PER_COHORT = int(_WEB_CONFIG["reddit_comment_posts_per_cohort"])
+os.environ["REDDIT_COMMENT_POSTS_PER_COHORT"] = str(REDDIT_COMMENT_POSTS_PER_COHORT)
+INCLUDE_COPILOT_VISIBILITY = bool(_WEB_CONFIG["include_copilot_visibility"])
 DEBUG_MODE = bool(_WEB_CONFIG["debug_mode"])
 WAIT_LONGER_FOR_GOOGLE_AI_MODE = bool(_WEB_CONFIG["wait_longer_for_google_ai_mode"])
 
@@ -116,6 +126,8 @@ AUDIT_SETTINGS = {{
     "serp_zone": SERP_ZONE,
     "auto_download": False,
     "include_reddit_analysis": INCLUDE_REDDIT_ANALYSIS,
+    "reddit_comment_posts_per_cohort": REDDIT_COMMENT_POSTS_PER_COHORT,
+    "include_copilot_visibility": INCLUDE_COPILOT_VISIBILITY,
     "debug": DEBUG_MODE,
 }}
 
@@ -129,6 +141,12 @@ print(f"Search engine: {{SEARCH_ENGINE}}")
 print(
     f"Reddit conversation analysis: "
     f"{{'enabled' if INCLUDE_REDDIT_ANALYSIS else 'skipped'}}"
+)
+if INCLUDE_REDDIT_ANALYSIS:
+    print(f"Reddit comment collection: {{REDDIT_COMMENT_POSTS_PER_COHORT}} post(s) per group")
+print(
+    f"Copilot AI visibility: "
+    f"{{'enabled' if INCLUDE_COPILOT_VISIBILITY else 'skipped'}}"
 )
 print(f"Debug logging: {{'enabled' if DEBUG_MODE else 'disabled'}}")
 print(
@@ -147,6 +165,8 @@ def _build_runner_script(
     include_reddit_analysis,
     debug_mode,
     wait_longer_for_google_ai_mode=False,
+    include_copilot_visibility=True,
+    reddit_comment_posts_per_cohort=0,
 ):
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
     chunks = [
@@ -174,6 +194,8 @@ def _build_runner_script(
                     include_reddit_analysis,
                     debug_mode,
                     wait_longer_for_google_ai_mode,
+                    include_copilot_visibility,
+                    reddit_comment_posts_per_cohort,
                 )
             )
             continue
@@ -187,7 +209,7 @@ def _build_runner_script(
             # standalone notebook's 12-minute default untouched.
             source = source.replace("timeout_seconds=720", "timeout_seconds=1800")
             source = re.sub(
-                r"(bd_client\.google_ai_mode,\s*\n\s*prompt,\s*\n\s*)720(\s*,)",
+                r"(bd_client\.google_ai_mode_measured,\s*\n\s*prompt,\s*\n\s*)720(\s*,)",
                 r"\g<1>1800\2",
                 source,
             )
@@ -254,6 +276,8 @@ def run_audit(
     search_engine,
     include_reddit_analysis,
     debug_mode,
+    include_copilot_visibility=True,
+    reddit_comment_posts_per_cohort=0,
 ):
     _validate_audit_request(company_name, company_domain)
 
@@ -270,6 +294,8 @@ def run_audit(
                 search_engine,
                 include_reddit_analysis,
                 debug_mode,
+                include_copilot_visibility=include_copilot_visibility,
+                reddit_comment_posts_per_cohort=reddit_comment_posts_per_cohort,
             ),
             encoding="utf-8",
         )
@@ -374,6 +400,8 @@ def start_audit_job(
     include_reddit_analysis,
     debug_mode,
     browser_state,
+    include_copilot_visibility=True,
+    reddit_comment_posts_per_cohort=0,
 ):
     _validate_audit_request(company_name, company_domain)
 
@@ -395,6 +423,8 @@ def start_audit_job(
         search_engine,
         include_reddit_analysis,
         debug_mode,
+        include_copilot_visibility,
+        reddit_comment_posts_per_cohort,
     )
     run_id = uuid.uuid4().hex
     with AUDIT_JOBS_LOCK:
@@ -415,6 +445,8 @@ def start_audit_job(
             "country": str(country or "US"),
             "search_engine": str(search_engine or "auto"),
             "include_reddit_analysis": bool(include_reddit_analysis),
+            "reddit_comment_posts_per_cohort": int(reddit_comment_posts_per_cohort),
+            "include_copilot_visibility": bool(include_copilot_visibility),
             "debug_mode": bool(debug_mode),
         }
     )
@@ -438,6 +470,8 @@ def restore_audit_session(browser_state):
         saved_state.get("search_engine", "auto"),
         bool(saved_state.get("include_reddit_analysis", False)),
         bool(saved_state.get("debug_mode", False)),
+        bool(saved_state.get("include_copilot_visibility", True)),
+        int(saved_state.get("reddit_comment_posts_per_cohort", 0)),
         logs,
         downloads,
     )
@@ -481,6 +515,20 @@ def build_ui():
                 "Bright Data dataset requests."
             ),
         )
+        reddit_comment_posts_per_cohort = gr.Dropdown(
+            label="Reddit comment collection: posts per group",
+            choices=[0, 1, 2, 5, 10],
+            value=0,
+            info=(
+                "Off by default. Each selected post can return many billable "
+                "comments; this limits posts, not comment records."
+            ),
+        )
+        include_copilot_visibility = gr.Checkbox(
+            label="Include Copilot AI visibility",
+            value=True,
+            info="One additional answer; failure will not stop the audit.",
+        )
 
         run_button = gr.Button("Run audit", variant="primary")
         logs = gr.Textbox(label="Live audit output", lines=24, interactive=False)
@@ -498,6 +546,8 @@ def build_ui():
                 include_reddit_analysis,
                 debug_mode,
                 browser_state,
+                include_copilot_visibility,
+                reddit_comment_posts_per_cohort,
             ],
             outputs=[logs, downloads, browser_state],
             queue=False,
@@ -522,6 +572,8 @@ def build_ui():
                 search_engine,
                 include_reddit_analysis,
                 debug_mode,
+                include_copilot_visibility,
+                reddit_comment_posts_per_cohort,
                 logs,
                 downloads,
             ],

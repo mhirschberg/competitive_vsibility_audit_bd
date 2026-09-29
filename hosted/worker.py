@@ -170,6 +170,8 @@ def run_worker(
                 "reddit" in (options.get("social_sources") or []),
                 bool(options.get("debug", False)),
                 options.get("wait_longer_for_google_ai_mode") is True,
+                options.get("include_copilot_visibility") is True,
+                options.get("reddit_comment_posts_per_cohort", 0),
             )
             compile(source, str(runner_path), "exec")
             runner_path.write_text(source, encoding="utf-8")

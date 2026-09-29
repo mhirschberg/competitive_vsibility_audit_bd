@@ -20,7 +20,12 @@ class FakeWorkerGateway:
         self.events = []
         self.usage_rows = []
         self.finishes = []
-        self.input_options = {"search_engine": "auto", "social_sources": ["reddit"]}
+        self.input_options = {
+            "search_engine": "auto",
+            "social_sources": ["reddit"],
+            "include_copilot_visibility": True,
+            "reddit_comment_posts_per_cohort": 2,
+        }
 
     def claim_audit(self, audit_id, platform_execution_id):
         assert audit_id == AUDIT_ID
@@ -108,6 +113,8 @@ class HostedWorkerTests(unittest.TestCase):
         self.assertEqual(arguments[0][0:4], ("Rayner", "rayner.com", "RayOne Galaxy", "GB"))
         self.assertTrue(arguments[0][5])  # Reddit selected.
         self.assertFalse(arguments[0][7])  # Standard Google AI Mode wait.
+        self.assertTrue(arguments[0][8])  # Optional Copilot measurement.
+        self.assertEqual(arguments[0][9], 2)  # Comment collection choice.
         self.assertEqual(len(self.gateway.uploads), 2)  # Log and JSON.
         self.assertEqual(len(self.gateway.usage_rows), 3)
         self.assertEqual(self.gateway.usage_rows[0]["confirmed_result_count"], 1)

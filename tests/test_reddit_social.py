@@ -13,7 +13,52 @@ def profile(name="Acme", products=None):
     )
 
 
+class RedditCommentBudgetTests(unittest.TestCase):
+    def setUp(self):
+        self.posts = [
+            {
+                "post_id": f"post{i}",
+                "url": f"https://www.reddit.com/r/test/comments/post{i}/example/",
+            }
+            for i in range(4)
+        ]
+
+    def test_default_off_does_not_trigger_comment_dataset(self):
+        with (
+            mock.patch.object(social, "REDDIT_COMMENT_POSTS_PER_COHORT", 0),
+            mock.patch.object(social, "_scrape_reddit_dataset") as scrape,
+        ):
+            self.assertEqual(social._collect_reddit_comments(self.posts), {})
+        scrape.assert_not_called()
+
+    def test_selected_post_count_limits_comment_dataset_inputs(self):
+        with (
+            mock.patch.object(social, "REDDIT_COMMENT_POSTS_PER_COHORT", 2),
+            mock.patch.object(social, "_scrape_reddit_dataset", return_value=[]) as scrape,
+        ):
+            self.assertEqual(social._collect_reddit_comments(self.posts), {})
+        submitted = scrape.call_args.kwargs["payload"]["input"]
+        self.assertEqual([item["url"] for item in submitted], [
+            self.posts[0]["url"], self.posts[1]["url"],
+        ])
+
+
 class RedditUrlTests(unittest.TestCase):
+    def test_classification_prompt_requires_audited_offering(self):
+        prompt = social._reddit_analysis_prompt(
+            [{
+                "post_id": "example", "title": "How to get Google Reviews?",
+                "description": "Advice about business reviews and map ranking",
+                "comments": [],
+            }],
+            profile("Google", ["Pixel Pro"]),
+            [profile("Apple")],
+            focus="Pixel Pro",
+        )
+        self.assertIn("Audited offering/category: 'Pixel Pro'", prompt)
+        self.assertIn("A brand-name match alone is insufficient", prompt)
+        self.assertLessEqual(len(prompt), 4096)
+
     def test_explicit_audit_focus_drives_first_queries(self):
         target = profile(
             "Rayner",
@@ -30,7 +75,7 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Rayner RayOne Galaxy",
-                "Rayner presbyopia-correcting intraocular lenses",
+                "Rayner RayOne Galaxy review",
                 "Rayner review",
             ],
         )
@@ -48,7 +93,7 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "CeraVe Moisturizing Cream",
-                "CeraVe moisturizer for dry sensitive skin",
+                "CeraVe Moisturizing Cream review",
                 "CeraVe review",
             ],
         )
@@ -66,7 +111,7 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Auto Trader Used-car marketplace",
-                "Auto Trader buy used cars online uk",
+                "Auto Trader Used-car marketplace review",
                 "Auto Trader review",
             ],
         )
@@ -84,7 +129,7 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Carwow Online-Fahrzeugmarkt",
-                "Carwow Gebrauchtwagen online kaufen",
+                "Carwow Online-Fahrzeugmarkt review",
                 "Carwow review",
             ],
         )
@@ -103,13 +148,14 @@ class RedditUrlTests(unittest.TestCase):
                 "gebrauchte autos online kaufen",
                 "gebrauchtwagen mit finanzierung suchen",
             ],
+            "used cars",
         )
 
         self.assertEqual(
             queries,
             [
-                "AutoScout24 gebrauchte autos online kaufen",
-                "AutoScout24 gebrauchtwagen mit finanzierung suchen",
+                "AutoScout24 used cars",
+                "AutoScout24 used cars review",
                 "AutoScout24 review",
             ],
         )
@@ -127,9 +173,59 @@ class RedditUrlTests(unittest.TestCase):
             queries,
             [
                 "Rayner RayOne",
-                "Rayner presbyopia-correcting intraocular lenses for cataract surgery",
+                "Rayner RayOne review",
                 "Rayner review",
             ],
+        )
+
+    def test_premium_reddit_queries_do_not_inherit_samsung_stylus_keyword(self):
+        target = profile("Samsung", ["Galaxy S26 Ultra"])
+        target.category = "Premium Smartphone"
+        keywords = [
+            "best flagship smartphone with stylus US",
+            "premium camera phone with optical zoom",
+        ]
+
+        for brand in ("Samsung", "Apple", "Google Pixel"):
+            self.assertEqual(
+                social.build_reddit_queries(profile(brand), keywords, "premium smartphone"),
+                [
+                    f"{brand} premium smartphone",
+                    f"{brand} premium smartphone review",
+                    f"{brand} review",
+                ],
+            )
+            self.assertEqual(
+                social.build_early_reddit_queries(brand, keywords, "premium smartphone"),
+                [
+                    f"{brand} premium smartphone",
+                    f"{brand} premium smartphone review",
+                    f"{brand} review",
+                ],
+            )
+        self.assertEqual(
+            social.build_category_reddit_queries(keywords, target, "premium smartphone"),
+            [
+                "premium smartphone",
+                "premium smartphone review",
+                "premium smartphone recommendation",
+            ],
+        )
+
+    def test_specific_product_prefetch_keeps_target_but_not_peer_product(self):
+        target = profile("Rayner", ["RayOne Galaxy"])
+        target.category = "Intraocular lenses"
+        self.assertEqual(
+            social._reddit_category_scope(target, "RayOne Galaxy"),
+            "Intraocular lenses",
+        )
+        self.assertEqual(
+            social.build_early_reddit_queries("Rayner", [], "RayOne Galaxy")[0],
+            "Rayner RayOne Galaxy",
+        )
+        self.assertEqual(
+            social.build_early_reddit_queries("Competitor", [], "Intraocular lenses")[0],
+            "Competitor Intraocular lenses",
         )
 
     def test_empty_reddit_serp_response_retries_and_warns(self):
@@ -391,6 +487,17 @@ class RedditUrlTests(unittest.TestCase):
                 "competitor:third",
                 "category",
             },
+        )
+        submitted = {
+            call.kwargs["context"]: call.args[0]
+            for call in trigger_mock.call_args_list
+        }
+        self.assertEqual(submitted["Acme"][0], "Acme Widget Pro")
+        self.assertEqual(submitted["Other"][0], "Other Widgets")
+        self.assertEqual(submitted["Third"][0], "Third Widgets")
+        self.assertEqual(submitted["neutral category"][0], "Widgets")
+        self.assertFalse(
+            any("cheap widgets" in query for queries in submitted.values() for query in queries)
         )
 
     def test_comparable_offering_validator_requires_same_typed_scope(self):
@@ -1009,6 +1116,7 @@ class RedditAnalysisTests(unittest.TestCase):
                     "focus": "Marketplace",
                     "sample": sample,
                     "metrics": metrics,
+                    "comment_collection": {"posts_requested": 0},
                 }
             ],
         }
@@ -1016,6 +1124,7 @@ class RedditAnalysisTests(unittest.TestCase):
         report = social.build_competitive_reddit_report_section(result)
 
         self.assertIn("Classification note", report)
+        self.assertIn("Comment collection was off", report)
         self.assertIn("### Cohort Coverage", report)
         self.assertIn("### Conversation Signals", report)
         self.assertIn("| Acme | target | Marketplace | 1 | 0 | 1 | 0 |", report)
@@ -1319,6 +1428,11 @@ class RedditAnalysisTests(unittest.TestCase):
                 "_discover_reddit_with_serp",
                 return_value={"records": [], "warnings": []},
             ),
+            mock.patch.object(
+                social,
+                "_wait_for_native_reddit_discovery",
+                side_effect=lambda native, _context: native,
+            ) as wait,
         ):
             result = social._run_reddit_profile_cohort(
                 profile(),
@@ -1329,8 +1443,54 @@ class RedditAnalysisTests(unittest.TestCase):
             )
 
         trigger.assert_not_called()
+        wait.assert_called_once()
         self.assertEqual(result["status"], "failed")
         self.assertIn("prefetch timed out", result["warnings"])
+
+    def test_timed_out_prefetch_reuses_snapshot_when_ready_later(self):
+        prefetch = {
+            "queries": ["Acme Widget"],
+            "records": [],
+            "snapshots": [{"snapshot_id": "already-paid"}],
+            "snapshot_manifest": [{
+                "snapshot_id": "already-paid", "status": "timeout",
+            }],
+            "warnings": [
+                "Reddit native snapshot race did not produce a ready result within 180 seconds."
+            ],
+        }
+        post = {"post_id": "p1", "title": "Acme Widget review"}
+
+        def ready_later(native, _context):
+            self.assertEqual(native["warnings"], [])
+            self.assertEqual(native["snapshot_manifest"][0]["status"], "triggered")
+            native["snapshot_manifest"][0].update(status="ready", winner=True)
+            return {**native, "records": [{"post_id": "p1"}],
+                    "winner_snapshot_id": "already-paid"}
+
+        with (
+            mock.patch.object(social, "_trigger_native_reddit_discovery") as trigger,
+            mock.patch.object(social, "_discover_reddit_with_serp",
+                              return_value={"records": [], "warnings": []}),
+            mock.patch.object(social, "_wait_for_native_reddit_discovery",
+                              side_effect=ready_later) as wait,
+            mock.patch.object(social, "merge_reddit_candidates",
+                              return_value=[{"post_id": "p1"}]),
+            mock.patch.object(social, "_collect_reddit_posts", return_value=[post]),
+            mock.patch.object(social, "select_reddit_sample", return_value=[post]),
+            mock.patch.object(social, "_collect_reddit_comments", return_value={}),
+            mock.patch.object(social, "analyze_reddit_posts",
+                              return_value=([{"post_id": "p1", "relevant": True}], [], [])),
+        ):
+            result = social._run_reddit_profile_cohort(
+                profile(), [], ["widget"], {}, native_prefetch=prefetch,
+            )
+
+        trigger.assert_not_called()
+        wait.assert_called_once()
+        self.assertTrue(result["discovery"]["native_recovered_after_prefetch"])
+        self.assertEqual(result["snapshot_manifest"][0]["status"], "ready")
+        self.assertFalse(result["warnings"])
 
     def test_competitive_mode_builds_equal_brand_and_category_cohorts(self):
         target = profile("Acme", ["Widget Pro"])
@@ -1452,6 +1612,58 @@ class RedditAnalysisTests(unittest.TestCase):
         self.assertIn(("target", "mobile.de", "Online-Fahrzeugmarkt"), observed)
         self.assertIn(("competitor", "AutoScout24", "Online-Fahrzeugmarkt"), observed)
         self.assertEqual(result["comparison_type"], "marketplace")
+
+    def test_explicit_category_focus_does_not_narrow_competitors_to_skus(self):
+        target = profile("Samsung", ["Galaxy S26 Ultra"])
+        target.category = "Consumer Electronics / Premium Smartphones"
+        competitors = [
+            profile("Apple", ["iPhone 18 Pro Max"]),
+            profile("Google", ["Pixel 11 Pro XL"]),
+        ]
+        observed = []
+
+        def cohort_result(
+            cohort_profile, peers, keywords, serp, focus, queries,
+            require_match, role, native_prefetch,
+        ):
+            observed.append((role, cohort_profile.brand_name, focus))
+            return {
+                "status": "success", "role": role,
+                "brand": cohort_profile.brand_name, "focus": focus,
+                "queries": queries or [focus], "sample": [],
+                "metrics": social.aggregate_reddit_analysis([]),
+                "warnings": [], "duration_seconds": 0,
+            }
+
+        with (
+            mock.patch.object(
+                social, "choose_competitor_reddit_offerings",
+                return_value=(
+                    {"Apple": "iPhone 18 Pro Max", "Google": "Pixel 11 Pro XL"},
+                    {"comparison_type": "physical_product"}, [],
+                ),
+            ),
+            mock.patch.object(
+                social, "_run_reddit_profile_cohort", side_effect=cohort_result,
+            ),
+        ):
+            result = social.run_reddit_social_sync(
+                target, competitors, ["best flagship phones"], {},
+                "premium smartphone",
+            )
+
+        self.assertIn(("target", "Samsung", "premium smartphone"), observed)
+        self.assertIn(("competitor", "Apple", "premium smartphone"), observed)
+        self.assertIn(("competitor", "Google", "premium smartphone"), observed)
+        self.assertTrue(result["offering_selection_race"]["category_level_scope"])
+
+    def test_premium_category_classification_excludes_budget_tier(self):
+        prompt = social._reddit_analysis_prompt(
+            [{"post_id": "p1", "title": "Samsung Galaxy A06 review", "description": ""}],
+            profile("Samsung", ["Galaxy S26 Ultra"]), [],
+            focus="premium smartphone",
+        )
+        self.assertIn("budget, entry-level, and mid-range", prompt)
 
     def test_partial_reddit_warnings_are_summarized_once(self):
         result = {

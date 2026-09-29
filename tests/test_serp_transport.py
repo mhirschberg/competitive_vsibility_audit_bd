@@ -1,6 +1,8 @@
 """Focused regression checks for the notebook's live SERP transport."""
 
+import ast
 import json
+import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -156,6 +158,85 @@ class SerpTransportTests(unittest.TestCase):
         self.assertNotIn("data_format", post.call_args.kwargs["json"])
         self.assertEqual(result["results"][0]["url"], "https://example.com/bing-result")
         self.assertEqual(result["parser"], "bing_markdown")
+
+    def test_indented_bing_organic_headings_ignore_navigation_links(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        runtime = "".join(notebook["cells"][3]["source"])
+        functions = [
+            item for item in ast.parse(runtime).body
+            if isinstance(item, ast.FunctionDef) and item.name == "parse_bing_markdown"
+        ]
+        strict_source = ast.get_source_segment(runtime, functions[0])
+        namespace = {
+            "re": re,
+            "clean_serp_markdown": lambda value: value,
+            "decode_bing_redirect": lambda _url: "https://phone.example/review",
+            "clean_displayed_url": lambda _line: "",
+            "get_hostname": lambda _value: "",
+            "get_root_domain": lambda value: (
+                urlparse(value).hostname or ""
+            ).removeprefix("www."),
+            "canonical_source_url": lambda value: value,
+            "result_snippet_from_lines": lambda _lines: "",
+        }
+        exec(strict_source, namespace)
+        markdown = (
+            "1. navigation\n"
+            "    ## [More results from this site]"
+            "(https://www.bing.com/ck/a?u=a1ignore)\n"
+            "2. organic\n"
+            "    ## [Best flagship phones]"
+            "(https://www.bing.com/ck/a?u=a1valid)\n"
+        )
+
+        result = namespace["parse_bing_markdown"](markdown, "flagship phones")
+
+        self.assertEqual([item["title"] for item in result["results"]], [
+            "Best flagship phones"
+        ])
+        self.assertEqual(result["results"][0]["rank"], 1)
+
+    def test_bing_headings_survive_broken_numbering_and_skip_ads(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        runtime = "".join(notebook["cells"][3]["source"])
+        functions = [
+            item for item in ast.parse(runtime).body
+            if isinstance(item, ast.FunctionDef) and item.name == "parse_bing_markdown"
+        ]
+        namespace = {
+            "re": re,
+            "clean_serp_markdown": lambda value: value,
+            "decode_bing_redirect": lambda url: (
+                "https://ad.example/sale" if "/aclk?" in url else
+                "https://review.example/phone" if "review" in url else
+                "https://guide.example/phone"
+            ),
+            "clean_displayed_url": lambda _line: "",
+            "get_hostname": lambda _value: "",
+            "get_root_domain": lambda value: (
+                urlparse(value).hostname or ""
+            ).removeprefix("www."),
+            "canonical_source_url": lambda value: value,
+            "result_snippet_from_lines": lambda _lines: "",
+        }
+        exec(ast.get_source_segment(runtime, functions[0]), namespace)
+        markdown = (
+            "1.  [\n" + "\n" * 12 +
+            "    ## [Phone review](https://www.bing.com/ck/a?u=review)\n"
+            "    Useful comparison.\n"
+            "2.  [\n" + "\n" * 12 +
+            "    ## [Phone guide](https://www.bing.com/ck/a?u=guide)\n"
+            "3.  [\n"
+            "    ## [Sponsored phone](https://www.bing.com/aclk?u=ad)\n"
+            "4.  [\n"
+            "    ## [More results from this site](https://www.bing.com/ck/a?u=nav)\n"
+        )
+
+        result = namespace["parse_bing_markdown"](markdown, "premium phone")
+
+        self.assertEqual([item["title"] for item in result["results"]], [
+            "Phone review", "Phone guide"
+        ])
 
 
 if __name__ == "__main__":

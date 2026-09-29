@@ -3,8 +3,11 @@
 
 import argparse
 import asyncio
+from datetime import datetime, timezone
 import json
 import os
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -63,12 +66,32 @@ def main(argv=None):
         action="store_true",
         help="Reuse collected cohorts and rerun only failed AI classifications",
     )
+    parser.add_argument(
+        "--reclassify-all",
+        action="store_true",
+        help="In a copied audit, reclassify all saved Reddit posts without scraping again",
+    )
+    parser.add_argument(
+        "--uniform-category-scope",
+        action="store_true",
+        help="With --reclassify-all, use the audited category for every brand cohort",
+    )
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     args = parser.parse_args(argv)
+    if sum((args.reuse_result, args.reclassify_fallbacks, args.reclassify_all)) > 1:
+        parser.error("Choose only one reuse or reclassification mode")
+    if args.uniform_category_scope and not args.reclassify_all:
+        parser.error("--uniform-category-scope requires --reclassify-all")
 
     load_env_file(args.env_file)
     require_local_settings()
     audit_path = find_audit_json(args.from_run)
+    if args.reclassify_all:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        destination = ROOT / "local-runs" / f"reviewed-reddit-{stamp}" / audit_path.parent.name
+        destination.parent.mkdir(parents=True, exist_ok=False)
+        shutil.copytree(audit_path.parent, destination)
+        audit_path = destination / audit_path.name
     cache_directory = audit_path.parent / ".cache"
     cache_directory.mkdir(exist_ok=True)
     os.environ.setdefault("XDG_CACHE_HOME", str(cache_directory))
@@ -90,6 +113,10 @@ def main(argv=None):
     definitions = runner_source.split("#@title 4. Run Competitive Visibility Audit", 1)[0]
     namespace = {"__name__": "reddit_stage_runtime"}
     exec(compile(definitions, "reddit-stage-runtime", "exec"), namespace)
+    if args.reclassify_all:
+        namespace["bd_client"].configure_usage_checkpoint(
+            audit_path.parent / "raw" / "bright_data_usage_events.json", restore=True
+        )
 
     clean_profile_label = namespace["clean_profile_label"]
     normalize_brand_profile = namespace["normalize_brand_profile"]
@@ -132,7 +159,7 @@ def main(argv=None):
     )
 
     output_path = audit_path.parent / "05_reddit_social.retry.json"
-    if args.reuse_result or args.reclassify_fallbacks:
+    if args.reuse_result or args.reclassify_fallbacks or args.reclassify_all:
         source_path = find_existing_reddit_result(audit_path, output_path)
         result = json.loads(source_path.read_text(encoding="utf-8"))
     else:
@@ -151,6 +178,72 @@ def main(argv=None):
             target,
             competitors,
         )
+    if args.reclassify_all:
+        if args.uniform_category_scope:
+            if not namespace["_is_category_level_reddit_focus"](audit_focus, target):
+                raise ValueError("Audit focus is not a category-level scope")
+            for cohort in result.get("cohorts") or []:
+                if cohort.get("role") != "category":
+                    cohort["focus"] = audit_focus
+            result["offering_selection_race"] = {
+                **(result.get("offering_selection_race") or {}),
+                "category_level_scope": True,
+                "scope_note": "The same requested category applies to every brand cohort.",
+            }
+        profiles = [target, *competitors]
+        by_name = {profile.brand_name: profile for profile in profiles}
+        extra_warnings = []
+        for cohort in result.get("cohorts") or []:
+            if cohort.get("role") == "category":
+                subject = namespace["RedditSubject"](
+                    brand_name=cohort.get("brand") or "audited category",
+                    relevant_products=[],
+                    reddit_subject_type="category",
+                )
+                peers = profiles
+            else:
+                subject = by_name[cohort["brand"]]
+                peers = [profile for profile in profiles if profile is not subject]
+            sample = cohort.get("sample") or []
+            analyses, races, warnings = namespace["analyze_reddit_posts"](
+                sample, subject, peers,
+                context=cohort.get("brand") or "Reddit",
+                focus=cohort.get("focus") or "",
+            )
+            by_id = {item["post_id"]: item for item in analyses}
+            for post in sample:
+                if post["post_id"] in by_id:
+                    post["analysis"] = by_id[post["post_id"]]
+            cohort["analysis_races"] = list(cohort.get("analysis_races") or []) + races
+            cohort["warnings"] = list(cohort.get("warnings") or []) + warnings
+            cohort["metrics"] = namespace["aggregate_reddit_analysis"](sample)
+            extra_warnings.extend(f"{cohort.get('brand')}: {warning}" for warning in warnings)
+            print(
+                f"{cohort.get('brand')}: "
+                f"{cohort['metrics']['relevant_posts']}/{len(sample)} relevant"
+            )
+        brand_cohorts = [
+            cohort for cohort in result["cohorts"] if cohort.get("role") != "category"
+        ]
+        result["sample"] = brand_cohorts[0]["sample"]
+        result["metrics"] = brand_cohorts[0]["metrics"]
+        result["comparison"] = [
+            {
+                "role": cohort.get("role"), "brand": cohort.get("brand"),
+                "focus": cohort.get("focus"), **(cohort.get("metrics") or {}),
+            }
+            for cohort in brand_cohorts
+        ]
+        result["warnings"] = list(result.get("warnings") or []) + extra_warnings
+        result["classification_replay"] = {
+            "reused_saved_posts_and_comments": True,
+            "reclassified_at": datetime.now(timezone.utc).isoformat(),
+            "reason": (
+                "Apply the same category-level focus to all brand cohorts."
+                if args.uniform_category_scope else
+                "Require relevance to each audited offering, not just the brand name."
+            ),
+        }
     result = namespace["normalize_reddit_result_offerings"](result)
     result = namespace["normalize_reddit_result_status"](result)
     output_path.write_text(
@@ -201,22 +294,44 @@ def main(argv=None):
         profile.domain: profile.brand_name
         for profile in (target, *competitors)
     }
-    report_result = namespace["generate_report_stage"](
-        target,
-        competitors,
-        keywords,
-        keyword_serp_results,
-        visibility,
-    )
-    audit["serp"]["metrics"] = report_result["serp_metrics"]
-    finalized = namespace["finalize_report"](
-        report=report_result["report"],
-        visibility=visibility,
-    )
-    updated_report = namespace["insert_reddit_report_section"](
-        finalized["report"],
-        result,
-    )
+    if args.reclassify_all:
+        current_report = audit["final_report"]
+        current_markdown = (
+            current_report["markdown"]
+            if isinstance(current_report, dict) else current_report
+        )
+        updated_report = namespace["insert_reddit_report_section"](
+            current_markdown, result
+        )
+        namespace["bd_client"].refresh_usage_results()
+        usage = namespace["bd_client"].usage_summary()
+        audit["bright_data_usage"] = usage
+        (audit_path.parent / "06_bright_data_usage.json").write_text(
+            json.dumps(usage, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        updated_report = re.sub(
+            r"^## Bright Data Usage and Estimated Cost\n.*\Z",
+            namespace["build_bright_data_usage_section"](usage),
+            updated_report,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        if audit.get("visibility_replay"):
+            updated_report = updated_report.rstrip() + (
+                "\n\n_The AI visibility measurements were replayed after the "
+                "original run. Search and Reddit were preserved from the "
+                "original checkpoint; this is not a simultaneous snapshot._\n"
+            )
+    else:
+        report_result = namespace["generate_report_stage"](
+            target, competitors, keywords, keyword_serp_results, visibility
+        )
+        audit["serp"]["metrics"] = report_result["serp_metrics"]
+        finalized = namespace["finalize_report"](
+            report=report_result["report"], visibility=visibility
+        )
+        updated_report = namespace["insert_reddit_report_section"](
+            finalized["report"], result
+        )
     updated_report = namespace["clean_competitive_landscape_profile_links"](
         updated_report
     )
@@ -228,15 +343,21 @@ def main(argv=None):
         configuration.get("company_url", ""),
         configuration.get("country", ""),
     )
-    audit["final_report"] = {
-        "generator": report_result.get("generator"),
-        "snapshot_id": report_result.get("snapshot_id"),
-        "web_search": False,
-        "prompt": report_result.get("prompt"),
-        "evidence": report_result.get("evidence"),
-        "sources": finalized.get("sources", []),
-        "markdown": updated_report,
-    }
+    if args.reclassify_all:
+        if isinstance(audit["final_report"], dict):
+            audit["final_report"]["markdown"] = updated_report
+        else:
+            audit["final_report"] = updated_report
+    else:
+        audit["final_report"] = {
+            "generator": report_result.get("generator"),
+            "snapshot_id": report_result.get("snapshot_id"),
+            "web_search": False,
+            "prompt": report_result.get("prompt"),
+            "evidence": report_result.get("evidence"),
+            "sources": finalized.get("sources", []),
+            "markdown": updated_report,
+        }
     audit_path.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

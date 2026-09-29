@@ -43,7 +43,7 @@ The core audit has six visible stages. When Reddit is enabled, social analysis b
 
 ## Stage 1: Target research and buyer queries
 
-Three Google AI Mode snapshots research the target concurrently. A result wins only if it contains substantive content rather than an empty response, interface boilerplate, or another unusable payload.
+One ChatGPT and one Gemini snapshot research the target concurrently. The first substantive, task-valid answer wins. The provider and both snapshot IDs are retained in the audit record; Google AI Mode is no longer a required research provider.
 
 The research may cover:
 
@@ -67,9 +67,9 @@ The optional audit focus narrows the purchase decision used throughout the audit
 
 ### Traditional search
 
-The eight buyer queries run through Bright Data SERP API in two bounded waves of four. If the first wave is incomplete, the second is not sent to the failing provider.
+The eight buyer queries run through Bright Data SERP API in two bounded waves of four. The second wave is skipped only if every query in the first wave fails; one failure does not prevent the remaining measurements.
 
-`SEARCH_ENGINE = "auto"` tries Google first and falls back to Bing if Google remains unavailable. If Google passes its initial check but the eight-query batch is incomplete, the engine retries the entire batch on Bing rather than mixing rankings. If neither engine completes the batch, traditional search is marked unavailable and its partial results are excluded from visibility scores. Bright Data's Google `#main` selector timeout is treated as a provider failure, not an empty search result, and is not repeated three times for the same query.
+`SEARCH_ENGINE = "auto"` tries Google first. If more than one buyer query fails, it tries the complete set on Bing and keeps whichever single engine measured more queries; rankings are never mixed. A partial single-engine result remains usable: the report states the measurement count (for example, 7/8), identifies the missing queries, and calculates each brand's coverage only over successful searches. Search is unavailable only when neither engine returns a usable result. Bright Data's Google `#main` selector timeout is treated as a provider failure, not an empty search result, and is not repeated three times for the same query.
 
 Available settings:
 
@@ -85,11 +85,11 @@ For each audited brand, the engine records:
 - Average observed organic position
 - Queries in which the domain appeared
 
-Coverage is the primary signal. Best and average position describe placement only when a brand appears. If search is disabled or unavailable, the report marks it as not measured rather than assigning zero visibility.
+Coverage is the primary signal. Best and average position describe placement only when a brand appears. Failed or unattempted queries are excluded from coverage denominators and shown as a measurement limitation, never as evidence that a brand was absent. If search is disabled or wholly unavailable, the report marks it as not measured rather than assigning zero visibility.
 
 ### Google AI Mode questions
 
-Three neutral customer questions are asked without naming the audited brands. Each question starts three Google AI Mode snapshots and retains the first substantive response.
+Three neutral customer questions are asked without naming the audited brands. First, one three-snapshot Google AI Mode race acts as a bounded health check (120 seconds on a new run). If it fails, the other two questions are not triggered and Google AI Mode is marked unavailable rather than scored as zero. If it succeeds, the other two questions run normally, each retaining its first substantive response. The hosted **Wait longer** option deliberately extends this check; continuation polls previously saved snapshots.
 
 The retained results provide:
 
@@ -103,7 +103,7 @@ Google `/goto` citation links are resolved when possible. Expired or unresolved 
 
 ## Stage 3: Competitor discovery and validation
 
-Traditional-search domains and recurring Google AI Mode source domains become observed candidates. Three additional Google AI Mode snapshots research the market and propose up to ten likely competitors.
+Traditional-search domains and, when available, Google AI Mode source domains become observed candidates. ChatGPT and Gemini research the market; the first structurally valid response proposes likely competitors. Each candidate is then checked against the locked target scope by another ChatGPT/Gemini race. Provider identity is retained rather than treating either answer as Google AI Mode evidence.
 
 A valid direct competitor must:
 
@@ -113,9 +113,11 @@ A valid direct competitor must:
 4. Offer a substitute within the same purchase decision.
 5. Be something a customer would realistically compare with the target.
 
-The validator rejects publishers, review sites, directories, retailers, marketplaces, distributors, resellers, forums, government organizations, educational resources, and suppliers without a substitutable offering.
+The validator rejects publishers, review sites, directories, retailers, distributors, resellers, forums, government organizations, educational resources, and suppliers without a substitutable offering. A marketplace can compete directly with another marketplace when both satisfy the locked scope.
 
-The first two candidates that pass the required checks are selected. If structured validation fails, the audit may fall back to conservative observed candidates and records that fallback in its diagnostics.
+Candidate-validation answers must contain all required yes/no checks and a direct-competitor verdict. Known provider field variants are normalized, but an incomplete answer is treated as inconclusive, not as a series of negative checks; the other provider can still return a complete answer. When discovery independently proposes at least two well-supported direct candidates, a domain seen only in search cannot displace them on the strength of one validation answer. Search presence alone does not establish a shared buyer decision.
+
+The two strongest eligible candidates are selected. If fewer than two pass, the audit stops rather than broadening the scope or silently substituting a search result. Raw discovery and validation responses are saved in the audit's private `raw/` directory before this stop, so a failed run can be diagnosed and resumed.
 
 When Reddit analysis is enabled, social discovery starts immediately after these competitors are known.
 
@@ -127,7 +129,7 @@ The engine creates profiles for:
 - Competitor 1
 - Competitor 2
 
-Each profile uses a three-way Google AI Mode race with structured validation. Depending on the market, fields may describe offerings, customer segments, benefits, features, claims, materials, specifications, use cases, pricing, availability, positioning, differentiators, and public evidence.
+Each profile uses a first-valid ChatGPT/Gemini research race with structured validation. Depending on the market, fields may describe offerings, customer segments, benefits, features, claims, materials, specifications, use cases, pricing, availability, positioning, differentiators, and public evidence.
 
 A failed profile does not terminate the complete audit. Conservative fallback data is used where possible. Fallback profiles preserve the identity and scope of the corresponding competitor rather than inheriting the target's product name.
 
@@ -138,10 +140,13 @@ The target and selected competitors are measured in:
 - Google AI Mode
 - ChatGPT
 - Gemini
+- Public-web Copilot, when enabled
 
-Google AI Mode visibility is calculated from the successful neutral customer-question answers retained during Stage 2.
+Google AI Mode visibility is calculated only from its own neutral customer-question answers retained during Stage 2. A ChatGPT or Gemini research answer never substitutes for a Google AI Mode measurement. If the Google sample is incomplete or unavailable, it is excluded from comparative counts and source analysis.
 
 ChatGPT and Gemini each start three snapshots. The two engine races run concurrently, and the first valid response from each engine is retained.
+
+Copilot starts one snapshot in parallel and waits up to three minutes. Its plain `answer_text` is measured rather than the product-card-heavy `answer_text_markdown` field. Only cited `sources` are retained; their `position` values are not interpreted as search ranks. Copilot is a separate buyer-facing answer surface, but its web grounding can draw on Bing, so its evidence is not independent of Bing search. If it times out or fails, it contributes no zero-visibility observations. Perplexity is not used because live scraper tests did not produce timely results.
 
 The audit records:
 
@@ -184,7 +189,7 @@ For each cohort, the strongest early native query uses `REDDIT_NATIVE_RACE_WIDTH
 
 Results are deduplicated by Reddit post ID. The strongest candidates are hydrated through the Reddit posts dataset. Selection limits community concentration during the first pass so one subreddit does not dominate the sample.
 
-Representative comments are collected for context. Native discovery and comment collection use a one-year lookback by default.
+Comment collection is off by default. When selected, `REDDIT_COMMENT_POSTS_PER_COHORT` sends only the first 1–10 selected posts per cohort to the comments dataset; up to three representative comments per post are retained for classification. The collector may return many more billable comment records than are retained, so this is not a strict cost ceiling. Native discovery and enabled comment collection use a one-year lookback by default.
 
 ### Classification
 
@@ -248,14 +253,15 @@ Examples of rejected responses include:
 
 ## Approximate request volume
 
-A successful core audit may trigger:
+A successful core audit may trigger (each nonwinning successful snapshot can still count toward usage):
 
-- 3 Google AI Mode target-research snapshots
+- 1 ChatGPT and 1 Gemini target-research snapshot
 - 1 Gemini and 1 ChatGPT structuring request
 - 8 Google or Bing searches, plus health checks and bounded retries; automatic fallback can run a second complete eight-query batch
-- 9 Google AI Mode question snapshots: 3 questions by 3 snapshots
-- 3 Google AI Mode competitor-research snapshots
-- 9 Google AI Mode profile snapshots: 3 brands by 3 snapshots
+- 3 Google AI Mode health-check snapshots; if it works, up to 6 more for the remaining two questions
+- 1 ChatGPT and 1 Gemini competitor-discovery snapshot
+- Up to 24 ChatGPT/Gemini candidate-validation snapshots: 12 candidates by 2 providers, plus any consistency retries
+- 6 ChatGPT/Gemini profile snapshots: 3 brands by 2 providers
 - 3 ChatGPT visibility snapshots
 - 3 Gemini visibility snapshots
 
@@ -265,11 +271,11 @@ With Reddit enabled, the audit may also trigger:
 
 - Up to 12 native discovery snapshots by default: 4 cohorts by a race width of 3
 - Site-restricted Reddit searches for the wider cohort query sets
-- Reddit post hydration and representative comment collection
+- Reddit post hydration and, only when selected, separate comment collection
 - Gemini and ChatGPT classification requests for each batch
 - Per-thread classification retries for failed batches
 
-Exact usage depends on availability, retries, generated queries, selected samples, and validation outcomes. Set `REDDIT_NATIVE_RACE_WIDTH=1` to reduce native discovery usage.
+Exact usage depends on availability, retries, generated queries, selected samples, and validation outcomes. Set `REDDIT_NATIVE_RACE_WIDTH=1` to reduce native discovery usage. Leave `REDDIT_COMMENT_POSTS_PER_COHORT=0` to avoid the unbounded comment-dataset output.
 
 ## Interpretation limits
 

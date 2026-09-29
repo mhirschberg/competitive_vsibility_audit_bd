@@ -117,7 +117,7 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
 
-            def google_ai_mode(self, *_args):
+            def google_ai_mode_measured(self, *_args):
                 self.calls += 1
                 raise namespace["GoogleAIRaceTimeoutError"](["snap-1", "snap-2"], 720)
 
@@ -142,6 +142,7 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
         source = definition("run_visibility_stage")
         self.assertIn('if len(successful_ai_answers) == 3', source)
         self.assertIn('else "partial" if ai_mode_answers', source)
+        self.assertIn('else "unavailable"', source)
         self.assertIn('if google_ai_result["status"] == "success"', source)
         self.assertIn('mentions["google_ai_mode"] = []', source)
 

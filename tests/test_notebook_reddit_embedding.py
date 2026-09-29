@@ -62,6 +62,8 @@ class NotebookEmbeddingTests(unittest.TestCase):
         config = "".join(config_cell["source"])
 
         self.assertIn("INCLUDE_REDDIT_ANALYSIS = False", config)
+        self.assertIn("REDDIT_COMMENT_POSTS_PER_COHORT = 0", config)
+        self.assertIn('os.environ["REDDIT_COMMENT_POSTS_PER_COHORT"]', config)
         self.assertIn(
             '"include_reddit_analysis": (\n        INCLUDE_REDDIT_ANALYSIS',
             config,
@@ -245,6 +247,33 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "x" * 3000,
         )
         self.assertLessEqual(len(structuring_prompt), 4050)
+
+    def test_company_research_selection_keeps_all_buyer_queries(self):
+        runtime = "".join(self.notebook["cells"][4]["source"])
+        start = runtime.index("def select_relevant_company_research")
+        end = runtime.index("_original_normalize_company_intake", start)
+        namespace = {
+            "re": re,
+            "get_root_domain": lambda domain: domain,
+        }
+        exec(runtime[start:end], namespace)
+        queries = [f"{index}. buyer need {index}" for index in range(1, 9)]
+        research = (
+            "Company market description.\n\n"
+            + ("Premium smartphone category context.\n\n" * 90)
+            + "Exactly eight non-branded buyer-intent searches:\n"
+            + "\n\n".join(queries)
+        )
+
+        selected = namespace["select_relevant_company_research"](
+            research, "Samsung", "samsung.com", "premium smartphone",
+            max_characters=1800,
+        )
+
+        self.assertLessEqual(len(selected), 1800)
+        self.assertIn("Research-proposed buyer searches:", selected)
+        for query in queries:
+            self.assertIn(query, selected)
 
     def test_locked_scope_prefers_confident_stage_one_classification(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
@@ -445,6 +474,9 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "normalize_public_url": lambda value: value,
             "get_root_domain": lambda value: value,
         }
+        helper_start = runtime.index("LOCKED_SCOPE_VALIDATION_CHECKS =")
+        helper_end = runtime.index("def validate_google_ai_research_answer", helper_start)
+        exec(runtime[helper_start:helper_end], namespace)
         exec(runtime[start:end], namespace)
         candidate = {
             "official_url": "https://manufacturer.example/",
@@ -789,6 +821,11 @@ class NotebookEmbeddingTests(unittest.TestCase):
                     }
                 ],
             },
+            {
+                "success": False,
+                "keyword": "unmeasured buyer question",
+                "results": [],
+            },
         ]
 
         metric = namespace["calculate_serp_metrics"](
@@ -798,6 +835,8 @@ class NotebookEmbeddingTests(unittest.TestCase):
         )
 
         self.assertEqual(metric["appearances"], 1)
+        self.assertEqual(metric["total_keywords"], 2)
+        self.assertEqual(metric["coverage"], 0.5)
         self.assertEqual(metric["best_rank"], 2)
         self.assertEqual(
             metric["details"][0]["keyword"],

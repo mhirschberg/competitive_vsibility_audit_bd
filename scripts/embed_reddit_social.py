@@ -1,6 +1,7 @@
 """Embed reddit_social.py and its orchestration hooks into the notebook."""
 
 import json
+import sys
 from pathlib import Path
 
 
@@ -9,6 +10,31 @@ NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
 MODULE = ROOT / "reddit_social.py"
 START = "# REDDIT-SOCIAL-PATCH: start"
 END = "# REDDIT-SOCIAL-PATCH: end"
+
+
+def sync_module_only():
+    """Refresh the embedded module without rewriting orchestration cells."""
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    runtime_cell = notebook["cells"][6]
+    source = "".join(runtime_cell["source"])
+    if source.count(START) != 1 or source.count(END) != 1:
+        raise RuntimeError("Expected exactly one embedded Reddit module")
+    before, remainder = source.split(START, 1)
+    _, after = remainder.split(END, 1)
+    embedded = MODULE.read_text(encoding="utf-8").rstrip("\n")
+    source = before + START + "\n" + embedded + "\n" + END + after
+    runtime_cell["source"] = source.splitlines(keepends=True)
+    NOTEBOOK.write_text(
+        json.dumps(notebook, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+existing_notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+already_embedded = START in "".join(existing_notebook["cells"][6]["source"])
+if "--module-only" in sys.argv or already_embedded:
+    sync_module_only()
+    raise SystemExit(0)
 
 
 def replace_once(text, old, new, label):

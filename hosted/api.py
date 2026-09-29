@@ -31,6 +31,8 @@ class AuditRequest(BaseModel):
     country_code: str = Field(default="US", pattern=r"^[A-Za-z]{2}$")
     search_engine: Literal["auto", "google", "bing", "none"] = "auto"
     include_reddit_analysis: bool = False
+    reddit_comment_posts_per_cohort: int = Field(default=0, ge=0, le=10)
+    include_copilot_visibility: bool = True
     wait_longer_for_google_ai_mode: bool = False
     email_when_ready: bool = False
     workshop_id: UUID | None = None
@@ -279,7 +281,12 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                     "social_sources": (
                         ["reddit"] if request.include_reddit_analysis else []
                     ),
+                    "reddit_comment_posts_per_cohort": (
+                        request.reddit_comment_posts_per_cohort
+                        if request.include_reddit_analysis else 0
+                    ),
                     "wait_longer_for_google_ai_mode": request.wait_longer_for_google_ai_mode,
+                    "include_copilot_visibility": request.include_copilot_visibility,
                     "email_when_ready": request.email_when_ready,
                 },
                 p_engine_commit=engine_commit,

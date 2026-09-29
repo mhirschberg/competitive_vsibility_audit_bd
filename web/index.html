@@ -115,8 +115,23 @@
                   </label>
                 </div>
                 <label class="social-option">
+                  <span class="social-copy"><strong>Add Copilot AI visibility</strong><small>One additional answer; failure will not stop the audit.</small></span>
+                  <span class="switch-wrap"><input name="include_copilot_visibility" type="checkbox" checked /><span class="switch" aria-hidden="true"></span></span>
+                </label>
+                <label class="social-option">
                   <span class="social-copy"><strong>Add Reddit conversations</strong><small>A small public sample; increases runtime and Bright Data usage.</small></span>
                   <span class="switch-wrap"><input name="include_reddit_analysis" type="checkbox" /><span class="switch" aria-hidden="true"></span></span>
+                </label>
+                <label class="field reddit-comment-setting">
+                  <span>Reddit comment collection</span>
+                  <select name="reddit_comment_posts_per_cohort">
+                    <option value="0" selected>Off (posts only; recommended)</option>
+                    <option value="1">1 post per group</option>
+                    <option value="2">2 posts per group</option>
+                    <option value="5">5 posts per group</option>
+                    <option value="10">10 posts per group (full sample)</option>
+                  </select>
+                  <small>Only applies when Reddit is enabled. Limits posts sent to the comments dataset, not the number of billable comments a busy post may return.</small>
                 </label>
                 <label class="social-option">
                   <span class="social-copy"><strong>Wait longer for Google AI Mode</strong><small>Up to 30 minutes per snapshot instead of 12. May increase runtime and worker cost.</small></span>
