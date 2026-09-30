@@ -11,7 +11,7 @@ from urllib.parse import quote_plus, urlparse
 
 import requests
 
-from audit_core import serp_transport
+from audit_core import serp_parsing, serp_transport
 from audit_core.brightdata_transport import BrightDataAPIError
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
@@ -64,6 +64,12 @@ class SerpTransportTests(unittest.TestCase):
             ).removeprefix("www."),
             "quote_plus": quote_plus,
             "requests": requests,
+            "core_find_parsed_organic_results": (
+                serp_parsing.core_find_parsed_organic_results
+            ),
+            "normalize_parsed_serp_records": (
+                serp_parsing.normalize_parsed_serp_records
+            ),
             "time": SimpleNamespace(sleep=mock.Mock()),
             "parse_bing_markdown": lambda markdown, query, num_results, requested_country: {
                 "engine": "bing",
@@ -77,8 +83,10 @@ class SerpTransportTests(unittest.TestCase):
                 "raw_result_count": 1,
             },
         }
-        normalize_start = runtime.index("def find_parsed_organic_results(")
-        normalize_end = runtime.index("def reliable_bing_serp(", normalize_start)
+        normalize_end = runtime.index("def reliable_bing_serp(")
+        normalize_start = runtime.rindex(
+            "def find_parsed_organic_results(", 0, normalize_end
+        )
         exec(runtime[normalize_start:normalize_end], namespace)
         cls.search = staticmethod(
             lambda client, query, engine: serp_transport.run_resilient_serp_request(
