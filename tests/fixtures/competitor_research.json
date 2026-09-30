@@ -1,0 +1,47 @@
+{
+  "origin": "synthetic regression fixture; not a captured Bright Data response",
+  "scope": {"market_role": "manufacturer", "country": "US"},
+  "observed_domains": ["samsung.com", "google.com"],
+  "candidates": [
+    {
+      "brand_name": "Samsung", "representative_domain": "samsung.com",
+      "official_url": "https://samsung.com/", "discovery_rank": 1,
+      "market_prominence": 0.95, "observed_score": 25
+    },
+    {
+      "brand_name": "Google", "representative_domain": "google.com",
+      "official_url": "https://google.com/", "discovery_rank": 2,
+      "market_prominence": 0.85, "observed_score": 20
+    },
+    {
+      "brand_name": "Vertu", "representative_domain": "vertu.com",
+      "official_url": "https://vertu.com/", "discovery_rank": 3,
+      "market_prominence": 0.4, "observed_score": 2
+    }
+  ],
+  "answers": {
+    "discovery": {
+      "competitors": [
+        {"brand_name": "Samsung", "domain": "samsung.com"},
+        {"brand_name": "Google", "domain": "google.com"},
+        "not a candidate"
+      ]
+    },
+    "validate:Samsung": {
+      "candidate_role": "manufacturer", "is_direct_competitor": true,
+      "confidence": 0.95, "market_prominence": 0.9, "reason": "Direct substitute"
+    },
+    "validate:Google": {
+      "candidate_role": "manufacturer", "is_direct_competitor": false,
+      "confidence": 0.7, "market_prominence": 0.85, "reason": "Needs focus check"
+    },
+    "retry:Google": {
+      "candidate_role": "manufacturer", "is_direct_competitor": true,
+      "confidence": 0.9, "market_prominence": 0.85, "reason": "Pixel is a direct substitute"
+    },
+    "validate:Vertu": {
+      "candidate_role": "luxury accessory", "is_direct_competitor": false,
+      "confidence": 0.9, "market_prominence": 0.4, "reason": "Different buyer need"
+    }
+  }
+}

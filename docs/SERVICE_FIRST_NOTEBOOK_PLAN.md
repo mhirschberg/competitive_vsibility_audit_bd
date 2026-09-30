@@ -22,8 +22,19 @@ ranking of eligible direct competitors now live in
 service-only relative import is removed during bundling because its primitive
 dependency was embedded in an earlier cell. Fixture parity covers KEBA and
 Apple/Samsung/Google smartphone scopes, plus rejection and stable ranking.
-Candidate discovery and AI validation still depend on the notebook runtime and
-are not yet service-native.
+At that checkpoint, candidate discovery and AI validation still depended on
+the notebook runtime.
+
+Fourth checkpoint: `audit_core.competitor_research` now owns the candidate
+discovery/validation orchestration, bounded parallel batch, consistency retry,
+and selection-score calculation. It receives a `query_json(prompt)` port;
+the notebook supplies the Bright Data implementation in a small adapter. A
+synthetic saved-answer fixture replays success, retry, rejection, and provider
+failure through both the importable module and bundled notebook code. No paid
+provider calls are needed for these regression tests. Prompt construction,
+answer normalization, and candidate-universe building still reside in the
+notebook and are the next extraction targets. This fixture is deliberately
+labelled synthetic; it is not a captured production response.
 
 ## Decision
 
