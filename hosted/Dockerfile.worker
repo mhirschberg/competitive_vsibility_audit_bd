@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --only-binary=:all: --timeout=60 --retries=3 -r /
 COPY app.py runner_builder.py competitive_visibility_audit_bd.ipynb /app/
 COPY scripts /app/scripts
 COPY hosted /app/hosted
+COPY audit_core /app/audit_core
 
 RUN useradd --system --uid 10001 appuser
 USER appuser

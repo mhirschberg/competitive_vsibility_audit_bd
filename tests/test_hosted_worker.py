@@ -257,5 +257,17 @@ Path('{prefix}_competitive_visibility_audit.zip').write_bytes(b'zip')
         self.assertEqual(self.gateway.finishes[0][0], "failed")
 
 
+class WorkerImagePackagingTests(unittest.TestCase):
+    def test_worker_images_include_extracted_core(self):
+        root = Path(__file__).resolve().parents[1]
+        for dockerfile in (
+            root / "hosted" / "Dockerfile.worker",
+            root / "hosted" / "Dockerfile.worker.overlay",
+        ):
+            with self.subTest(dockerfile=dockerfile.name):
+                contents = dockerfile.read_text(encoding="utf-8")
+                self.assertIn("COPY audit_core /app/audit_core", contents)
+
+
 if __name__ == "__main__":
     unittest.main()
