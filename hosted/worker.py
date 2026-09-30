@@ -172,6 +172,12 @@ def run_worker(
                 options.get("wait_longer_for_google_ai_mode") is True,
                 options.get("include_copilot_visibility") is True,
                 options.get("reddit_comment_posts_per_cohort", 0),
+                options.get("include_google_ai_mode") is True,
+                options.get("include_chatgpt_visibility") is not False,
+                options.get("wait_longer_for_chatgpt") is True,
+                options.get("include_gemini_visibility") is not False,
+                options.get("wait_longer_for_gemini") is True,
+                options.get("wait_longer_for_copilot") is True,
             )
             compile(source, str(runner_path), "exec")
             runner_path.write_text(source, encoding="utf-8")

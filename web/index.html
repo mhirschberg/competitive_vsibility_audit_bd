@@ -114,10 +114,41 @@
                     </select>
                   </label>
                 </div>
-                <label class="social-option">
-                  <span class="social-copy"><strong>Add Copilot AI visibility</strong><small>One additional answer; failure will not stop the audit.</small></span>
-                  <span class="switch-wrap"><input name="include_copilot_visibility" type="checkbox" checked /><span class="switch" aria-hidden="true"></span></span>
-                </label>
+                <fieldset class="ai-engine-settings">
+                  <legend>AI answer visibility</legend>
+                  <p>Choose which answers appear in your report. Longer waits can extend the audit and its cost.</p>
+                  <div class="ai-engine-grid">
+                    <div class="ai-engine-option" data-engine="chatgpt">
+                      <div class="ai-engine-heading"><strong>ChatGPT</strong><small>Standard wait: up to 10 min</small></div>
+                      <div class="ai-engine-controls">
+                        <label class="engine-control"><span>Include</span><span class="switch-wrap"><input name="include_chatgpt_visibility" type="checkbox" aria-label="Include ChatGPT answers" checked /><span class="switch" aria-hidden="true"></span></span></label>
+                        <label class="engine-control"><span>Wait longer</span><span class="switch-wrap"><input name="wait_longer_for_chatgpt" type="checkbox" aria-label="Wait longer for ChatGPT" /><span class="switch" aria-hidden="true"></span></span></label>
+                      </div>
+                    </div>
+                    <div class="ai-engine-option" data-engine="gemini">
+                      <div class="ai-engine-heading"><strong>Gemini</strong><small>Standard wait: up to 10 min</small></div>
+                      <div class="ai-engine-controls">
+                        <label class="engine-control"><span>Include</span><span class="switch-wrap"><input name="include_gemini_visibility" type="checkbox" aria-label="Include Gemini answers" checked /><span class="switch" aria-hidden="true"></span></span></label>
+                        <label class="engine-control"><span>Wait longer</span><span class="switch-wrap"><input name="wait_longer_for_gemini" type="checkbox" aria-label="Wait longer for Gemini" /><span class="switch" aria-hidden="true"></span></span></label>
+                      </div>
+                    </div>
+                    <div class="ai-engine-option" data-engine="copilot">
+                      <div class="ai-engine-heading"><strong>Copilot</strong><small>Standard wait: up to 6 min</small></div>
+                      <div class="ai-engine-controls">
+                        <label class="engine-control"><span>Include</span><span class="switch-wrap"><input name="include_copilot_visibility" type="checkbox" aria-label="Include Copilot answers" checked /><span class="switch" aria-hidden="true"></span></span></label>
+                        <label class="engine-control"><span>Wait longer</span><span class="switch-wrap"><input name="wait_longer_for_copilot" type="checkbox" aria-label="Wait longer for Copilot" /><span class="switch" aria-hidden="true"></span></span></label>
+                      </div>
+                    </div>
+                    <div class="ai-engine-option" data-engine="google-ai-mode">
+                      <div class="ai-engine-heading"><strong>Google AI Mode</strong><small>Off by default; brief health check if enabled</small></div>
+                      <div class="ai-engine-controls">
+                        <label class="engine-control"><span>Include</span><span class="switch-wrap"><input name="include_google_ai_mode" type="checkbox" aria-label="Include Google AI Mode answers" /><span class="switch" aria-hidden="true"></span></span></label>
+                        <label class="engine-control"><span>Wait longer</span><span class="switch-wrap"><input name="wait_longer_for_google_ai_mode" type="checkbox" aria-label="Wait longer for Google AI Mode" disabled /><span class="switch" aria-hidden="true"></span></span></label>
+                      </div>
+                    </div>
+                  </div>
+                  <small class="ai-engine-note">Longer waits: up to 30 min for ChatGPT, Gemini or Google AI Mode; up to 15 min for Copilot. These controls affect measured answers, not the internal research used to build the report.</small>
+                </fieldset>
                 <label class="social-option">
                   <span class="social-copy"><strong>Add Reddit conversations</strong><small>A small public sample; increases runtime and Bright Data usage.</small></span>
                   <span class="switch-wrap"><input name="include_reddit_analysis" type="checkbox" /><span class="switch" aria-hidden="true"></span></span>
@@ -132,10 +163,6 @@
                     <option value="10">10 posts per group (full sample)</option>
                   </select>
                   <small>Only applies when Reddit is enabled. Limits posts sent to the comments dataset, not the number of billable comments a busy post may return.</small>
-                </label>
-                <label class="social-option">
-                  <span class="social-copy"><strong>Wait longer for Google AI Mode</strong><small>Up to 30 minutes per snapshot instead of 12. May increase runtime and worker cost.</small></span>
-                  <span class="switch-wrap"><input name="wait_longer_for_google_ai_mode" type="checkbox" /><span class="switch" aria-hidden="true"></span></span>
                 </label>
                 <label id="email-option" class="social-option" hidden>
                   <span class="social-copy"><strong>Email me when the report is ready</strong><small id="email-target">One link to your private audit history. No report attached.</small></span>

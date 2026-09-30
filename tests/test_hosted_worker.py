@@ -115,6 +115,9 @@ class HostedWorkerTests(unittest.TestCase):
         self.assertFalse(arguments[0][7])  # Standard Google AI Mode wait.
         self.assertTrue(arguments[0][8])  # Optional Copilot measurement.
         self.assertEqual(arguments[0][9], 2)  # Comment collection choice.
+        self.assertFalse(arguments[0][10])  # Google AI Mode off by default.
+        self.assertTrue(arguments[0][11])  # ChatGPT on.
+        self.assertTrue(arguments[0][13])  # Gemini on.
         self.assertEqual(len(self.gateway.uploads), 2)  # Log and JSON.
         self.assertEqual(len(self.gateway.usage_rows), 3)
         self.assertEqual(self.gateway.usage_rows[0]["confirmed_result_count"], 1)
@@ -141,6 +144,21 @@ class HostedWorkerTests(unittest.TestCase):
             0,
         )
         self.assertTrue(arguments[0][7])
+
+    def test_per_engine_options_reach_runner(self):
+        self.gateway.input_options.update({
+            "include_google_ai_mode": True,
+            "include_chatgpt_visibility": False,
+            "wait_longer_for_gemini": True,
+            "wait_longer_for_copilot": True,
+        })
+        arguments = []
+        self.assertEqual(run_worker(
+            self.gateway, AUDIT_ID,
+            runner_source_factory=lambda *args: arguments.append(args) or SUCCESS_RUNNER,
+            heartbeat_interval=3600,
+        ), 0)
+        self.assertEqual(arguments[0][10:], (True, False, False, True, True, True))
 
     def test_duplicate_cloud_run_invocation_does_no_paid_work(self):
         self.gateway.claim = None

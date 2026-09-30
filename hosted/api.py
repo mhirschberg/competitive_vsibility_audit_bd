@@ -32,7 +32,13 @@ class AuditRequest(BaseModel):
     search_engine: Literal["auto", "google", "bing", "none"] = "auto"
     include_reddit_analysis: bool = False
     reddit_comment_posts_per_cohort: int = Field(default=0, ge=0, le=10)
+    include_google_ai_mode: bool = False
+    include_chatgpt_visibility: bool = True
+    wait_longer_for_chatgpt: bool = False
+    include_gemini_visibility: bool = True
+    wait_longer_for_gemini: bool = False
     include_copilot_visibility: bool = True
+    wait_longer_for_copilot: bool = False
     wait_longer_for_google_ai_mode: bool = False
     email_when_ready: bool = False
     workshop_id: UUID | None = None
@@ -257,6 +263,24 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                 status_code=400,
                 detail="Email notifications are available only for signed-in personal audits",
             )
+        if not any((
+            request.include_google_ai_mode,
+            request.include_chatgpt_visibility,
+            request.include_gemini_visibility,
+            request.include_copilot_visibility,
+        )):
+            raise HTTPException(status_code=400, detail="Include at least one AI answer source")
+        if request.search_engine == "none" and not request.include_google_ai_mode:
+            raise HTTPException(
+                status_code=400,
+                detail="AI-answers-only discovery requires Google AI Mode; enable it or choose a search engine",
+            )
+        extended_wait = any((
+            request.include_google_ai_mode and request.wait_longer_for_google_ai_mode,
+            request.include_chatgpt_visibility and request.wait_longer_for_chatgpt,
+            request.include_gemini_visibility and request.wait_longer_for_gemini,
+            request.include_copilot_visibility and request.wait_longer_for_copilot,
+        ))
         bearer_token = authorization.removeprefix("Bearer ").strip()
         try:
             user_id = (
@@ -285,8 +309,22 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
                         request.reddit_comment_posts_per_cohort
                         if request.include_reddit_analysis else 0
                     ),
-                    "wait_longer_for_google_ai_mode": request.wait_longer_for_google_ai_mode,
+                    "include_google_ai_mode": request.include_google_ai_mode,
+                    "wait_longer_for_google_ai_mode": (
+                        request.include_google_ai_mode and request.wait_longer_for_google_ai_mode
+                    ),
+                    "include_chatgpt_visibility": request.include_chatgpt_visibility,
+                    "wait_longer_for_chatgpt": (
+                        request.include_chatgpt_visibility and request.wait_longer_for_chatgpt
+                    ),
+                    "include_gemini_visibility": request.include_gemini_visibility,
+                    "wait_longer_for_gemini": (
+                        request.include_gemini_visibility and request.wait_longer_for_gemini
+                    ),
                     "include_copilot_visibility": request.include_copilot_visibility,
+                    "wait_longer_for_copilot": (
+                        request.include_copilot_visibility and request.wait_longer_for_copilot
+                    ),
                     "email_when_ready": request.email_when_ready,
                 },
                 p_engine_commit=engine_commit,
@@ -306,7 +344,7 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             try:
                 dispatcher.dispatch(
                     audit_id,
-                    wait_longer_for_google_ai_mode=request.wait_longer_for_google_ai_mode,
+                    extended_ai_wait=extended_wait,
                 )
             except DispatchError:
                 # The row remains dispatching; a scheduled reconciler must

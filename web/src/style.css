@@ -140,11 +140,27 @@ fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
 .country-field:has(input:disabled) .country-control > button { cursor: not-allowed; opacity: .6; }
 .focus-field { margin-top: 15px; }
 .settings-row { margin-top: 16px; }
+.ai-engine-settings { margin-top: 18px; }
+.ai-engine-settings legend { padding: 0; color: var(--ink); font-size: 13px; font-weight: 700; }
+.ai-engine-settings > p { margin: 5px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.ai-engine-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ai-engine-option { min-width: 0; padding: 12px 14px; border: 1px solid #ced8cd; background: #edf2ea; }
+.ai-engine-heading { min-height: 40px; }
+.ai-engine-heading strong { display: block; color: var(--ink); font-size: 15px; }
+.ai-engine-heading small { display: block; margin-top: 3px; color: #5e6c61; font-size: 11px; line-height: 1.3; }
+.ai-engine-controls { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid #d3ded2; }
+.engine-control { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 29px; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; }
+.engine-control:has(input:disabled) { color: #87948b; cursor: not-allowed; }
+.engine-control .switch-wrap input, .engine-control .switch { width: 43px; height: 25px; }
+.engine-control .switch::after { width: 17px; height: 17px; }
+.engine-control .switch-wrap input:checked + .switch::after { transform: translateX(18px); }
+.engine-control .switch-wrap input:disabled + .switch { opacity: .48; }
+.ai-engine-note { display: block; margin-top: 10px; color: #5e6c61; font-size: 11px; line-height: 1.5; }
 .social-option { margin-top: 17px; padding: 12px 14px; background: #edf2ea; border: 1px solid #ced8cd; display: flex; justify-content: space-between; align-items: center; gap: 18px; cursor: pointer; }
 .social-copy { display: flex; flex-direction: column; gap: 5px; }
 .social-copy strong { font-size: 15px; }
 .social-copy small { max-width: 520px; font-size: 12px; line-height: 1.5; color: #5e6c61; }
-.reddit-comment-setting { max-width: 560px; margin: 12px 0 0 14px; }
+.reddit-comment-setting { width: 100%; margin: 12px 0 0; }
 .reddit-comment-setting small { color: #5e6c61; font-size: 12px; line-height: 1.5; }
 .switch-wrap { flex: none; position: relative; display: inline-flex; align-items: center; }
 .switch-wrap input { position: absolute; width: 48px; height: 28px; opacity: 0; cursor: pointer; margin: 0; z-index: 2; }
@@ -246,6 +262,7 @@ body[data-view="audit"] .active-audit, body[data-view="history"] .history { min-
   .section-heading > p { margin: 19px 0 0; }
   .two-up, .result-grid { grid-template-columns: 1fr; }
   .field-grid { gap: 25px; }
+  .ai-engine-grid { grid-template-columns: 1fr; }
   .form-footer { align-items: stretch; flex-direction: column; gap: 14px; }
   .form-footer p { max-width: none; }
   .primary-button { width: 100%; }

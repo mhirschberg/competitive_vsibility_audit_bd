@@ -27,6 +27,26 @@ const emailOption = document.querySelector("#email-option");
 const emailTarget = document.querySelector("#email-target");
 const emailCheckbox = form.elements.namedItem("email_when_ready");
 const countryPicker = initCountryPicker(document.querySelector("#country-picker"));
+const aiEnginePairs = [
+  ["include_chatgpt_visibility", "wait_longer_for_chatgpt"],
+  ["include_gemini_visibility", "wait_longer_for_gemini"],
+  ["include_copilot_visibility", "wait_longer_for_copilot"],
+  ["include_google_ai_mode", "wait_longer_for_google_ai_mode"],
+];
+
+function syncAiEngineControls() {
+  for (const [includeName, waitName] of aiEnginePairs) {
+    const include = form.elements.namedItem(includeName);
+    const wait = form.elements.namedItem(waitName);
+    wait.disabled = !include.checked;
+    if (!include.checked) wait.checked = false;
+  }
+}
+
+for (const [includeName] of aiEnginePairs) {
+  form.elements.namedItem(includeName).addEventListener("change", syncAiEngineControls);
+}
+syncAiEngineControls();
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const terminalStatuses = new Set(["completed", "failed", "interrupted", "cancelled"]);
@@ -127,7 +147,13 @@ function collectRequest() {
     search_engine: String(data.get("search_engine") || "auto"),
     include_reddit_analysis: data.get("include_reddit_analysis") === "on",
     reddit_comment_posts_per_cohort: Number(data.get("reddit_comment_posts_per_cohort") || 0),
+    include_google_ai_mode: data.get("include_google_ai_mode") === "on",
+    include_chatgpt_visibility: data.get("include_chatgpt_visibility") === "on",
+    wait_longer_for_chatgpt: data.get("wait_longer_for_chatgpt") === "on",
+    include_gemini_visibility: data.get("include_gemini_visibility") === "on",
+    wait_longer_for_gemini: data.get("wait_longer_for_gemini") === "on",
     include_copilot_visibility: data.get("include_copilot_visibility") === "on",
+    wait_longer_for_copilot: data.get("wait_longer_for_copilot") === "on",
     wait_longer_for_google_ai_mode: data.get("wait_longer_for_google_ai_mode") === "on",
     email_when_ready: !emailOption.hidden && data.get("email_when_ready") === "on",
     workshop_id: trialMode ? null : config.workshop_id,
@@ -145,6 +171,7 @@ function restoreRequest(request) {
     if (control.type === "checkbox") control.checked = Boolean(value);
     else control.value = value;
   }
+  syncAiEngineControls();
 }
 
 async function currentSession(createIfNeeded = false) {
@@ -198,6 +225,14 @@ async function submitAudit(event) {
   if (!request) {
     if (!form.reportValidity()) return;
     request = collectRequest();
+    if (!aiEnginePairs.some(([includeName]) => request[includeName])) {
+      showFormMessage("Include at least one AI answer source.");
+      return;
+    }
+    if (request.search_engine === "none" && !request.include_google_ai_mode) {
+      showFormMessage("AI answers only requires Google AI Mode for competitor discovery. Enable it or choose a search engine.");
+      return;
+    }
     saveStored("pending", request);
   }
   requestInFlight = true;

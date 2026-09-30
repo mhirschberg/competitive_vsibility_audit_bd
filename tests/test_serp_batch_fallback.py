@@ -44,7 +44,7 @@ class SerpBatchFallbackTests(unittest.TestCase):
     def run_stage(self, *, google_fails=("query 2",), bing_fails=False,
                   bing_probe_fails=False,
                   requested_engine="auto", keywords=None,
-                  google_ai_fails=False):
+                  google_ai_fails=False, include_google_ai_mode=True):
         client = FakeClient()
         client.ai_questions = []
         calls = []
@@ -76,6 +76,7 @@ class SerpBatchFallbackTests(unittest.TestCase):
             "asyncio": asyncio,
             "bd_client": client,
             "SEARCH_ENGINE": requested_engine,
+            "AUDIT_SETTINGS": {"include_google_ai_mode": include_google_ai_mode},
             "ACTIVE_SEARCH_STATUS": "available",
             "ACTIVE_SEARCH_ENGINE": "google",
             "run_keyword_serp_task": keyword_task,
@@ -119,6 +120,13 @@ class SerpBatchFallbackTests(unittest.TestCase):
         self.assertEqual(result["ai_mode_successful"], 0)
         self.assertEqual(result["ai_mode_failed"], 3)
         self.assertEqual(len(result["ai_mode_discovery"]["results"]), 3)
+
+    def test_disabled_google_ai_mode_starts_no_measured_snapshots(self):
+        result, calls, client = self.run_stage(include_google_ai_mode=False)
+        self.assertEqual(client.ai_questions, [])
+        self.assertEqual(result["ai_mode_discovery"]["results"], [])
+        self.assertEqual(result["ai_mode_failed"], 0)
+        self.assertTrue(calls)  # Traditional search still runs.
 
     def test_entire_failed_first_wave_does_not_send_remaining_google_queries(self):
         result, calls, _ = self.run_stage(

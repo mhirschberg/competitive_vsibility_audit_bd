@@ -33,7 +33,7 @@ class CloudRunDispatcher:
         self.session = session or requests.Session()
 
     def dispatch(
-        self, audit_id: UUID, *, wait_longer_for_google_ai_mode: bool = False
+        self, audit_id: UUID, *, extended_ai_wait: bool = False
     ) -> str:
         try:
             token_response = self.session.get(
@@ -50,7 +50,7 @@ class CloudRunDispatcher:
                 ],
                 "taskCount": 1,
             }
-            if wait_longer_for_google_ai_mode:
+            if extended_ai_wait:
                 # Applies to this execution only, not the shared Job definition.
                 overrides["timeout"] = "7200s"
             response = self.session.post(

@@ -28,6 +28,8 @@ Bright Data supplies the live search, AI-answer and optional Reddit datasets. Th
 
 The hosted app uses project-owned infrastructure and finite workshop/trial quotas. The notebook runs under your own Bright Data account. No Python knowledge is required for the Colab form, but you control its credentials and usage.
 
+In the hosted app, you can include or skip each AI answer source and choose a longer wait for it. ChatGPT, Gemini, and Copilot are on by default; Google AI Mode is off by default because its measured answers have recently been unreliable. This choice affects report measurements, not the internal ChatGPT/Gemini research that helps construct the audit. A longer wait may increase runtime and cost but cannot guarantee an answer.
+
 > This is a directional visibility audit, not a market-share measurement, scientific benchmark, or sentiment survey.
 
 ---

@@ -131,9 +131,9 @@ class FakeDispatcher:
         self.long_wait_flags = []
         self.fail = False
 
-    def dispatch(self, audit_id, *, wait_longer_for_google_ai_mode=False):
+    def dispatch(self, audit_id, *, extended_ai_wait=False):
         self.calls.append(audit_id)
-        self.long_wait_flags.append(wait_longer_for_google_ai_mode)
+        self.long_wait_flags.append(extended_ai_wait)
         if self.fail:
             raise DispatchError("mock failure")
         return "operations/test"
@@ -226,6 +226,7 @@ class HostedApiTests(unittest.TestCase):
             0,
         )
         self.assertTrue(self.gateway.payload["p_input_options"]["include_copilot_visibility"])
+        self.assertFalse(self.gateway.payload["p_input_options"]["include_google_ai_mode"])
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
         self.assertEqual(self.dispatcher.long_wait_flags, [False])
 
@@ -251,7 +252,7 @@ class HostedApiTests(unittest.TestCase):
         response = self.client.post(
             "/audits",
             headers={"Authorization": "Bearer user-jwt"},
-            json={**self.request, "wait_longer_for_google_ai_mode": True},
+            json={**self.request, "include_google_ai_mode": True, "wait_longer_for_google_ai_mode": True},
         )
         self.assertEqual(response.status_code, 202)
         self.assertIs(
@@ -259,6 +260,42 @@ class HostedApiTests(unittest.TestCase):
             True,
         )
         self.assertEqual(self.dispatcher.long_wait_flags, [True])
+
+    def test_per_engine_choices_and_waits_are_saved(self):
+        response = self.client.post(
+            "/audits",
+            headers={"Authorization": "Bearer user-jwt"},
+            json={
+                **self.request,
+                "include_chatgpt_visibility": False,
+                "wait_longer_for_chatgpt": True,
+                "include_gemini_visibility": True,
+                "wait_longer_for_gemini": True,
+                "include_copilot_visibility": False,
+            },
+        )
+        self.assertEqual(response.status_code, 202)
+        options = self.gateway.payload["p_input_options"]
+        self.assertFalse(options["include_chatgpt_visibility"])
+        self.assertFalse(options["wait_longer_for_chatgpt"])
+        self.assertTrue(options["wait_longer_for_gemini"])
+        self.assertFalse(options["include_copilot_visibility"])
+        self.assertEqual(self.dispatcher.long_wait_flags, [True])
+
+    def test_at_least_one_ai_engine_and_discovery_source_are_required(self):
+        headers = {"Authorization": "Bearer user-jwt"}
+        no_ai = self.client.post("/audits", headers=headers, json={
+            **self.request,
+            "include_google_ai_mode": False,
+            "include_chatgpt_visibility": False,
+            "include_gemini_visibility": False,
+            "include_copilot_visibility": False,
+        })
+        self.assertEqual(no_ai.status_code, 400)
+        no_discovery = self.client.post("/audits", headers=headers, json={
+            **self.request, "search_engine": "none", "include_google_ai_mode": False,
+        })
+        self.assertEqual(no_discovery.status_code, 400)
 
     def test_copilot_can_be_disabled(self):
         response = self.client.post(
@@ -571,7 +608,7 @@ class HostedApiTests(unittest.TestCase):
         self.assertEqual(self.dispatcher.calls, [AUDIT_ID])
 
     def test_reconciler_preserves_long_wait_on_retry(self):
-        self.gateway.audit_options = {"wait_longer_for_google_ai_mode": True}
+        self.gateway.audit_options = {"wait_longer_for_gemini": True}
         result = reconcile_once(self.gateway, self.dispatcher)
         self.assertEqual(result["started"], 1)
         self.assertEqual(self.dispatcher.long_wait_flags, [True])
@@ -627,7 +664,7 @@ class CloudRunDispatcherTests(unittest.TestCase):
         dispatcher = CloudRunDispatcher(
             "test-project", "europe-west3", "audit-worker", session=session
         )
-        dispatcher.dispatch(AUDIT_ID, wait_longer_for_google_ai_mode=True)
+        dispatcher.dispatch(AUDIT_ID, extended_ai_wait=True)
         self.assertEqual(session.posts[0][1]["json"]["overrides"]["timeout"], "7200s")
 
 

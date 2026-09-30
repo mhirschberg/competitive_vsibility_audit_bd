@@ -51,6 +51,12 @@ def _build_config_cell(
     wait_longer_for_google_ai_mode=False,
     include_copilot_visibility=True,
     reddit_comment_posts_per_cohort=0,
+    include_google_ai_mode=False,
+    include_chatgpt_visibility=True,
+    wait_longer_for_chatgpt=False,
+    include_gemini_visibility=True,
+    wait_longer_for_gemini=False,
+    wait_longer_for_copilot=False,
 ):
     reddit_comment_posts_per_cohort = int(reddit_comment_posts_per_cohort)
     if not 0 <= reddit_comment_posts_per_cohort <= 10:
@@ -64,7 +70,13 @@ def _build_config_cell(
         "include_reddit_analysis": bool(include_reddit_analysis),
         "debug_mode": bool(debug_mode),
         "wait_longer_for_google_ai_mode": bool(wait_longer_for_google_ai_mode),
+        "include_google_ai_mode": bool(include_google_ai_mode),
+        "include_chatgpt_visibility": bool(include_chatgpt_visibility),
+        "wait_longer_for_chatgpt": bool(wait_longer_for_chatgpt),
+        "include_gemini_visibility": bool(include_gemini_visibility),
+        "wait_longer_for_gemini": bool(wait_longer_for_gemini),
         "include_copilot_visibility": bool(include_copilot_visibility),
+        "wait_longer_for_copilot": bool(wait_longer_for_copilot),
         "reddit_comment_posts_per_cohort": reddit_comment_posts_per_cohort,
     }
     payload = json.dumps(values, ensure_ascii=False)
@@ -85,8 +97,14 @@ INCLUDE_REDDIT_ANALYSIS = bool(_WEB_CONFIG["include_reddit_analysis"])
 REDDIT_COMMENT_POSTS_PER_COHORT = int(_WEB_CONFIG["reddit_comment_posts_per_cohort"])
 os.environ["REDDIT_COMMENT_POSTS_PER_COHORT"] = str(REDDIT_COMMENT_POSTS_PER_COHORT)
 INCLUDE_COPILOT_VISIBILITY = bool(_WEB_CONFIG["include_copilot_visibility"])
+INCLUDE_GOOGLE_AI_MODE = bool(_WEB_CONFIG["include_google_ai_mode"])
+INCLUDE_CHATGPT_VISIBILITY = bool(_WEB_CONFIG["include_chatgpt_visibility"])
+INCLUDE_GEMINI_VISIBILITY = bool(_WEB_CONFIG["include_gemini_visibility"])
 DEBUG_MODE = bool(_WEB_CONFIG["debug_mode"])
 WAIT_LONGER_FOR_GOOGLE_AI_MODE = bool(_WEB_CONFIG["wait_longer_for_google_ai_mode"])
+WAIT_LONGER_FOR_CHATGPT = bool(_WEB_CONFIG["wait_longer_for_chatgpt"])
+WAIT_LONGER_FOR_GEMINI = bool(_WEB_CONFIG["wait_longer_for_gemini"])
+WAIT_LONGER_FOR_COPILOT = bool(_WEB_CONFIG["wait_longer_for_copilot"])
 
 BRIGHTDATA_API_TOKEN = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
 SERP_ZONE = os.getenv("SERP_ZONE", "").strip()
@@ -128,6 +146,13 @@ AUDIT_SETTINGS = {{
     "include_reddit_analysis": INCLUDE_REDDIT_ANALYSIS,
     "reddit_comment_posts_per_cohort": REDDIT_COMMENT_POSTS_PER_COHORT,
     "include_copilot_visibility": INCLUDE_COPILOT_VISIBILITY,
+    "include_google_ai_mode": INCLUDE_GOOGLE_AI_MODE,
+    "wait_longer_for_google_ai_mode": WAIT_LONGER_FOR_GOOGLE_AI_MODE,
+    "include_chatgpt_visibility": INCLUDE_CHATGPT_VISIBILITY,
+    "include_gemini_visibility": INCLUDE_GEMINI_VISIBILITY,
+    "wait_longer_for_chatgpt": WAIT_LONGER_FOR_CHATGPT,
+    "wait_longer_for_gemini": WAIT_LONGER_FOR_GEMINI,
+    "wait_longer_for_copilot": WAIT_LONGER_FOR_COPILOT,
     "debug": DEBUG_MODE,
 }}
 
@@ -148,11 +173,17 @@ print(
     f"Copilot AI visibility: "
     f"{{'enabled' if INCLUDE_COPILOT_VISIBILITY else 'skipped'}}"
 )
+print("AI answer sources: " + ", ".join(
+    name for name, enabled in (
+        ("Google AI Mode", INCLUDE_GOOGLE_AI_MODE),
+        ("ChatGPT", INCLUDE_CHATGPT_VISIBILITY),
+        ("Gemini", INCLUDE_GEMINI_VISIBILITY),
+        ("Copilot", INCLUDE_COPILOT_VISIBILITY),
+    ) if enabled
+))
 print(f"Debug logging: {{'enabled' if DEBUG_MODE else 'disabled'}}")
-print(
-    f"Google AI Mode snapshot wait: "
-    f"{{'up to 30 minutes' if WAIT_LONGER_FOR_GOOGLE_AI_MODE else 'up to 12 minutes'}}"
-)
+if INCLUDE_GOOGLE_AI_MODE:
+    print(f"Google AI Mode wait: {{'extended' if WAIT_LONGER_FOR_GOOGLE_AI_MODE else 'standard'}}")
 '''
 
 
@@ -167,6 +198,12 @@ def _build_runner_script(
     wait_longer_for_google_ai_mode=False,
     include_copilot_visibility=True,
     reddit_comment_posts_per_cohort=0,
+    include_google_ai_mode=False,
+    include_chatgpt_visibility=True,
+    wait_longer_for_chatgpt=False,
+    include_gemini_visibility=True,
+    wait_longer_for_gemini=False,
+    wait_longer_for_copilot=False,
 ):
     notebook = json.loads(NOTEBOOK_PATH.read_text(encoding="utf-8"))
     chunks = [
@@ -196,6 +233,12 @@ def _build_runner_script(
                     wait_longer_for_google_ai_mode,
                     include_copilot_visibility,
                     reddit_comment_posts_per_cohort,
+                    include_google_ai_mode,
+                    include_chatgpt_visibility,
+                    wait_longer_for_chatgpt,
+                    include_gemini_visibility,
+                    wait_longer_for_gemini,
+                    wait_longer_for_copilot,
                 )
             )
             continue
@@ -203,16 +246,6 @@ def _build_runner_script(
         source = _cell_source(cell)
         if not source.strip():
             continue
-
-        if wait_longer_for_google_ai_mode:
-            # Only the web runner changes these notebook call sites. Keep the
-            # standalone notebook's 12-minute default untouched.
-            source = source.replace("timeout_seconds=720", "timeout_seconds=1800")
-            source = re.sub(
-                r"(bd_client\.google_ai_mode_measured,\s*\n\s*prompt,\s*\n\s*)720(\s*,)",
-                r"\g<1>1800\2",
-                source,
-            )
 
         source = re.sub(
             r"AUDIT_RESULT\s*=\s*await\s+run_competitive_visibility_audit\(\s*AUDIT_SETTINGS\s*\)",

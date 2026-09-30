@@ -40,15 +40,23 @@ raise the workshop admission caps deliberately before inviting attendees.
    own Supabase session and database row-level security. A dead worker is
    marked `interrupted`, not automatically rerun and re-billed.
 
-### Longer Google AI Mode waits
+### AI answer options and longer waits
 
-The participant form offers an opt-in **Wait longer for Google AI Mode** switch.
-It is saved with that audit's input options, so a delayed dispatch keeps the
-same setting. The web runner alone raises Google AI Mode snapshot waits from
-720 to 1800 seconds; the standalone notebook retains its original default.
-Cloud Run overrides that execution's task timeout to two hours. Unchecked
-audits keep their existing snapshot and Job timeouts. This can increase worker
-runtime and cost, and cannot make an unavailable provider return an answer.
+The participant form has separate **Include** and **Wait longer** switches for
+Google AI Mode, ChatGPT, Gemini, and Copilot visibility measurements. Hosted
+audits default to ChatGPT, Gemini, and Copilot on; Google AI Mode off. The
+standalone notebook retains its own form defaults. These switches do not
+disable ChatGPT/Gemini internal research used to build the audit.
+
+The choices are saved with each audit, so a delayed dispatch uses the same
+configuration. Standard ChatGPT/Gemini waits are 600 seconds; extended waits
+are 1800. Copilot waits are 360 or 900 seconds. When enabled, Google AI Mode
+uses a short first-question health check by default, or waits up to 1800
+seconds per question in extended mode. Any selected extended wait raises only
+that Cloud Run execution's timeout to two hours. Longer waits may increase
+runtime and cost; they do not guarantee an answer from an unavailable provider.
+The combination "AI answers only" search with Google AI Mode disabled is
+rejected because the current competitor-discovery stage would have no source.
 
 ## Files
 

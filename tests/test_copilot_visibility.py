@@ -205,10 +205,48 @@ class CopilotVisibilityTests(unittest.TestCase):
     def test_copilot_is_absent_when_disabled(self):
         source = definition("run_visibility_stage")
         self.assertIn('if include_copilot:', source)
-        self.assertIn('engine_results["copilot"] = copilot_result', source)
+        self.assertIn('scheduled.append(("copilot", run_engine(', source)
+        self.assertIn('if item in engine_results', source)
         self.assertIn('mentions[engine] = []', source)
         report_source = definition("build_deterministic_report", last=False)
-        self.assertIn('"copilot" in visibility.get("engines", {})', report_source)
+        self.assertIn('if engine in visibility.get("engines", {})', report_source)
+
+    def test_only_selected_engines_are_measured_with_per_engine_waits(self):
+        class Profile:
+            brand_name = "Apple"
+            domain = "apple.com"
+            direct_competitor = False
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+
+            def race_ai_engine(self, engine, _prompt, redundancy, timeout):
+                self.calls.append((engine, redundancy, timeout))
+                return {"engine": engine, "status": "success", "answer": "Apple", "citations": []}
+
+        client = Client()
+        namespace = {
+            "asyncio": asyncio,
+            "time": time,
+            "bd_client": client,
+            "LAST_AI_MODE_DISCOVERY": {"results": []},
+            "build_visibility_prompt": lambda **_kwargs: "buyer question",
+            "find_brand_mentions": lambda _answer, _profiles: [{
+                "brand_name": "Apple", "domain": "apple.com", "role": "target",
+                "mentioned": True, "mention_count": 1, "first_position": 0,
+                "matched_aliases": ["Apple"],
+            }],
+        }
+        exec(definition("run_visibility_stage"), namespace)
+        result = asyncio.run(namespace["run_visibility_stage"](
+            Profile(), [Profile()], [], include_google_ai_mode=False,
+            include_chatgpt=False, include_gemini=True,
+            wait_longer_for_gemini=True, include_copilot=True,
+            wait_longer_for_copilot=True,
+        ))
+        self.assertEqual(client.calls, [("gemini", 3, 1800), ("copilot", 1, 900)])
+        self.assertEqual(set(result["engines"]), {"gemini", "copilot"})
 
 
 if __name__ == "__main__":

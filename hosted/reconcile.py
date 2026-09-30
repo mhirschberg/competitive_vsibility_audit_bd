@@ -20,8 +20,14 @@ def reconcile_once(gateway, dispatcher, limit=50):
             options = audit.get("input_options") or {}
             dispatcher.dispatch(
                 audit_id,
-                wait_longer_for_google_ai_mode=(
-                    options.get("wait_longer_for_google_ai_mode") is True
+                extended_ai_wait=any(
+                    options.get(flag) is True
+                    for flag in (
+                        "wait_longer_for_google_ai_mode",
+                        "wait_longer_for_chatgpt",
+                        "wait_longer_for_gemini",
+                        "wait_longer_for_copilot",
+                    )
                 ),
             )
             started += 1
