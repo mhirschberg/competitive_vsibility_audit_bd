@@ -150,11 +150,10 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
     def test_bright_data_usage_section_explains_result_based_pricing(self):
         runtime = "".join(self.notebook["cells"][5]["source"])
-        start = runtime.index("BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD")
-        end = runtime.index("def clean_record_for_storage")
-        namespace = {}
-        exec(runtime[start:end], namespace)
-        section = namespace["build_bright_data_usage_section"](
+        self.assertIn("# AUDIT-REPORT-EXPORT: start", runtime)
+        from audit_core.report_export import build_bright_data_usage_section
+
+        section = build_bright_data_usage_section(
             {
                 "data_operations_started": 12,
                 "accepted_operations": 11,

@@ -29,6 +29,7 @@ COMPETITOR_PIPELINE_SOURCE = ROOT / "audit_core" / "competitor_pipeline.py"
 COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
 REPORT_CONTENT_SOURCE = ROOT / "audit_core" / "report_content.py"
 REPORT_STAGE_SOURCE = ROOT / "audit_core" / "report_stage.py"
+REPORT_EXPORT_SOURCE = ROOT / "audit_core" / "report_export.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -64,6 +65,8 @@ REPORT_CONTENT_START = "# AUDIT-REPORT-CONTENT: start"
 REPORT_CONTENT_END = "# AUDIT-REPORT-CONTENT: end"
 REPORT_STAGE_START = "# AUDIT-REPORT-STAGE: start"
 REPORT_STAGE_END = "# AUDIT-REPORT-STAGE: end"
+REPORT_EXPORT_START = "# AUDIT-REPORT-EXPORT: start"
+REPORT_EXPORT_END = "# AUDIT-REPORT-EXPORT: end"
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
@@ -129,7 +132,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    competitor_pipeline_source=COMPETITOR_PIPELINE_SOURCE,
                    competitor_stage_source=COMPETITOR_STAGE_SOURCE,
                    report_content_source=REPORT_CONTENT_SOURCE,
-                   report_stage_source=REPORT_STAGE_SOURCE):
+                   report_stage_source=REPORT_STAGE_SOURCE,
+                   report_export_source=REPORT_EXPORT_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -252,6 +256,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         _without_service_imports(
             Path(report_stage_source).read_text(encoding="utf-8")
         ),
+    )
+    orchestration_cell = _unique_cell(notebook, "final-orchestration")
+    _replace_embedded_source(
+        orchestration_cell,
+        REPORT_EXPORT_START,
+        REPORT_EXPORT_END,
+        Path(report_export_source).read_text(encoding="utf-8"),
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(
