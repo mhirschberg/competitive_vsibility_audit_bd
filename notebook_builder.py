@@ -13,9 +13,14 @@ NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
 REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
+SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
+SCOPE_CELL_ID = "runtime-utilities-merged"
+SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
+SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
+SCOPE_PACKAGE_IMPORT = "from .primitives import normalize_confidence\n"
 REDDIT_CELL_ID = "runtime-utilities-merged"
 RESEARCH_CELL_ID = "research-provider-race"
 REDDIT_START = "# REDDIT-SOCIAL-PATCH: start"
@@ -52,7 +57,8 @@ def _replace_embedded_source(cell, start, end, source):
 
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
-                   primitives_source=PRIMITIVES_SOURCE):
+                   primitives_source=PRIMITIVES_SOURCE,
+                   scope_source=SCOPE_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -61,6 +67,17 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         PRIMITIVES_START,
         PRIMITIVES_END,
         Path(primitives_source).read_text(encoding="utf-8"),
+    )
+    scope_text = Path(scope_source).read_text(encoding="utf-8")
+    if scope_text.count(SCOPE_PACKAGE_IMPORT) != 1:
+        raise ValueError("Expected one service-only primitives import")
+    scope_text = scope_text.replace(SCOPE_PACKAGE_IMPORT, "", 1)
+    scope_cell = _unique_cell(notebook, SCOPE_CELL_ID)
+    _replace_embedded_source(
+        scope_cell,
+        SCOPE_START,
+        SCOPE_END,
+        scope_text,
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(
