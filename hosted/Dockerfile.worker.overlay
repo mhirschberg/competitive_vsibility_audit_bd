@@ -6,4 +6,6 @@ FROM europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit/worker@sha256:2454
 COPY competitive_visibility_audit_bd.ipynb /app/competitive_visibility_audit_bd.ipynb
 COPY runner_builder.py /app/runner_builder.py
 COPY hosted/worker.py /app/hosted/worker.py
+COPY audit_core /app/audit_core
+COPY scripts/run_local_audit.py /app/scripts/run_local_audit.py
 RUN python -c 'from runner_builder import _build_runner_script; a=("Acme", "example.com", "widgets", "US", "auto", False, False); compile(_build_runner_script(*a), "<runner>", "exec"); compile(_build_runner_script(*a, True), "<long-runner>", "exec")'
