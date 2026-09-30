@@ -67,6 +67,17 @@ Bright Data client itself, the other audit stages, and the top-level audit
 orchestrator still live in the notebook, so the hosted worker remains on the
 current runner until those pieces are migrated and checked end to end.
 
+Eighth checkpoint: the result-based Bright Data usage ledger now lives in
+`audit_core.brightdata_usage`, and the effective snapshot HTTP transport plus
+polling live in `audit_core.brightdata_transport`. The notebook embeds both
+sources and its client inherits the ledger; status, download, trigger, scrape,
+and wait operations use the shared transport functions. Fake-response tests
+cover NDJSON, transient empty downloads, materializing snapshots, result-based
+cost estimates, and checkpoint restore. The class still has later notebook
+overrides for SERP and answer-engine behavior. Those overrides must be mapped
+and extracted before an imported service client would be equivalent to the
+notebook's effective client. No live requests or production change were made.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

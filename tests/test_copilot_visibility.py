@@ -11,6 +11,7 @@ import unittest
 from unittest import mock
 from urllib.parse import urlparse, urlunparse
 
+from audit_core.brightdata_usage import BrightDataUsageLedger
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
@@ -47,6 +48,7 @@ class CopilotVisibilityTests(unittest.TestCase):
             "FAILED_STATUSES": {"failed", "canceled"},
             "COPILOT_DATASET_ID": "gd_m7di5jy6s9geokz8w",
             "canonical_source_url": canonical_source_url,
+            "BrightDataUsageLedger": BrightDataUsageLedger,
         }
         exec(definition("BrightDataClient"), namespace)
         client = object.__new__(namespace["BrightDataClient"])
@@ -132,6 +134,7 @@ class CopilotVisibilityTests(unittest.TestCase):
             "FAILED_STATUSES": {"failed", "canceled"},
             "COPILOT_DATASET_ID": "gd_m7di5jy6s9geokz8w",
             "canonical_source_url": canonical_source_url,
+            "BrightDataUsageLedger": BrightDataUsageLedger,
         }
         exec(definition("BrightDataClient"), namespace)
         client_type = namespace["BrightDataClient"]
