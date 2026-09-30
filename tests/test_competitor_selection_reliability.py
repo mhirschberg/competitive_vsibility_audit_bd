@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import unittest
 
+from audit_core import competitor_decisions
+
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 CHECKS = (
@@ -36,6 +38,9 @@ class CompetitorSelectionReliabilityTests(unittest.TestCase):
     def schema_namespace():
         namespace = {
             "LOCKED_SCOPE_VALIDATION_CHECKS": CHECKS,
+            "core_canonical_candidate_validation_data": (
+                competitor_decisions.core_canonical_candidate_validation_data
+            ),
             "json": json,
             "identify_google_ai_research_task": lambda _prompt: "candidate_validation_json",
             "parse_ai_json": json.loads,
@@ -113,6 +118,19 @@ class CompetitorSelectionReliabilityTests(unittest.TestCase):
         namespace = {
             "json": json,
             "locked_scope_country_details": lambda _country: {"name": "United States", "code": "US"},
+            "core_build_locked_scope_validation_prompt": (
+                competitor_decisions.core_build_locked_scope_validation_prompt
+            ),
+            "core_build_locked_scope_validation_retry_prompt": (
+                competitor_decisions.core_build_locked_scope_validation_retry_prompt
+            ),
+            "_competitor_decision_ports": lambda: competitor_decisions.CompetitorDecisionPorts(
+                lambda _country: {"name": "United States", "code": "US"},
+                lambda value: value,
+                lambda value: value,
+                lambda value: value,
+                lambda _domain, _country: 0,
+            ),
         }
         exec(notebook_definition("identify_google_ai_research_task"), namespace)
         exec(notebook_definition("build_locked_scope_validation_prompt"), namespace)

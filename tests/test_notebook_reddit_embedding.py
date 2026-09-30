@@ -6,7 +6,7 @@ from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
-from audit_core import competitor_research
+from audit_core import competitor_decisions, competitor_research
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -462,23 +462,17 @@ class NotebookEmbeddingTests(unittest.TestCase):
         start = runtime.index("def normalize_locked_scope_validation")
         end = runtime.index("def validate_locked_scope_candidate")
         namespace = {
-            "LOCKED_SCOPE_INACTIVE_TERMS": set(),
-            "LOCKED_SCOPE_MIN_CONFIDENCE": 0.6,
-            "LOCKED_SCOPE_REJECTED_ROLES": {
-                "publisher_or_directory",
-                "unrelated",
-            },
-            "locked_scope_role": lambda value: value,
-            "locked_scope_normalize_text": lambda value: str(value).lower(),
-            "normalize_boolean": bool,
-            "normalize_confidence": lambda value: float(value or 0),
-            "ensure_string_list": lambda value: list(value or []),
-            "normalize_public_url": lambda value: value,
-            "get_root_domain": lambda value: value,
+            "core_normalize_locked_scope_validation": (
+                competitor_decisions.core_normalize_locked_scope_validation
+            ),
+            "_competitor_decision_ports": lambda: competitor_decisions.CompetitorDecisionPorts(
+                lambda country: {"code": country, "name": country},
+                lambda value: value,
+                lambda value: value,
+                lambda value: value,
+                lambda _domain, _country: 0,
+            ),
         }
-        helper_start = runtime.index("LOCKED_SCOPE_VALIDATION_CHECKS =")
-        helper_end = runtime.index("def validate_google_ai_research_answer", helper_start)
-        exec(runtime[helper_start:helper_end], namespace)
         exec(runtime[start:end], namespace)
         candidate = {
             "official_url": "https://manufacturer.example/",
@@ -586,11 +580,9 @@ class NotebookEmbeddingTests(unittest.TestCase):
         end = runtime.index("def build_locked_scope_validation_retry_prompt")
         namespace = {
             "LOCKED_SCOPE_CONFLICT_RETRY_MAX_RANK": 5,
-            "LOCKED_SCOPE_CONFLICT_RETRY_MIN_CONFIDENCE": 0.8,
-            "locked_scope_role": lambda value: value,
-            "normalize_confidence": lambda value: float(value or 0),
-            "normalize_boolean": bool,
-            "ensure_string_list": lambda value: list(value or []),
+            "core_discovery_supports_consistency_retry": (
+                competitor_decisions.core_discovery_supports_consistency_retry
+            ),
         }
         exec(runtime[start:end], namespace)
         candidate = {

@@ -36,6 +36,16 @@ answer normalization, and candidate-universe building still reside in the
 notebook and are the next extraction targets. This fixture is deliberately
 labelled synthetic; it is not a captured production response.
 
+Fifth checkpoint: the seven remaining competitor-decision helpers now live in
+`audit_core.competitor_decisions`: strict verdict canonicalization, shortlist
+construction, discovery/validation/retry prompts, retry eligibility, and final
+verdict normalization. Notebook wrappers pass URL, domain, and country helpers
+through `CompetitorDecisionPorts`; the generated notebook embeds the same
+module. The seven extracted function bodies were AST-compared with the prior
+notebook commit after accounting for only the new explicit port aliases and a
+renamed internal call. The hosted runner still executes the generated notebook;
+this does not yet switch production to a service-native runner.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

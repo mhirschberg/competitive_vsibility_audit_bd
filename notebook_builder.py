@@ -15,6 +15,7 @@ RESEARCH_SOURCE = ROOT / "research_fallback.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
+COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -24,6 +25,10 @@ SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
 SCOPE_PACKAGE_IMPORT = "from .primitives import normalize_confidence\n"
 COMPETITOR_RESEARCH_START = "# AUDIT-COMPETITOR-RESEARCH: start"
 COMPETITOR_RESEARCH_END = "# AUDIT-COMPETITOR-RESEARCH: end"
+COMPETITOR_DECISIONS_START = "# AUDIT-COMPETITOR-DECISIONS: start"
+COMPETITOR_DECISIONS_END = "# AUDIT-COMPETITOR-DECISIONS: end"
+SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
+SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
 RESEARCH_CELL_ID = "research-provider-race"
 REDDIT_START = "# REDDIT-SOCIAL-PATCH: start"
@@ -62,7 +67,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
                    scope_source=SCOPE_SOURCE,
-                   competitor_research_source=COMPETITOR_RESEARCH_SOURCE):
+                   competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
+                   competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -88,6 +94,19 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPETITOR_RESEARCH_START,
         COMPETITOR_RESEARCH_END,
         Path(competitor_research_source).read_text(encoding="utf-8"),
+    )
+    decisions_text = Path(competitor_decisions_source).read_text(encoding="utf-8")
+    if (decisions_text.count(SERVICE_IMPORTS_START) != 1
+            or decisions_text.count(SERVICE_IMPORTS_END) != 1):
+        raise ValueError("Expected one service-only import block")
+    before, remainder = decisions_text.split(SERVICE_IMPORTS_START, 1)
+    _, after = remainder.split(SERVICE_IMPORTS_END, 1)
+    decisions_text = before.rstrip("\n") + "\n\n" + after.lstrip("\n")
+    _replace_embedded_source(
+        scope_cell,
+        COMPETITOR_DECISIONS_START,
+        COMPETITOR_DECISIONS_END,
+        decisions_text,
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(
