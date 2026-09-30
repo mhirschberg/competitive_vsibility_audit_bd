@@ -159,6 +159,16 @@ the hosted runner switches. PDF rendering, artifact writing, Reddit insertion,
 and the top-level orchestration remain notebook-owned. No live requests,
 production deployment, or cost incurred.
 
+Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
+the original UTC run timestamp, company, optional focus, and country. The
+notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
+discovery recognizes both new and legacy report names. Published Reddit data
+and run logs receive the same display prefix. Internal numbered checkpoints
+retain their established names so resume/replay remains compatible. A resumed
+run derives its export prefix from the saved original timestamp, and completed
+new-named reports are excluded from resume discovery. This naming change was
+verified without paid provider requests or a hosted deployment.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

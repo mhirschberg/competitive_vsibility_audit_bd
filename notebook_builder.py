@@ -30,6 +30,7 @@ COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
 REPORT_CONTENT_SOURCE = ROOT / "audit_core" / "report_content.py"
 REPORT_STAGE_SOURCE = ROOT / "audit_core" / "report_stage.py"
 REPORT_EXPORT_SOURCE = ROOT / "audit_core" / "report_export.py"
+ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -67,6 +68,8 @@ REPORT_STAGE_START = "# AUDIT-REPORT-STAGE: start"
 REPORT_STAGE_END = "# AUDIT-REPORT-STAGE: end"
 REPORT_EXPORT_START = "# AUDIT-REPORT-EXPORT: start"
 REPORT_EXPORT_END = "# AUDIT-REPORT-EXPORT: end"
+ARTIFACT_NAMES_START = "# AUDIT-ARTIFACT-NAMES: start"
+ARTIFACT_NAMES_END = "# AUDIT-ARTIFACT-NAMES: end"
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
@@ -133,7 +136,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    competitor_stage_source=COMPETITOR_STAGE_SOURCE,
                    report_content_source=REPORT_CONTENT_SOURCE,
                    report_stage_source=REPORT_STAGE_SOURCE,
-                   report_export_source=REPORT_EXPORT_SOURCE):
+                   report_export_source=REPORT_EXPORT_SOURCE,
+                   artifact_names_source=ARTIFACT_NAMES_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -148,6 +152,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         BRIGHTDATA_TRANSPORT_START,
         BRIGHTDATA_TRANSPORT_END,
         Path(brightdata_transport_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        ARTIFACT_NAMES_START,
+        ARTIFACT_NAMES_END,
+        Path(artifact_names_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,

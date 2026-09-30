@@ -2,8 +2,9 @@ import unittest
 from unittest.mock import patch
 from uuid import UUID
 import subprocess
+from pathlib import Path
 
-from hosted.worker import run_worker
+from hosted.worker import _artifact_storage_name, run_worker
 
 
 AUDIT_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -95,6 +96,48 @@ report = {
 class HostedWorkerTests(unittest.TestCase):
     def setUp(self):
         self.gateway = FakeWorkerGateway()
+
+    def test_supporting_downloads_share_report_prefix(self):
+        report = Path(
+            "2026-09-30_103512123456_rayner_rayone-galaxy_GB_"
+            "competitive_visibility_audit.json"
+        )
+        self.assertEqual(
+            _artifact_storage_name(Path("05_reddit_social.json"), report),
+            "2026-09-30_103512123456_rayner_rayone-galaxy_GB_reddit_social.json",
+        )
+        self.assertEqual(
+            _artifact_storage_name(Path("audit.log"), report),
+            "2026-09-30_103512123456_rayner_rayone-galaxy_GB_audit.log",
+        )
+        self.assertEqual(
+            _artifact_storage_name(Path("audit.log"), Path("06_competitive_visibility_audit.json")),
+            "audit.log",
+        )
+
+    def test_new_named_artifacts_are_published_and_report_is_found(self):
+        prefix = "2026-09-30_103512123456_rayner_rayone-galaxy_GB"
+        runner = SUCCESS_RUNNER.replace(
+            "06_competitive_visibility_audit.json",
+            prefix + "_competitive_visibility_audit.json",
+        ) + f"""
+(output / '{prefix}_competitive_visibility_audit.md').write_text('# Report')
+(output / '{prefix}_competitive_visibility_audit.pdf').write_bytes(b'%PDF-1.4 test')
+(output / '05_reddit_social.json').write_text('{{}}')
+Path('{prefix}_competitive_visibility_audit.zip').write_bytes(b'zip')
+"""
+        result = run_worker(
+            self.gateway, AUDIT_ID,
+            runner_source_factory=lambda *_args: runner,
+            heartbeat_interval=3600,
+        )
+        self.assertEqual(result, 0)
+        object_names = {path.rsplit("/", 1)[-1] for path, _data in self.gateway.uploads}
+        self.assertIn(prefix + "_competitive_visibility_audit.json", object_names)
+        self.assertIn(prefix + "_competitive_visibility_audit.pdf", object_names)
+        self.assertIn(prefix + "_reddit_social.json", object_names)
+        self.assertIn(prefix + "_audit.log", object_names)
+        self.assertEqual(self.gateway.finishes[0][0], "completed")
 
     def test_success_uploads_report_and_counts_all_operations(self):
         arguments = []

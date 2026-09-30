@@ -28,10 +28,11 @@ AUDIT_JOBS_LOCK = threading.Lock()
 def _collect_downloads(run_dir: Path):
     preferred = []
     patterns = [
+        "*_competitive_visibility_audit.zip",
         "competitive-visibility-*.zip",
-        "competitive-visibility-*/06_competitive_visibility_audit.pdf",
-        "competitive-visibility-*/06_competitive_visibility_audit.md",
-        "competitive-visibility-*/06_competitive_visibility_audit.json",
+        "competitive-visibility-*/*_competitive_visibility_audit.pdf",
+        "competitive-visibility-*/*_competitive_visibility_audit.md",
+        "competitive-visibility-*/*_competitive_visibility_audit.json",
     ]
     for pattern in patterns:
         preferred.extend(sorted(run_dir.glob(pattern)))

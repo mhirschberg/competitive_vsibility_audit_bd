@@ -118,10 +118,11 @@ def create_run_directory(output_root, company):
 
 def collect_artifacts(run_directory):
     patterns = (
+        "*_competitive_visibility_audit.zip",
         "competitive-visibility-*.zip",
-        "competitive-visibility-*/06_competitive_visibility_audit.pdf",
-        "competitive-visibility-*/06_competitive_visibility_audit.md",
-        "competitive-visibility-*/06_competitive_visibility_audit.json",
+        "competitive-visibility-*/*_competitive_visibility_audit.pdf",
+        "competitive-visibility-*/*_competitive_visibility_audit.md",
+        "competitive-visibility-*/*_competitive_visibility_audit.json",
         "competitive-visibility-*/05_reddit_social.json",
     )
     artifacts = []

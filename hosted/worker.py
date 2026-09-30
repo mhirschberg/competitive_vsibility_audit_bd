@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import UUID
 
 from hosted.supabase_gateway import BackendError, SupabaseGateway
+from audit_core.artifact_names import is_final_report_json
 from scripts.run_local_audit import collect_artifacts
 
 
@@ -34,11 +35,26 @@ def _artifact_kind(path: Path) -> str:
         return "pdf_report"
     if path.suffix == ".md":
         return "markdown_report"
-    if path.name == "06_competitive_visibility_audit.json":
+    if is_final_report_json(path.name):
         return "json_report"
     if path.name == "05_reddit_social.json":
         return "reddit_social"
     return "raw_json"
+
+
+def _artifact_storage_name(path: Path, report_path: Path | None) -> str:
+    """Give supporting downloads the same readable prefix as the report."""
+    if report_path is None or report_path.name == "06_competitive_visibility_audit.json":
+        return path.name
+    suffix = "_competitive_visibility_audit.json"
+    if not report_path.name.endswith(suffix):
+        return path.name
+    prefix = report_path.name[: -len(suffix)]
+    if path.name == "05_reddit_social.json":
+        return f"{prefix}_reddit_social.json"
+    if path.name == "audit.log":
+        return f"{prefix}_audit.log"
+    return path.name
 
 
 def _sha256(path: Path) -> str:
@@ -115,10 +131,11 @@ def _usage_rows(
     return rows
 
 
-def _publish_artifact(gateway, audit: dict, audit_id: UUID, path: Path):
+def _publish_artifact(gateway, audit: dict, audit_id: UUID, path: Path,
+                      *, storage_name: str | None = None):
     workspace_id = audit["workspace_id"]
-    object_path = f"workspaces/{workspace_id}/audits/{audit_id}/{path.name}"
-    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    object_path = f"workspaces/{workspace_id}/audits/{audit_id}/{storage_name or path.name}"
+    content_type = mimetypes.guess_type(storage_name or path.name)[0] or "application/octet-stream"
     gateway.upload_artifact(object_path, path, content_type)
     gateway.record_artifact(
         {
@@ -251,7 +268,10 @@ def run_worker(
                 None,
             )
             for artifact in artifacts:
-                _publish_artifact(gateway, audit, audit_id, artifact)
+                _publish_artifact(
+                    gateway, audit, audit_id, artifact,
+                    storage_name=_artifact_storage_name(artifact, report_path),
+                )
 
             if return_code != 0 or report_path is None:
                 if active_step is not None:
