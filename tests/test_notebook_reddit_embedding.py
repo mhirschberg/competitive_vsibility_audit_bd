@@ -6,6 +6,8 @@ from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
+from audit_core import competitor_research
+
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
@@ -659,6 +661,11 @@ class NotebookEmbeddingTests(unittest.TestCase):
         namespace = {
             "time": __import__("time"),
             "bd_client": fake_client,
+            "run_scope_validation": competitor_research.run_scope_validation,
+            "_locked_scope_query_json": lambda prompt: (
+                record := fake_client.google_ai_mode(prompt, timeout_seconds=720),
+                json.loads(fake_client.answer_text(record)),
+            ),
             "build_locked_scope_validation_prompt": (
                 lambda scope, candidate_record: "initial"
             ),

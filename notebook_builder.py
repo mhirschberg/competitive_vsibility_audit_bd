@@ -14,6 +14,7 @@ REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
+COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -21,6 +22,8 @@ SCOPE_CELL_ID = "runtime-utilities-merged"
 SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
 SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
 SCOPE_PACKAGE_IMPORT = "from .primitives import normalize_confidence\n"
+COMPETITOR_RESEARCH_START = "# AUDIT-COMPETITOR-RESEARCH: start"
+COMPETITOR_RESEARCH_END = "# AUDIT-COMPETITOR-RESEARCH: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
 RESEARCH_CELL_ID = "research-provider-race"
 REDDIT_START = "# REDDIT-SOCIAL-PATCH: start"
@@ -58,7 +61,8 @@ def _replace_embedded_source(cell, start, end, source):
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
-                   scope_source=SCOPE_SOURCE):
+                   scope_source=SCOPE_SOURCE,
+                   competitor_research_source=COMPETITOR_RESEARCH_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -78,6 +82,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SCOPE_START,
         SCOPE_END,
         scope_text,
+    )
+    _replace_embedded_source(
+        scope_cell,
+        COMPETITOR_RESEARCH_START,
+        COMPETITOR_RESEARCH_END,
+        Path(competitor_research_source).read_text(encoding="utf-8"),
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(
