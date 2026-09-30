@@ -235,9 +235,9 @@ class AuditResumeTests(unittest.TestCase):
 
     def test_resume_selector_skips_candidates_without_snapshots(self):
         source = definition("select_competitors_stage", last=True)
-        self.assertIn("if _GOOGLE_AI_ONLY_REUSE:", source)
+        self.assertIn("only_reuse=_GOOGLE_AI_ONLY_REUSE", source)
         self.assertIn("cached_research_snapshot_ids", source)
-        self.assertIn("unvalidated_on_resume", source)
+        self.assertIn("select_competitors_core", source)
 
 
 if __name__ == "__main__":

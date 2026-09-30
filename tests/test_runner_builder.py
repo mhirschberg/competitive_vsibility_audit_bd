@@ -34,6 +34,16 @@ class RunnerBuilderTests(unittest.TestCase):
         self.assertIs(app._build_runner_script, runner_builder._build_runner_script)
         self.assertIs(app._build_config_cell, runner_builder._build_config_cell)
 
+    def test_generated_runner_compiles_with_embedded_selection_stage(self):
+        import runner_builder
+
+        source = runner_builder._build_runner_script(
+            "Apple", "apple.com", "premium smartphone", "US", "auto",
+            False, False,
+        )
+        self.assertIn("def select_competitors_core(", source)
+        compile(source, "workshop_runner.py", "exec")
+
 
 if __name__ == "__main__":
     unittest.main()

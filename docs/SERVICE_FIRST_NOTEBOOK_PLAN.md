@@ -46,6 +46,17 @@ notebook commit after accounting for only the new explicit port aliases and a
 renamed internal call. The hosted runner still executes the generated notebook;
 this does not yet switch production to a service-native runner.
 
+Sixth checkpoint: the Stage 3 selection decisions now live in
+`audit_core.competitor_stage`. It accepts explicit provider, checkpoint, and
+model ports; the notebook wrapper supplies its existing Bright Data functions
+and embeds the same stage code. Synthetic saved-result tests cover two selected
+competitors, rejected candidates, resume without new requests, provider
+failure semantics, and service/notebook parity. Provider adapters for this
+stage still live in the notebook, and the hosted worker still runs the
+generated notebook. This is a shared, importable *stage core*, not yet a
+complete service-native runner. No live provider call or production deployment
+was made at this checkpoint.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

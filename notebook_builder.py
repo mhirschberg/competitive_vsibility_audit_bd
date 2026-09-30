@@ -16,6 +16,7 @@ PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
+COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -27,6 +28,8 @@ COMPETITOR_RESEARCH_START = "# AUDIT-COMPETITOR-RESEARCH: start"
 COMPETITOR_RESEARCH_END = "# AUDIT-COMPETITOR-RESEARCH: end"
 COMPETITOR_DECISIONS_START = "# AUDIT-COMPETITOR-DECISIONS: start"
 COMPETITOR_DECISIONS_END = "# AUDIT-COMPETITOR-DECISIONS: end"
+COMPETITOR_STAGE_START = "# AUDIT-COMPETITOR-STAGE: start"
+COMPETITOR_STAGE_END = "# AUDIT-COMPETITOR-STAGE: end"
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
@@ -63,12 +66,22 @@ def _replace_embedded_source(cell, start, end, source):
     ).splitlines(keepends=True)
 
 
+def _without_service_imports(source):
+    if (source.count(SERVICE_IMPORTS_START) != 1
+            or source.count(SERVICE_IMPORTS_END) != 1):
+        raise ValueError("Expected one service-only import block")
+    before, remainder = source.split(SERVICE_IMPORTS_START, 1)
+    _, after = remainder.split(SERVICE_IMPORTS_END, 1)
+    return before.rstrip("\n") + "\n\n" + after.lstrip("\n")
+
+
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
-                   competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE):
+                   competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
+                   competitor_stage_source=COMPETITOR_STAGE_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -95,18 +108,22 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPETITOR_RESEARCH_END,
         Path(competitor_research_source).read_text(encoding="utf-8"),
     )
-    decisions_text = Path(competitor_decisions_source).read_text(encoding="utf-8")
-    if (decisions_text.count(SERVICE_IMPORTS_START) != 1
-            or decisions_text.count(SERVICE_IMPORTS_END) != 1):
-        raise ValueError("Expected one service-only import block")
-    before, remainder = decisions_text.split(SERVICE_IMPORTS_START, 1)
-    _, after = remainder.split(SERVICE_IMPORTS_END, 1)
-    decisions_text = before.rstrip("\n") + "\n\n" + after.lstrip("\n")
+    decisions_text = _without_service_imports(
+        Path(competitor_decisions_source).read_text(encoding="utf-8")
+    )
     _replace_embedded_source(
         scope_cell,
         COMPETITOR_DECISIONS_START,
         COMPETITOR_DECISIONS_END,
         decisions_text,
+    )
+    _replace_embedded_source(
+        scope_cell,
+        COMPETITOR_STAGE_START,
+        COMPETITOR_STAGE_END,
+        _without_service_imports(
+            Path(competitor_stage_source).read_text(encoding="utf-8")
+        ),
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(
