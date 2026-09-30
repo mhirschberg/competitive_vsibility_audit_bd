@@ -41,6 +41,8 @@ flowchart TD
 
 The core audit has six visible stages. When Reddit is enabled, social analysis becomes Stage 6 and final reporting becomes Stage 7.
 
+Before Stage 1 or any paid provider call, the audit verifies the submitted official website over HTTPS and follows a bounded redirect chain. It scores the final registered domain, while retaining the submitted address and redirect evidence in the run settings and final JSON. Connections are pinned to DNS-checked public IP addresses; private destinations, insecure redirects, loops, and unverifiable sites stop the run with an error rather than silently reporting zero visibility for the wrong domain. A verified redirect remains valid if its final destination returns an anti-bot 401/403 response.
+
 ## Stage 1: Target research and buyer queries
 
 One ChatGPT and one Gemini snapshot research the target concurrently. The first substantive, task-valid answer wins. The provider and both snapshot IDs are retained in the audit record; Google AI Mode is no longer a required research provider.

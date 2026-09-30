@@ -15,6 +15,7 @@ RESEARCH_SOURCE = ROOT / "research_fallback.py"
 RESEARCH_RACE_SOURCE = ROOT / "audit_core" / "research_race.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
+OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
 SERP_TRANSPORT_SOURCE = ROOT / "audit_core" / "serp_transport.py"
 SERP_SELECTION_SOURCE = ROOT / "audit_core" / "serp_selection.py"
@@ -36,6 +37,8 @@ PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
+OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
+OFFICIAL_DOMAINS_END = "# AUDIT-OFFICIAL-DOMAINS: end"
 BRIGHTDATA_USAGE_START = "# AUDIT-BRIGHTDATA-USAGE: start"
 BRIGHTDATA_USAGE_END = "# AUDIT-BRIGHTDATA-USAGE: end"
 SERP_TRANSPORT_START = "# AUDIT-SERP-TRANSPORT: start"
@@ -122,6 +125,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_race_source=RESEARCH_RACE_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
+                   official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
                    serp_transport_source=SERP_TRANSPORT_SOURCE,
                    serp_selection_source=SERP_SELECTION_SOURCE,
@@ -152,6 +156,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         BRIGHTDATA_TRANSPORT_START,
         BRIGHTDATA_TRANSPORT_END,
         Path(brightdata_transport_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        OFFICIAL_DOMAINS_START,
+        OFFICIAL_DOMAINS_END,
+        Path(official_domains_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,
