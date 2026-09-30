@@ -173,6 +173,19 @@ writing are still notebook-owned; the hosted worker has not switched to a
 service-native runner. No live provider call or production deployment was
 made at this checkpoint.
 
+Sixteenth checkpoint: `audit_core.visibility_prompt` now builds the neutral
+category-level AI question with an explicit audit focus, while
+`audit_core.visibility_sources` classifies, deduplicates, and quality-filters
+citations with optional Google redirect-resolution ports. Canonical citation
+URL handling now shares `audit_core.domains` with root-domain normalization.
+The notebook embeds these modules and preserves its existing settings and
+redirect adapters. A saved synthetic citation fixture covers source classes,
+cross-engine deduplication, unresolved Google-interface links, and
+service/notebook parity; the base prompt and source outputs were also compared
+against the preceding notebook commit. This still does not provide a complete
+service-native Bright Data client or top-level runner. No paid request or
+production deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
