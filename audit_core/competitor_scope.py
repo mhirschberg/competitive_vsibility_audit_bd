@@ -576,11 +576,25 @@ def build_locked_target_scope(
             )
             or ""
         ).strip(),
+        "as_of_date": str(
+            settings.get("audit_as_of_date", "") or ""
+        ).strip(),
         "locked": True,
         "locked_at_stage": (
             "company_analysis"
         ),
     }
+
+
+def restore_locked_target_scope(company_checkpoint, brand, settings):
+    """Keep a resumed audit's original scope and backfill its original date."""
+    saved = company_checkpoint.get("locked_target_scope")
+    scope = dict(saved) if isinstance(saved, dict) and saved else (
+        build_locked_target_scope(brand, settings)
+    )
+    if not scope.get("as_of_date"):
+        scope["as_of_date"] = str(settings.get("audit_as_of_date") or "").strip()
+    return scope
 
 
 def rank_valid_competitors(validation_results):
