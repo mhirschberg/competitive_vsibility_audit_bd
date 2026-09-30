@@ -8,6 +8,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import time
 
+# SERVICE-ONLY-IMPORTS: start
+from audit_core.research_race import ResearchRacePorts, race_research_providers_core
+# SERVICE-ONLY-IMPORTS: end
+
 
 RESEARCH_PROVIDERS = ("chatgpt", "gemini")
 RESEARCH_POLL_SECONDS = 5
@@ -59,150 +63,23 @@ def _trigger_research_snapshot(client, provider, prompt):
 
 
 def race_research_providers(self, prompt, timeout_seconds=720):
-    """Return the first task-valid ChatGPT/Gemini research record.
-
-    A resumed Google-only audit may poll its saved Google snapshots, but new
-    research runs never launch Google AI Mode. This avoids the current outage
-    without mislabeling another provider's answer as a Google measurement.
-    """
-    original_prompt = str(prompt or "").strip()
-    if not original_prompt:
-        raise ValueError("Research prompt cannot be empty.")
-    prompt = localize_google_ai_prompt(original_prompt)
-
-    started_at = time.monotonic()
-    task_type = identify_google_ai_research_task(prompt)
-    if not _RESEARCH_RACE_SEMAPHORE.acquire(timeout=timeout_seconds):
-        raise TimeoutError("Timed out waiting for a research-race slot.")
-
-    try:
-        cached = cached_research_snapshot_ids(original_prompt)
-        snapshots = [
-            (provider, snapshot_id)
-            for provider, ids in cached.items()
-            for snapshot_id in ids
-        ]
-        errors = []
-
-        if snapshots:
-            self.log(
-                f"Resuming {task_type} from {len(snapshots)} saved "
-                "research snapshot(s)"
-            )
-        elif _GOOGLE_AI_ONLY_REUSE:
-            raise BrightDataAPIError(
-                f"No saved research snapshots for {task_type}; "
-                "continuation will not launch replacement requests."
-            )
-        else:
-            self.log(
-                f"Starting ChatGPT/Gemini research race for {task_type}"
-            )
-            with ThreadPoolExecutor(max_workers=len(RESEARCH_PROVIDERS)) as pool:
-                futures = {
-                    pool.submit(_trigger_research_snapshot, self, provider, prompt): provider
-                    for provider in RESEARCH_PROVIDERS
-                }
-                for future in as_completed(futures):
-                    provider = futures[future]
-                    try:
-                        result = future.result()
-                        snapshots.append(result)
-                        self.log(f"{provider} research snapshot: {result[1]}")
-                    except Exception as exc:
-                        errors.append(f"{provider}: {type(exc).__name__}: {exc}")
-                        self.log(f"{provider} research trigger failed: {exc}", "yellow")
-
-        if not snapshots:
-            raise BrightDataAPIError(
-                f"No research snapshots started for {task_type}: "
-                + "; ".join(errors)
-            )
-
-        remaining = {
-            snapshot_id: provider for provider, snapshot_id in snapshots
-        }
-        snapshot_ids = [snapshot_id for _, snapshot_id in snapshots]
-        poll_round = 0
-
-        while remaining:
-            if time.monotonic() - started_at >= timeout_seconds:
-                raise ResearchRaceTimeoutError(snapshot_ids, timeout_seconds)
-
-            items = list(remaining.items())
-            offset = poll_round % len(items)
-            items = items[offset:] + items[:offset]
-            poll_round += 1
-
-            for snapshot_id, provider in items:
-                try:
-                    status = str(
-                        self.snapshot_status(snapshot_id).get("status", "unknown")
-                    ).lower()
-                except Exception as exc:
-                    self.log(
-                        f"Temporary research status error for {snapshot_id}: {exc}",
-                        "yellow",
-                    )
-                    continue
-
-                if status in FAILED_STATUSES:
-                    errors.append(f"{provider} {snapshot_id}: {status}")
-                    remaining.pop(snapshot_id, None)
-                    continue
-                if status != "ready":
-                    continue
-
-                try:
-                    records = self.download_snapshot(snapshot_id)
-                except Exception as exc:
-                    self.log(
-                        f"Temporary research download error for {snapshot_id}: {exc}",
-                        "yellow",
-                    )
-                    continue
-                if google_ai_snapshot_is_materializing(records):
-                    continue
-
-                self.record_snapshot_results(snapshot_id, len(records))
-                for record in records:
-                    answer = self.answer_text(record)
-                    validation = validate_google_ai_research_answer(answer, prompt)
-                    if not validation.get("valid"):
-                        errors.append(
-                            f"{provider} {snapshot_id}: {validation.get('reason')}"
-                        )
-                        continue
-
-                    winner = dict(record)
-                    cleaned = validation.get("cleaned_answer")
-                    if cleaned:
-                        winner["answer_text"] = cleaned
-                        winner["answer_text_markdown"] = cleaned
-                    winner["_research_race"] = {
-                        "provider": provider,
-                        "task_type": task_type,
-                        "winner_snapshot_id": snapshot_id,
-                        "all_snapshot_ids": snapshot_ids,
-                        "duration_seconds": round(time.monotonic() - started_at, 2),
-                    }
-                    self.log(
-                        f"{provider} won {task_type} research in "
-                        f"{winner['_research_race']['duration_seconds']}s"
-                    )
-                    return winner
-
-                remaining.pop(snapshot_id, None)
-
-            if remaining:
-                time.sleep(RESEARCH_POLL_SECONDS)
-
-        raise BrightDataAPIError(
-            f"All ChatGPT/Gemini research snapshots failed for {task_type}: "
-            + "; ".join(errors)
-        )
-    finally:
-        _RESEARCH_RACE_SEMAPHORE.release()
+    """Use the shared race while preserving the notebook's snapshot cache."""
+    ports = ResearchRacePorts(
+        providers=RESEARCH_PROVIDERS,
+        cached_snapshot_ids=cached_research_snapshot_ids,
+        trigger_snapshot=_trigger_research_snapshot,
+        localize_prompt=localize_google_ai_prompt,
+        identify_task=identify_google_ai_research_task,
+        validate_answer=validate_google_ai_research_answer,
+        is_materializing=google_ai_snapshot_is_materializing,
+        failed_statuses=FAILED_STATUSES,
+        only_reuse=_GOOGLE_AI_ONLY_REUSE,
+        semaphore=_RESEARCH_RACE_SEMAPHORE,
+        poll_seconds=RESEARCH_POLL_SECONDS,
+        error_type=BrightDataAPIError,
+        timeout_type=ResearchRaceTimeoutError,
+    )
+    return race_research_providers_core(self, prompt, timeout_seconds, ports)
 
 
 # The visibility stage explicitly calls google_ai_mode_measured; every other

@@ -12,9 +12,12 @@ ROOT = Path(__file__).resolve().parent
 NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
 REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
+RESEARCH_RACE_SOURCE = ROOT / "audit_core" / "research_race.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
+SERP_TRANSPORT_SOURCE = ROOT / "audit_core" / "serp_transport.py"
+SERP_SELECTION_SOURCE = ROOT / "audit_core" / "serp_selection.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
@@ -27,6 +30,10 @@ BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 BRIGHTDATA_USAGE_START = "# AUDIT-BRIGHTDATA-USAGE: start"
 BRIGHTDATA_USAGE_END = "# AUDIT-BRIGHTDATA-USAGE: end"
+SERP_TRANSPORT_START = "# AUDIT-SERP-TRANSPORT: start"
+SERP_TRANSPORT_END = "# AUDIT-SERP-TRANSPORT: end"
+SERP_SELECTION_START = "# AUDIT-SERP-SELECTION: start"
+SERP_SELECTION_END = "# AUDIT-SERP-SELECTION: end"
 SCOPE_CELL_ID = "runtime-utilities-merged"
 SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
 SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
@@ -43,6 +50,8 @@ SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
 RESEARCH_CELL_ID = "research-provider-race"
+RESEARCH_RACE_START = "# AUDIT-RESEARCH-RACE: start"
+RESEARCH_RACE_END = "# AUDIT-RESEARCH-RACE: end"
 REDDIT_START = "# REDDIT-SOCIAL-PATCH: start"
 REDDIT_END = "# REDDIT-SOCIAL-PATCH: end"
 RESEARCH_HEADER = (
@@ -86,9 +95,12 @@ def _without_service_imports(source):
 
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
+                   research_race_source=RESEARCH_RACE_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
+                   serp_transport_source=SERP_TRANSPORT_SOURCE,
+                   serp_selection_source=SERP_SELECTION_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
                    competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
@@ -114,6 +126,22 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         BRIGHTDATA_USAGE_START,
         BRIGHTDATA_USAGE_END,
         Path(brightdata_usage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        SERP_TRANSPORT_START,
+        SERP_TRANSPORT_END,
+        _without_service_imports(
+            Path(serp_transport_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        SERP_SELECTION_START,
+        SERP_SELECTION_END,
+        _without_service_imports(
+            Path(serp_selection_source).read_text(encoding="utf-8")
+        ),
     )
     scope_text = Path(scope_source).read_text(encoding="utf-8")
     if scope_text.count(SCOPE_PACKAGE_IMPORT) != 1:
@@ -166,6 +194,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     research_cell = _unique_cell(notebook, RESEARCH_CELL_ID)
     research_cell["source"] = (
-        RESEARCH_HEADER + Path(research_source).read_text(encoding="utf-8")
+        RESEARCH_HEADER
+        + RESEARCH_RACE_START + "\n"
+        + Path(research_race_source).read_text(encoding="utf-8")
+        + RESEARCH_RACE_END + "\n\n"
+        + _without_service_imports(
+            Path(research_source).read_text(encoding="utf-8")
+        )
     ).splitlines(keepends=True)
     return (json.dumps(notebook, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

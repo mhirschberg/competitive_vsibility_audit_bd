@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 import unittest
 
+from notebook_builder import (
+    RESEARCH_RACE_END, RESEARCH_RACE_SOURCE, RESEARCH_RACE_START,
+    _without_service_imports,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "research_fallback.py"
@@ -113,7 +117,12 @@ class ResearchFallbackTests(unittest.TestCase):
             cell for cell in notebook["cells"]
             if cell.get("metadata", {}).get("id") == "research-provider-race"
         )
-        self.assertTrue("".join(cell["source"]).endswith(SOURCE.read_text()))
+        source = "".join(cell["source"])
+        embedded = source.split(RESEARCH_RACE_START, 1)[1].split(
+            RESEARCH_RACE_END, 1
+        )[0].strip()
+        self.assertEqual(embedded, RESEARCH_RACE_SOURCE.read_text().strip())
+        self.assertTrue(source.endswith(_without_service_imports(SOURCE.read_text())))
 
 
 if __name__ == "__main__":
