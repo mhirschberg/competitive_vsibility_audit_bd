@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from audit_core import competitor_decisions, competitor_pipeline, competitor_research
+from audit_core.brightdata_usage import BrightDataUsageLedger
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,7 +91,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
         runtime = "".join(self.notebook["cells"][3]["source"])
         start = runtime.index("class BrightDataClient")
         end = runtime.index("# SERP competitor helpers")
-        namespace = {"Lock": Lock}
+        namespace = {"Lock": Lock, "BrightDataUsageLedger": BrightDataUsageLedger}
         exec(runtime[start:end], namespace)
         client = namespace["BrightDataClient"](
             token="test-token",

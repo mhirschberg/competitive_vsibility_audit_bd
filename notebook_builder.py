@@ -13,6 +13,8 @@ NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
 REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
+BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
+BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
@@ -21,6 +23,10 @@ COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
+BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
+BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
+BRIGHTDATA_USAGE_START = "# AUDIT-BRIGHTDATA-USAGE: start"
+BRIGHTDATA_USAGE_END = "# AUDIT-BRIGHTDATA-USAGE: end"
 SCOPE_CELL_ID = "runtime-utilities-merged"
 SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
 SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
@@ -81,6 +87,8 @@ def _without_service_imports(source):
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
+                   brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
+                   brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
                    competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
@@ -94,6 +102,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         PRIMITIVES_START,
         PRIMITIVES_END,
         Path(primitives_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        BRIGHTDATA_TRANSPORT_START,
+        BRIGHTDATA_TRANSPORT_END,
+        Path(brightdata_transport_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        BRIGHTDATA_USAGE_START,
+        BRIGHTDATA_USAGE_END,
+        Path(brightdata_usage_source).read_text(encoding="utf-8"),
     )
     scope_text = Path(scope_source).read_text(encoding="utf-8")
     if scope_text.count(SCOPE_PACKAGE_IMPORT) != 1:

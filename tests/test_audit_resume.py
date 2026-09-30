@@ -10,6 +10,7 @@ import unittest
 import zipfile
 from concurrent.futures import as_completed
 
+from audit_core.brightdata_usage import BrightDataUsageLedger
 from tests.test_google_ai_timeout_safety import (
     FakeClock,
     ImmediateExecutor,
@@ -19,7 +20,10 @@ from tests.test_google_ai_timeout_safety import (
 
 class AuditResumeTests(unittest.TestCase):
     def test_usage_events_survive_runtime_restart(self):
-        namespace = {"Path": Path, "json": json, "Lock": threading.Lock}
+        namespace = {
+            "Path": Path, "json": json, "Lock": threading.Lock,
+            "BrightDataUsageLedger": BrightDataUsageLedger,
+        }
         exec(definition("BrightDataClient"), namespace)
         client_class = namespace["BrightDataClient"]
         with tempfile.TemporaryDirectory() as directory:
