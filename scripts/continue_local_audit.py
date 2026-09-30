@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 os.environ.setdefault("TLDEXTRACT_CACHE", str(ROOT / "local-runs" / ".cache" / "tldextract"))
 sys.path.insert(0, str(ROOT))
 
-from app import _build_runner_script  # noqa: E402
+from runner_builder import _build_runner_script  # noqa: E402
 from scripts.run_local_audit import load_env_file, require_local_settings, slugify  # noqa: E402
 
 

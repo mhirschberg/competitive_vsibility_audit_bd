@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app import _build_runner_script
+from runner_builder import _build_runner_script
 from scripts.run_local_audit import DEFAULT_ENV_FILE, load_env_file, require_local_settings
 
 

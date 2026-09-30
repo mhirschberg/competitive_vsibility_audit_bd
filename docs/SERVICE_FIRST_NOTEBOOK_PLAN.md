@@ -2,9 +2,11 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
-First checkpoint: the worker can now import `app.py` without loading Gradio.
-This is not yet a measured production-memory reduction; the container still
-installs Gradio and the runner builder still lives in `app.py`.
+First checkpoint: the runner builder now lives in `runner_builder.py`, and the
+worker imports it without loading `app.py` or Gradio. The old app re-exports
+the same functions during migration. A representative generated runner was
+byte-for-byte identical before and after extraction. This is not yet a
+measured production-memory reduction; the container still installs Gradio.
 
 ## Decision
 
@@ -50,9 +52,10 @@ source labels, report builder, and Bright Data accounting.
    medium, and social-enabled audit. Record process-tree memory (worker parent
    plus runner child), not just the child process. No live requests are needed
    for deterministic fixture tests.
-2. Extract the runner builder from `app.py` into a lightweight module so the
-   hosted worker no longer imports Gradio. Keep the current notebook-based
-   runner and public behavior unchanged. Measure this small change separately.
+2. **Done in this branch:** Extract the runner builder from `app.py` into a
+   lightweight module so the hosted worker no longer imports Gradio. Keep the
+   current notebook-based runner and public behavior unchanged. Measure this
+   small change separately in the deployed container before lowering memory.
 3. Extract pure settings, prompt, validation, competitor-scope, scoring, and
    report-building code into `audit_core`. Move one stage at a time, retaining
    the old execution path until fixture parity passes.

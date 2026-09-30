@@ -135,9 +135,9 @@ def main(argv=None):
     load_env_file(args.env_file)
     require_local_settings()
 
-    # Import only after local settings are loaded. Importing app does not launch Gradio.
+    # Keep the CLI on the lightweight builder path, without loading the web UI.
     sys.path.insert(0, str(ROOT))
-    from app import _build_runner_script
+    from runner_builder import _build_runner_script
 
     runner_source = _build_runner_script(
         args.company,

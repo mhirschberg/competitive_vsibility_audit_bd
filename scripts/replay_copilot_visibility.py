@@ -17,7 +17,7 @@ os.environ.setdefault("TLDEXTRACT_CACHE", str(ROOT / "local-runs" / ".cache" / "
 sys.path.insert(0, str(ROOT))
 
 from scripts.run_local_audit import load_env_file, require_local_settings  # noqa: E402
-from app import _build_runner_script  # noqa: E402
+from runner_builder import _build_runner_script  # noqa: E402
 
 
 def main():
