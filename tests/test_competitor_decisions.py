@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
-from audit_core import competitor_decisions
+from audit_core import competitor_decisions, competitor_pipeline
 from audit_core.competitor_scope import LOCKED_SCOPE_CONFLICT_RETRY_MAX_RANK
 
 
@@ -45,7 +45,6 @@ def wrapper_namespace():
     names = {
         "canonical_candidate_validation_data",
         "build_locked_scope_discovery_prompt",
-        "build_locked_candidate_universe",
         "build_locked_scope_validation_prompt",
         "discovery_supports_consistency_retry",
         "build_locked_scope_validation_retry_prompt",
@@ -106,8 +105,14 @@ class CompetitorDecisionTests(unittest.TestCase):
         service_universe = competitor_decisions.core_build_locked_candidate_universe(
             self.observed, self.discovered, self.scope, ports()
         )
-        embedded_universe = notebook["build_locked_candidate_universe"](
-            self.observed, self.discovered, self.scope
+        pipeline = competitor_pipeline.CompetitorPipeline(
+            query_json=lambda _prompt: None, decision_ports=ports(),
+            local_domain_bonus=lambda *_args: 0, validation_workers=1,
+        )
+        embedded_universe = pipeline.build_universe(
+            observed_candidates=self.observed,
+            discovered_candidates=self.discovered,
+            scope=self.scope,
         )
         self.assertEqual(service_universe, embedded_universe)
         self.assertEqual(

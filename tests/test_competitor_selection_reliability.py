@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import unittest
 
-from audit_core import competitor_decisions
+from audit_core import competitor_decisions, competitor_pipeline
 
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
@@ -167,14 +167,15 @@ class CompetitorSelectionReliabilityTests(unittest.TestCase):
             self.assertTrue(answer_prompt.endswith("}" if answer_prompt is retry else "Return JSON only."))
 
     def test_search_only_candidate_cannot_replace_credible_shortlist(self):
-        namespace = {
-            "discovery_supports_consistency_retry": (
-                lambda candidate, _scope, max_rank=5:
-                candidate.get("discovery_rank", 999) <= max_rank
-                and candidate.get("discovery_confidence", 0) >= 0.8
-            ),
-        }
-        exec(notebook_definition("mark_uncorroborated_search_candidates"), namespace)
+        pipeline = competitor_pipeline.CompetitorPipeline(
+            query_json=lambda _prompt: None, decision_ports=None,
+            local_domain_bonus=lambda *_args: 0, validation_workers=1,
+        )
+        pipeline.supports_retry = (
+            lambda candidate, _scope, max_rank=5:
+            candidate.get("discovery_rank", 999) <= max_rank
+            and candidate.get("discovery_confidence", 0) >= 0.8
+        )
         candidates = [
             {"brand_name": "Samsung", "discovery_rank": 1, "discovery_confidence": 0.99},
             {"brand_name": "Google", "discovery_rank": 2, "discovery_confidence": 0.97},
@@ -184,21 +185,23 @@ class CompetitorSelectionReliabilityTests(unittest.TestCase):
             {"candidate_record": candidate, "validation": {"is_direct_competitor": True}}
             for candidate in candidates
         ]
-        namespace["mark_uncorroborated_search_candidates"](candidates, results, {})
+        pipeline.mark_uncorroborated(candidates, results, {})
         self.assertNotIn("selection_ineligible_reason", results[0])
         self.assertNotIn("selection_ineligible_reason", results[1])
         self.assertIn("Only observed in search", results[2]["selection_ineligible_reason"])
 
     def test_search_candidate_remains_eligible_if_discovery_is_sparse(self):
-        namespace = {
-            "discovery_supports_consistency_retry": (
-                lambda candidate, _scope, max_rank=5: candidate.get("discovery_rank", 999) < 999
-            ),
-        }
-        exec(notebook_definition("mark_uncorroborated_search_candidates"), namespace)
+        pipeline = competitor_pipeline.CompetitorPipeline(
+            query_json=lambda _prompt: None, decision_ports=None,
+            local_domain_bonus=lambda *_args: 0, validation_workers=1,
+        )
+        pipeline.supports_retry = (
+            lambda candidate, _scope, max_rank=5:
+            candidate.get("discovery_rank", 999) < 999
+        )
         candidates = [{"discovery_rank": 1}, {"discovery_rank": 999}]
         results = [{"candidate_record": candidate} for candidate in candidates]
-        namespace["mark_uncorroborated_search_candidates"](candidates, results, {})
+        pipeline.mark_uncorroborated(candidates, results, {})
         self.assertNotIn("selection_ineligible_reason", results[1])
 
 

@@ -16,6 +16,7 @@ PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
+COMPETITOR_PIPELINE_SOURCE = ROOT / "audit_core" / "competitor_pipeline.py"
 COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
@@ -28,6 +29,8 @@ COMPETITOR_RESEARCH_START = "# AUDIT-COMPETITOR-RESEARCH: start"
 COMPETITOR_RESEARCH_END = "# AUDIT-COMPETITOR-RESEARCH: end"
 COMPETITOR_DECISIONS_START = "# AUDIT-COMPETITOR-DECISIONS: start"
 COMPETITOR_DECISIONS_END = "# AUDIT-COMPETITOR-DECISIONS: end"
+COMPETITOR_PIPELINE_START = "# AUDIT-COMPETITOR-PIPELINE: start"
+COMPETITOR_PIPELINE_END = "# AUDIT-COMPETITOR-PIPELINE: end"
 COMPETITOR_STAGE_START = "# AUDIT-COMPETITOR-STAGE: start"
 COMPETITOR_STAGE_END = "# AUDIT-COMPETITOR-STAGE: end"
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
@@ -81,6 +84,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
                    competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
+                   competitor_pipeline_source=COMPETITOR_PIPELINE_SOURCE,
                    competitor_stage_source=COMPETITOR_STAGE_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
@@ -116,6 +120,14 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPETITOR_DECISIONS_START,
         COMPETITOR_DECISIONS_END,
         decisions_text,
+    )
+    _replace_embedded_source(
+        scope_cell,
+        COMPETITOR_PIPELINE_START,
+        COMPETITOR_PIPELINE_END,
+        _without_service_imports(
+            Path(competitor_pipeline_source).read_text(encoding="utf-8")
+        ),
     )
     _replace_embedded_source(
         scope_cell,

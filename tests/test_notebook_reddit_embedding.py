@@ -6,7 +6,7 @@ from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
-from audit_core import competitor_decisions, competitor_research
+from audit_core import competitor_decisions, competitor_pipeline, competitor_research
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -460,7 +460,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
     def test_ambiguous_target_role_uses_validated_role_match(self):
         runtime = "".join(self.notebook["cells"][6]["source"])
         start = runtime.index("def normalize_locked_scope_validation")
-        end = runtime.index("def validate_locked_scope_candidate")
+        end = runtime.index("def select_competitors_stage", start)
         namespace = {
             "core_normalize_locked_scope_validation": (
                 competitor_decisions.core_normalize_locked_scope_validation
@@ -618,10 +618,6 @@ class NotebookEmbeddingTests(unittest.TestCase):
         )
 
     def test_conflicting_candidate_validation_gets_one_retry(self):
-        runtime = "".join(self.notebook["cells"][6]["source"])
-        start = runtime.index("def validate_locked_scope_candidate")
-        end = runtime.index("def validate_locked_scope_batch")
-
         class FakeClient:
             def __init__(self):
                 self.calls = 0
@@ -650,28 +646,19 @@ class NotebookEmbeddingTests(unittest.TestCase):
                 "failed_checks": [] if direct else ["ai_direct"],
             }
 
-        namespace = {
-            "time": __import__("time"),
-            "bd_client": fake_client,
-            "run_scope_validation": competitor_research.run_scope_validation,
-            "_locked_scope_query_json": lambda prompt: (
+        pipeline = competitor_pipeline.CompetitorPipeline(
+            query_json=lambda prompt: (
                 record := fake_client.google_ai_mode(prompt, timeout_seconds=720),
                 json.loads(fake_client.answer_text(record)),
             ),
-            "build_locked_scope_validation_prompt": (
-                lambda scope, candidate_record: "initial"
-            ),
-            "build_locked_scope_validation_retry_prompt": (
-                lambda scope, candidate_record, initial_validation: "retry"
-            ),
-            "parse_ai_json": json.loads,
-            "normalize_locked_scope_validation": normalize_validation,
-            "discovery_supports_consistency_retry": (
-                lambda candidate_record, scope: True
-            ),
-            "locked_scope_local_domain_bonus": lambda domain, country: 0,
-        }
-        exec(runtime[start:end], namespace)
+            decision_ports=None,
+            local_domain_bonus=lambda _domain, _country: 0,
+            validation_workers=1,
+        )
+        pipeline.validation_prompt = lambda _scope, _candidate: "initial"
+        pipeline.retry_prompt = lambda _scope, _candidate, _initial: "retry"
+        pipeline.normalize = normalize_validation
+        pipeline.supports_retry = lambda _candidate, _scope: True
         candidate = {
             "brand_name": "Expedia",
             "representative_domain": "expedia.co.uk",
@@ -681,7 +668,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "observed_score": 25,
         }
 
-        result = namespace["validate_locked_scope_candidate"](
+        result = pipeline.validate_candidate(
             candidate,
             {"market_role": "marketplace", "country": "GB"},
         )

@@ -1,13 +1,17 @@
 """Replay provider answers through service and bundled-notebook research code."""
 
-import ast
 import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from audit_core import competitor_research, competitor_scope
+from audit_core import (
+    competitor_decisions, competitor_pipeline, competitor_research,
+    competitor_scope,
+)
 from notebook_builder import (
+    COMPETITOR_PIPELINE_END,
+    COMPETITOR_PIPELINE_START,
     COMPETITOR_RESEARCH_END,
     COMPETITOR_RESEARCH_START,
     NOTEBOOK,
@@ -35,29 +39,34 @@ def bundled_research():
     return SimpleNamespace(**namespace)
 
 
-def notebook_adapters(namespace):
+def bundled_pipeline():
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     cell = next(
         item for item in notebook["cells"]
         if item.get("metadata", {}).get("id") == "runtime-utilities-merged"
     )
     source = "".join(cell["source"])
-    names = {
-        "_locked_scope_query_json",
-        "discover_locked_scope_candidates",
-        "validate_locked_scope_candidate",
-        "validate_locked_scope_batch",
+    embedded = source.split(COMPETITOR_PIPELINE_START, 1)[1].split(
+        COMPETITOR_PIPELINE_END, 1
+    )[0]
+    namespace = {
+        name: getattr(competitor_research, name)
+        for name in ("run_scope_discovery", "run_scope_validation",
+                     "run_scope_validation_batch")
     }
-    tree = ast.parse(source)
-    definitions = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name in names
-    ]
-    if {node.name for node in definitions} != names:
-        raise AssertionError("Missing a notebook provider adapter")
-    for node in definitions:
-        exec(ast.get_source_segment(source, node), namespace)
-    return namespace
+    namespace.update({
+        name: getattr(competitor_decisions, name)
+        for name in (
+            "core_build_locked_candidate_universe",
+            "core_build_locked_scope_discovery_prompt",
+            "core_build_locked_scope_validation_prompt",
+            "core_build_locked_scope_validation_retry_prompt",
+            "core_discovery_supports_consistency_retry",
+            "core_normalize_locked_scope_validation",
+        )
+    })
+    exec(embedded, namespace)
+    return SimpleNamespace(**namespace)
 
 
 class FixtureProvider:
@@ -87,6 +96,27 @@ def normalized(data, candidate, scope):
         "market_prominence": data["market_prominence"],
         "reason": data["reason"],
     }
+
+
+def fixture_pipeline(pipeline_class, provider):
+    pipeline = pipeline_class(
+        query_json=provider.query_json,
+        decision_ports=None,
+        local_domain_bonus=lambda *_args: 0,
+        validation_workers=3,
+    )
+    pipeline.discovery_prompt = lambda *_args: "discovery"
+    pipeline.validation_prompt = (
+        lambda _scope, candidate: "validate:" + candidate["brand_name"]
+    )
+    pipeline.retry_prompt = (
+        lambda _scope, candidate, _initial: "retry:" + candidate["brand_name"]
+    )
+    pipeline.normalize = normalized
+    pipeline.supports_retry = (
+        lambda candidate, _scope: candidate["brand_name"] == "Google"
+    )
+    return pipeline
 
 
 def run_fixture(research):
@@ -127,6 +157,33 @@ def stable(value):
 
 
 class CompetitorResearchTests(unittest.TestCase):
+    def test_validation_checkpoint_path_and_serialization(self):
+        writes = []
+        write_json = lambda path, payload: writes.append((path, payload))
+        competitor_pipeline.persist_validation_checkpoint(
+            None, write_json, {"candidates": []}
+        )
+        self.assertEqual(writes, [])
+        competitor_pipeline.persist_validation_checkpoint(
+            Path("audit"), write_json, {"candidates": []}
+        )
+        self.assertEqual(
+            writes[0][0], Path("audit/raw/03_candidate_validation_records.json")
+        )
+
+        value = {
+            "candidate_record": {
+                **FIXTURE["candidates"][0],
+                "domains": ["samsung.com"], "observed_frequency": 3,
+            },
+            "status": "success", "validation": {"is_direct_competitor": True},
+            "selection_score": 1600.0,
+        }
+        self.assertEqual(
+            competitor_pipeline.serialize_scope_validation(value),
+            bundled_pipeline().serialize_scope_validation(value),
+        )
+
     def test_service_and_notebook_replay_same_answers(self):
         service = run_fixture(competitor_research)
         notebook = run_fixture(bundled_research())
@@ -196,33 +253,19 @@ class CompetitorResearchTests(unittest.TestCase):
             def answer_text(record):
                 return record["answer_text"]
 
-        namespace = notebook_adapters({
-            "bd_client": FakeClient(),
-            "parse_ai_json": json.loads,
-            "run_scope_discovery": competitor_research.run_scope_discovery,
-            "run_scope_validation": competitor_research.run_scope_validation,
-            "run_scope_validation_batch": competitor_research.run_scope_validation_batch,
-            "build_locked_scope_discovery_prompt": lambda *_args: "discovery",
-            "build_locked_scope_validation_prompt": (
-                lambda _scope, candidate: "validate:" + candidate["brand_name"]
+        bundle = bundled_pipeline()
+        self.assertEqual(
+            bundle.query_google_ai_json(FakeClient(), json.loads, "discovery"),
+            competitor_pipeline.query_google_ai_json(
+                FakeClient(), json.loads, "discovery"
             ),
-            "build_locked_scope_validation_retry_prompt": (
-                lambda _scope, candidate, _initial: "retry:" + candidate["brand_name"]
-            ),
-            "normalize_locked_scope_validation": normalized,
-            "discovery_supports_consistency_retry": (
-                lambda candidate, _scope: candidate["brand_name"] == "Google"
-            ),
-            "locked_scope_local_domain_bonus": lambda *_args: 0,
-            "LOCKED_SCOPE_VALIDATION_WORKERS": 3,
-        })
+        )
+        pipeline = fixture_pipeline(bundle.CompetitorPipeline, provider)
         observed = [
             SimpleNamespace(domain=domain) for domain in FIXTURE["observed_domains"]
         ]
-        discovery = namespace["discover_locked_scope_candidates"](
-            FIXTURE["scope"], observed
-        )
-        validations = namespace["validate_locked_scope_batch"](
+        discovery = pipeline.discover(FIXTURE["scope"], observed)
+        validations = pipeline.validate_batch(
             FIXTURE["candidates"], FIXTURE["scope"]
         )
         expected_discovery, expected_validations, _, _ = run_fixture(
@@ -230,6 +273,16 @@ class CompetitorResearchTests(unittest.TestCase):
         )
         self.assertEqual(stable(discovery), stable(expected_discovery))
         self.assertEqual(stable(validations), stable(expected_validations))
+        service = fixture_pipeline(
+            competitor_pipeline.CompetitorPipeline, FixtureProvider()
+        )
+        self.assertEqual(
+            stable(discovery), stable(service.discover(FIXTURE["scope"], observed))
+        )
+        self.assertEqual(
+            stable(validations),
+            stable(service.validate_batch(FIXTURE["candidates"], FIXTURE["scope"])),
+        )
 
 
 if __name__ == "__main__":

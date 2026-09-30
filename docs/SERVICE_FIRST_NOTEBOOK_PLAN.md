@@ -57,6 +57,16 @@ generated notebook. This is a shared, importable *stage core*, not yet a
 complete service-native runner. No live provider call or production deployment
 was made at this checkpoint.
 
+Seventh checkpoint: `audit_core.competitor_pipeline` now assembles discovery,
+candidate validation, bounded batch work, checkpoint serialization, and raw
+evidence persistence. The notebook's Stage 3 passes its existing Bright Data
+client, parser, decision helpers, and output directory into that importable
+pipeline; the former notebook-only adapter functions were removed. Saved-answer
+tests compare service and bundled pipeline behavior without paid calls. The
+Bright Data client itself, the other audit stages, and the top-level audit
+orchestrator still live in the notebook, so the hosted worker remains on the
+current runner until those pieces are migrated and checked end to end.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints
