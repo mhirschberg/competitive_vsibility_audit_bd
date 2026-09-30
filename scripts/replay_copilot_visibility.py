@@ -22,7 +22,7 @@ from runner_builder import _build_runner_script  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=Path, help="Completed 06_competitive_visibility_audit.json")
+    parser.add_argument("source", type=Path, help="Completed competitive visibility audit JSON")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--snapshot-id", help="Reuse an already triggered Copilot snapshot")
     parser.add_argument("--reuse-existing-copilot", action="store_true", help="Regenerate the report without new API calls")

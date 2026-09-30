@@ -35,7 +35,7 @@ def main():
     previous = json.loads((source_dir / "00_run_settings.json").read_text(encoding="utf-8"))
     company = json.loads((source_dir / "01_company_analysis.json").read_text(encoding="utf-8"))
     serp = json.loads((source_dir / "02_serp_results.json").read_text(encoding="utf-8"))
-    if (source_dir / "06_competitive_visibility_audit.json").exists():
+    if any(source_dir.glob("*_competitive_visibility_audit.json")):
         raise ValueError("This audit has already completed; use an incomplete checkpoint.")
     domain_input = previous["company_domain"]
     domain_host = urlparse(domain_input if "://" in domain_input else "https://" + domain_input).hostname

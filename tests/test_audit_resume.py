@@ -237,6 +237,39 @@ class AuditResumeTests(unittest.TestCase):
             self.assertEqual(restored.name, "competitive-visibility-restored")
             self.assertTrue((restored / "02_serp_results.json").is_file())
 
+    def test_resume_ignores_new_named_completed_report_and_restores_new_zip(self):
+        namespace = {"Path": Path, "json": json, "zipfile": zipfile}
+        exec(definition("find_latest_audit_to_continue"), namespace)
+        settings = {
+            "company_domain": "apple.com", "audit_focus": "iPhone", "country": "US",
+            "search_engine": "auto", "serp_zone": "serp_api2",
+            "include_reddit_analysis": False,
+        }
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            completed = root / "competitive-visibility-apple-new"
+            completed.mkdir()
+            (completed / "01_company_analysis.json").write_text(
+                json.dumps({"brand": {"domain": "apple.com"}})
+            )
+            (completed / "02_serp_results.json").write_text("{}")
+            (completed / "00_run_settings.json").write_text(json.dumps(settings))
+            (completed / "2026-09-30_apple_iPhone_US_competitive_visibility_audit.json").write_text("{}")
+            with self.assertRaises(FileNotFoundError):
+                namespace["find_latest_audit_to_continue"](settings, root)
+
+            archive_path = root / "2026-09-30_apple_iPhone_US_competitive_visibility_audit.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    "01_company_analysis.json",
+                    json.dumps({"brand": {"domain": "apple.com"}}),
+                )
+                archive.writestr("02_serp_results.json", "{}")
+                archive.writestr("00_run_settings.json", json.dumps(settings))
+            restored = namespace["find_latest_audit_to_continue"](settings, root)
+            self.assertTrue(restored.name.startswith("competitive-visibility-2026-09-30"))
+            self.assertTrue((restored / "02_serp_results.json").is_file())
+
     def test_resume_selector_skips_candidates_without_snapshots(self):
         source = definition("select_competitors_stage", last=True)
         self.assertIn("only_reuse=_GOOGLE_AI_ONLY_REUSE", source)

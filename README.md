@@ -288,15 +288,15 @@ Typical contents:
 05_reddit_social.json
 05_reddit_snapshot_manifest.json
 06_bright_data_usage.json
-06_competitive_visibility_audit.md
-06_competitive_visibility_audit.pdf
-06_competitive_visibility_audit.json
+2026-09-30_103512123456_apple_premium-smartphone_US_competitive_visibility_audit.md
+2026-09-30_103512123456_apple_premium-smartphone_US_competitive_visibility_audit.pdf
+2026-09-30_103512123456_apple_premium-smartphone_US_competitive_visibility_audit.json
 raw/
 ```
 
 `05_reddit_social.json` records either the collected result or the disabled status. `05_reddit_snapshot_manifest.json` maps social snapshot IDs to their brand, operation, dataset, status, and race outcome.
 
-The notebook also creates a ZIP archive containing the complete audit. Set `AUTO_DOWNLOAD_REPORT = True` to download it automatically.
+The user-facing report files and complete ZIP start with the run date/time, company, optional audit focus, and country. Internal stage/checkpoint files retain stable names so an interrupted audit can be continued safely. Older exports with `06_competitive_visibility_audit.*` names remain readable. Set `AUTO_DOWNLOAD_REPORT = True` to download the ZIP automatically.
 
 ---
 

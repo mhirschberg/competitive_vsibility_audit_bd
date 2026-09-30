@@ -23,10 +23,9 @@ def find_audit_json(path):
     path = Path(path).expanduser().resolve()
     if path.is_file():
         return path
-    direct = path / "06_competitive_visibility_audit.json"
-    if direct.is_file():
-        return direct
-    matches = sorted(path.glob("competitive-visibility-*/06_competitive_visibility_audit.json"))
+    matches = sorted(path.glob("*_competitive_visibility_audit.json"))
+    if not matches:
+        matches = sorted(path.glob("competitive-visibility-*/*_competitive_visibility_audit.json"))
     if len(matches) != 1:
         raise FileNotFoundError(
             f"Expected one completed audit JSON below {path}; found {len(matches)}."
@@ -281,8 +280,9 @@ def main(argv=None):
         dict.fromkeys(retained_warnings + list(result.get("warnings") or []))
     )
 
-    markdown_path = audit_path.parent / "06_competitive_visibility_audit.md"
-    pdf_path = audit_path.parent / "06_competitive_visibility_audit.pdf"
+    report_stem = audit_path.stem
+    markdown_path = audit_path.with_suffix(".md")
+    pdf_path = audit_path.with_suffix(".pdf")
     visibility = dict(audit["ai_visibility"])
     for mentions in (visibility.get("mentions") or {}).values():
         for mention in mentions or []:
@@ -358,11 +358,27 @@ def main(argv=None):
             "sources": finalized.get("sources", []),
             "markdown": updated_report,
         }
+    archive_name = (
+        report_stem + ".zip"
+        if audit_path.name != "06_competitive_visibility_audit.json"
+        else None
+    )
+    archive_path = audit_path.parent.parent / (
+        archive_name or f"{audit_path.parent.name}.zip"
+    )
+    audit["files"] = {
+        **(audit.get("files") or {}),
+        "output_directory": str(audit_path.parent),
+        "markdown_report": str(markdown_path),
+        "pdf_report": str(pdf_path),
+        "json_report": str(audit_path),
+        "zip_archive": str(archive_path),
+    }
     audit_path.write_text(
         json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    namespace["create_audit_zip"](audit_path.parent)
+    namespace["create_audit_zip"](audit_path.parent, archive_name)
 
     print(f"status={result.get('status')}")
     print(f"threads={len(result.get('sample', []))}")

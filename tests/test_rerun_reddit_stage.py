@@ -2,10 +2,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.rerun_reddit_stage import find_existing_reddit_result
+from scripts.rerun_reddit_stage import find_audit_json, find_existing_reddit_result
 
 
 class RerunRedditStageTests(unittest.TestCase):
+    def test_finds_contextual_report_name_in_run_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_directory = root / "competitive-visibility-apple-20260930"
+            run_directory.mkdir()
+            report = run_directory / "2026-09-30_apple_iPhone_US_competitive_visibility_audit.json"
+            report.write_text("{}", encoding="utf-8")
+            self.assertEqual(find_audit_json(run_directory), report.resolve())
+            self.assertEqual(find_audit_json(root), report.resolve())
+
     def test_reuse_falls_back_to_canonical_full_run_result(self):
         with tempfile.TemporaryDirectory() as directory:
             run_directory = Path(directory)
