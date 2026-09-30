@@ -118,6 +118,20 @@ invented from unrelated links. No live provider request or production change
 was made. Country/localization rules, report stages, and the complete
 service-native runner remain to be extracted.
 
+Twelfth checkpoint: `audit_core.ai_localization` now owns the country aliases,
+market-language table, Gemini prompt-only transport exceptions, localized
+prompt instructions, payload country handling, answer-country assessment, and
+bounded retry of measured AI answers. The notebook embeds this source and
+retains thin adapters to its current settings and client. Synthetic tests cover
+US/DE/GB acknowledgement, explicitly wrong scraper-country metadata, retry
+then success, two failed attempts, Gemini DE prompt-only versus US field
+targeting, utility requests without a country, and composed notebook adapter
+metadata. Missing or contradictory market evidence is not recorded as a
+successful measured answer. The near-limit 4096-character research-prompt
+fallback is preserved, not redesigned here. No live provider call or hosted
+deployment was made. Report stages and the full service-native orchestrator
+remain to be extracted.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

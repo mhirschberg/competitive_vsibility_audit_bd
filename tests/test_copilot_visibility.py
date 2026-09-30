@@ -12,7 +12,7 @@ from unittest import mock
 from urllib.parse import urlparse, urlunparse
 
 from audit_core.brightdata_usage import BrightDataUsageLedger
-from audit_core import ai_visibility_race
+from audit_core import ai_localization, ai_visibility_race
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
@@ -120,8 +120,9 @@ class CopilotVisibilityTests(unittest.TestCase):
                 lambda _client, _engine, prompt, index, _web_search: (
                     "copilot-dataset", [{"prompt": prompt, "index": index, "country": "us"}]
                 ),
-            "country_payload_items": lambda payload: payload,
-            "GEMINI_PROMPT_ONLY_COUNTRIES": set(),
+            "apply_compatible_country_payload": (
+                ai_localization.apply_compatible_country_payload
+            ),
         }
         exec(definition("country_compatible_engine_payload"), namespace)
         dataset_id, payload = namespace["country_compatible_engine_payload"](
