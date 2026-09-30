@@ -145,6 +145,20 @@ and legacy notebook state. No live provider calls or hosted deployment were
 made. PDF rendering, Reddit report insertion, other audit stages, and the
 top-level service-native orchestrator still remain in notebook runtime code.
 
+Fourteenth checkpoint: `audit_core.report_export` now owns the observed-source
+appendix, final report assembly, result-based Bright Data cost section, record
+cleanup, and construction of the structured audit JSON object. The notebook
+embeds the module; its existing `finalize_report` adapter supplies the current
+source collector and boilerplate cleaner, and the top-level notebook runner
+passes its measured stage results into `build_audit_record`. Synthetic tests
+cover source-appendix idempotence, lower-bound cost wording, retained engine
+labels, and the audit object schema. This stage does not write files or call
+providers. The notebook's later `write_json` override still adds locked scope
+to saved files, so the service-native file writer must account for that before
+the hosted runner switches. PDF rendering, artifact writing, Reddit insertion,
+and the top-level orchestration remain notebook-owned. No live requests,
+production deployment, or cost incurred.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints
