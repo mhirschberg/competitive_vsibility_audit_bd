@@ -1,6 +1,6 @@
 """Domain normalization shared by the service and standalone notebook."""
 
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import tldextract
 
@@ -26,3 +26,20 @@ def get_root_domain(value):
         return extracted.domain
 
     return f"{extracted.domain}.{extracted.suffix}"
+
+
+def canonical_source_url(value):
+    """Deduplicate citation URLs by removing query strings and fragments."""
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = urlparse(value)
+        return urlunparse((
+            parsed.scheme,
+            parsed.netloc.lower(),
+            parsed.path.rstrip("/"),
+            "", "", "",
+        ))
+    except Exception:
+        return value
