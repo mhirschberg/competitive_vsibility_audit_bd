@@ -19,6 +19,7 @@ BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
 SERP_TRANSPORT_SOURCE = ROOT / "audit_core" / "serp_transport.py"
 SERP_SELECTION_SOURCE = ROOT / "audit_core" / "serp_selection.py"
 SERP_PARSING_SOURCE = ROOT / "audit_core" / "serp_parsing.py"
+SERP_MARKDOWN_SOURCE = ROOT / "audit_core" / "serp_markdown.py"
 AI_VISIBILITY_RACE_SOURCE = ROOT / "audit_core" / "ai_visibility_race.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
@@ -38,6 +39,8 @@ SERP_SELECTION_START = "# AUDIT-SERP-SELECTION: start"
 SERP_SELECTION_END = "# AUDIT-SERP-SELECTION: end"
 SERP_PARSING_START = "# AUDIT-SERP-PARSING: start"
 SERP_PARSING_END = "# AUDIT-SERP-PARSING: end"
+SERP_MARKDOWN_START = "# AUDIT-SERP-MARKDOWN: start"
+SERP_MARKDOWN_END = "# AUDIT-SERP-MARKDOWN: end"
 AI_VISIBILITY_RACE_START = "# AUDIT-AI-VISIBILITY-RACE: start"
 AI_VISIBILITY_RACE_END = "# AUDIT-AI-VISIBILITY-RACE: end"
 SCOPE_CELL_ID = "runtime-utilities-merged"
@@ -108,6 +111,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    serp_transport_source=SERP_TRANSPORT_SOURCE,
                    serp_selection_source=SERP_SELECTION_SOURCE,
                    serp_parsing_source=SERP_PARSING_SOURCE,
+                   serp_markdown_source=SERP_MARKDOWN_SOURCE,
                    ai_visibility_race_source=AI_VISIBILITY_RACE_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
@@ -156,6 +160,14 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SERP_PARSING_START,
         SERP_PARSING_END,
         Path(serp_parsing_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        SERP_MARKDOWN_START,
+        SERP_MARKDOWN_END,
+        _without_service_imports(
+            Path(serp_markdown_source).read_text(encoding="utf-8")
+        ),
     )
     _replace_embedded_source(
         primitives_cell,

@@ -1,8 +1,6 @@
 """Focused regression checks for the notebook's live SERP transport."""
 
-import ast
 import json
-import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +10,7 @@ from urllib.parse import quote_plus, urlparse
 import requests
 
 from audit_core import serp_parsing, serp_transport
+from audit_core.serp_markdown import SerpMarkdownParser, SerpParserPorts
 from audit_core.brightdata_transport import BrightDataAPIError
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
@@ -45,6 +44,21 @@ def fake_response(value, headers=None):
 
 
 class SerpTransportTests(unittest.TestCase):
+    @staticmethod
+    def strict_bing_parser(decode):
+        parser = SerpMarkdownParser(SerpParserPorts(
+            get_hostname=lambda value: urlparse(value).hostname or "",
+            get_root_domain=lambda value: (
+                urlparse(value).hostname or ""
+            ).removeprefix("www."),
+            canonical_source_url=lambda value: value,
+            is_google_goto_url=lambda _value: False,
+            resolve_google_goto_url=lambda _value: "",
+            diagnostics={},
+        ))
+        parser.decode_bing_redirect = decode
+        return parser
+
     @classmethod
     def setUpClass(cls):
         notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
@@ -169,26 +183,9 @@ class SerpTransportTests(unittest.TestCase):
         self.assertEqual(result["parser"], "bing_markdown")
 
     def test_indented_bing_organic_headings_ignore_navigation_links(self):
-        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-        runtime = "".join(notebook["cells"][3]["source"])
-        functions = [
-            item for item in ast.parse(runtime).body
-            if isinstance(item, ast.FunctionDef) and item.name == "parse_bing_markdown"
-        ]
-        strict_source = ast.get_source_segment(runtime, functions[0])
-        namespace = {
-            "re": re,
-            "clean_serp_markdown": lambda value: value,
-            "decode_bing_redirect": lambda _url: "https://phone.example/review",
-            "clean_displayed_url": lambda _line: "",
-            "get_hostname": lambda _value: "",
-            "get_root_domain": lambda value: (
-                urlparse(value).hostname or ""
-            ).removeprefix("www."),
-            "canonical_source_url": lambda value: value,
-            "result_snippet_from_lines": lambda _lines: "",
-        }
-        exec(strict_source, namespace)
+        parser = self.strict_bing_parser(
+            lambda _url: "https://phone.example/review"
+        )
         markdown = (
             "1. navigation\n"
             "    ## [More results from this site]"
@@ -198,7 +195,7 @@ class SerpTransportTests(unittest.TestCase):
             "(https://www.bing.com/ck/a?u=a1valid)\n"
         )
 
-        result = namespace["parse_bing_markdown"](markdown, "flagship phones")
+        result = parser.strict_parse_bing_markdown(markdown, "flagship phones")
 
         self.assertEqual([item["title"] for item in result["results"]], [
             "Best flagship phones"
@@ -206,29 +203,13 @@ class SerpTransportTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["rank"], 1)
 
     def test_bing_headings_survive_broken_numbering_and_skip_ads(self):
-        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-        runtime = "".join(notebook["cells"][3]["source"])
-        functions = [
-            item for item in ast.parse(runtime).body
-            if isinstance(item, ast.FunctionDef) and item.name == "parse_bing_markdown"
-        ]
-        namespace = {
-            "re": re,
-            "clean_serp_markdown": lambda value: value,
-            "decode_bing_redirect": lambda url: (
+        parser = self.strict_bing_parser(
+            lambda url: (
                 "https://ad.example/sale" if "/aclk?" in url else
                 "https://review.example/phone" if "review" in url else
                 "https://guide.example/phone"
-            ),
-            "clean_displayed_url": lambda _line: "",
-            "get_hostname": lambda _value: "",
-            "get_root_domain": lambda value: (
-                urlparse(value).hostname or ""
-            ).removeprefix("www."),
-            "canonical_source_url": lambda value: value,
-            "result_snippet_from_lines": lambda _lines: "",
-        }
-        exec(ast.get_source_segment(runtime, functions[0]), namespace)
+            )
+        )
         markdown = (
             "1.  [\n" + "\n" * 12 +
             "    ## [Phone review](https://www.bing.com/ck/a?u=review)\n"
@@ -241,7 +222,7 @@ class SerpTransportTests(unittest.TestCase):
             "    ## [More results from this site](https://www.bing.com/ck/a?u=nav)\n"
         )
 
-        result = namespace["parse_bing_markdown"](markdown, "premium phone")
+        result = parser.strict_parse_bing_markdown(markdown, "premium phone")
 
         self.assertEqual([item["title"] for item in result["results"]], [
             "Phone review", "Phone guide"
