@@ -1496,6 +1496,11 @@ def apply_final_cosmetic_polish(
     return body
 
 
+# Capture the pure implementation before the generated notebook defines its
+# legacy six-argument compatibility wrapper under the same public name.
+_build_deterministic_report_core = build_deterministic_report
+
+
 def build_report_content(
     target_profile,
     competitor_profiles,
@@ -1510,7 +1515,7 @@ def build_report_content(
     collect_sources,
 ):
     """Render the final Markdown body with its established cosmetic polish."""
-    report = build_deterministic_report(
+    report = _build_deterministic_report_core(
         target_profile,
         competitor_profiles,
         keywords,
