@@ -2,7 +2,6 @@
 
 import ast
 import asyncio
-from collections import Counter
 from concurrent.futures import Future, as_completed
 import json
 from pathlib import Path
@@ -153,17 +152,14 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
             captured.append(visibility)
             return [{"source_type": "Editorial"}]
 
-        namespace = {
-            "collect_visibility_sources": collect,
-            "DeterministicCounter": Counter,
-        }
-        exec(definition("deterministic_source_counts"), namespace)
-        _, counts = namespace["deterministic_source_counts"]({
+        from audit_core.report_content import deterministic_source_counts
+
+        _, counts = deterministic_source_counts({
             "engines": {
                 "google_ai_mode": {"status": "partial", "citations": [{"url": "https://partial.test"}]},
                 "chatgpt": {"status": "success", "citations": [{"url": "https://complete.test"}]},
             }
-        })
+        }, collect)
         self.assertEqual(set(captured[0]["engines"]), {"chatgpt"})
         self.assertEqual(counts["Editorial"], 1)
 

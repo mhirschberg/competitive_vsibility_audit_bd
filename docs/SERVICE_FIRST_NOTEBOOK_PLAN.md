@@ -132,6 +132,19 @@ fallback is preserved, not redesigned here. No live provider call or hosted
 deployment was made. Report stages and the full service-native orchestrator
 remain to be extracted.
 
+Thirteenth checkpoint: `audit_core.report_content` now owns the deterministic
+Markdown report text and its final cosmetic polish. Country, traditional-search
+engine/status, and observed-source collection are explicit inputs rather than
+ambient notebook globals. `audit_core.report_stage` calculates report metrics,
+builds evidence and generator metadata, and returns the existing stage result
+without an AI call. The notebook embeds both modules and retains small adapters
+for its current globals and `LAST_UTILITY_REPORT_RESULT`. A captured pre-move
+report fixture matches the extracted output byte-for-byte; synthetic tests
+cover notebook/service parity, unavailable-search wording, evidence fallback,
+and legacy notebook state. No live provider calls or hosted deployment were
+made. PDF rendering, Reddit report insertion, other audit stages, and the
+top-level service-native orchestrator still remain in notebook runtime code.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

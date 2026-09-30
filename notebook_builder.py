@@ -27,6 +27,8 @@ COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
 COMPETITOR_PIPELINE_SOURCE = ROOT / "audit_core" / "competitor_pipeline.py"
 COMPETITOR_STAGE_SOURCE = ROOT / "audit_core" / "competitor_stage.py"
+REPORT_CONTENT_SOURCE = ROOT / "audit_core" / "report_content.py"
+REPORT_STAGE_SOURCE = ROOT / "audit_core" / "report_stage.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -58,6 +60,10 @@ COMPETITOR_PIPELINE_START = "# AUDIT-COMPETITOR-PIPELINE: start"
 COMPETITOR_PIPELINE_END = "# AUDIT-COMPETITOR-PIPELINE: end"
 COMPETITOR_STAGE_START = "# AUDIT-COMPETITOR-STAGE: start"
 COMPETITOR_STAGE_END = "# AUDIT-COMPETITOR-STAGE: end"
+REPORT_CONTENT_START = "# AUDIT-REPORT-CONTENT: start"
+REPORT_CONTENT_END = "# AUDIT-REPORT-CONTENT: end"
+REPORT_STAGE_START = "# AUDIT-REPORT-STAGE: start"
+REPORT_STAGE_END = "# AUDIT-REPORT-STAGE: end"
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
@@ -121,7 +127,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
                    competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
                    competitor_pipeline_source=COMPETITOR_PIPELINE_SOURCE,
-                   competitor_stage_source=COMPETITOR_STAGE_SOURCE):
+                   competitor_stage_source=COMPETITOR_STAGE_SOURCE,
+                   report_content_source=REPORT_CONTENT_SOURCE,
+                   report_stage_source=REPORT_STAGE_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -229,6 +237,20 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPETITOR_STAGE_END,
         _without_service_imports(
             Path(competitor_stage_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        scope_cell,
+        REPORT_CONTENT_START,
+        REPORT_CONTENT_END,
+        Path(report_content_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        scope_cell,
+        REPORT_STAGE_START,
+        REPORT_STAGE_END,
+        _without_service_imports(
+            Path(report_stage_source).read_text(encoding="utf-8")
         ),
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
