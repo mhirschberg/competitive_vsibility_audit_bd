@@ -8,6 +8,14 @@ the same functions during migration. A representative generated runner was
 byte-for-byte identical before and after extraction. This is not yet a
 measured production-memory reduction; the container still installs Gradio.
 
+Second checkpoint: `audit_core.primitives` is importable service-side code and
+is embedded into the self-contained notebook by `scripts/build_notebook.py`.
+That builder also synchronizes the existing Reddit and research provider
+sources without touching unrelated notebook cells. Run
+`python scripts/build_notebook.py --check` before committing, or `--write` to
+refresh generated cells. Most audit stages still live in the notebook; the
+hosted worker has not switched to a service-native audit runner.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

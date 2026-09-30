@@ -411,14 +411,18 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for diagnostic steps and 
 
 ```text
 competitive_vsibility_audit_bd/
-├── competitive_visibility_audit_bd.ipynb  # primary Colab workflow
+├── competitive_visibility_audit_bd.ipynb  # standalone Colab workflow
 ├── app.py                                  # optional web wrapper
+├── runner_builder.py                       # lightweight hosted runner builder
+├── audit_core/                             # shared service/notebook logic (migration underway)
+├── notebook_builder.py                     # deterministic notebook cell assembly
 ├── hosted/                                 # deployed API, worker and watchdog code
 ├── web/                                    # hosted participant and organizer UI
 ├── supabase/migrations/                    # versioned hosted database schema
 ├── reddit_social.py                        # social collection and analysis
 ├── scripts/
 │   ├── embed_reddit_social.py
+│   ├── build_notebook.py
 │   ├── rerun_reddit_stage.py
 │   └── run_local_audit.py
 ├── tests/                                  # regression suite
@@ -431,6 +435,13 @@ competitive_vsibility_audit_bd/
 ├── requirements.txt
 └── README.md
 ```
+
+The service-first refactor is in progress. For code already extracted into
+Python sources, refresh the checked-in notebook with
+`python scripts/build_notebook.py --write` and verify it with
+`python scripts/build_notebook.py --check`. The notebook remains self-contained;
+the hosted audit still runs the notebook engine until stage-by-stage parity is
+established. See [the migration plan](docs/SERVICE_FIRST_NOTEBOOK_PLAN.md).
 
 ---
 
