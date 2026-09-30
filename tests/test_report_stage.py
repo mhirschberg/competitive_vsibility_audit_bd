@@ -92,6 +92,29 @@ class ReportStageTests(unittest.TestCase):
         )
         self.assertEqual(notebook_report, imported_report)
 
+    def test_embedded_report_survives_late_legacy_name_override(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        source = "".join(notebook["cells"][6]["source"])
+        embedded = source.split("# AUDIT-REPORT-CONTENT: start\n", 1)[1].split(
+            "# AUDIT-REPORT-CONTENT: end", 1
+        )[0]
+        namespace = {
+            "AUDIT_SETTINGS": {"country": "US"},
+            "ACTIVE_SEARCH_ENGINE": "google",
+            "ACTIVE_SEARCH_STATUS": "available",
+            "collect_visibility_sources": lambda *_args, **_kwargs: [],
+        }
+        exec(embedded, namespace)
+        namespace["_shared_build_report_content"] = namespace["build_report_content"]
+        exec(notebook_definition("build_deterministic_report"), namespace)
+        target, competitors, keywords, searches, metrics, visibility = fixture()
+        report = namespace["build_report_content"](
+            target, competitors, keywords, searches, metrics, visibility,
+            country="US", search_engine="google", search_status="available",
+            collect_sources=namespace["collect_visibility_sources"],
+        )
+        self.assertEqual(hashlib.sha256(report.encode()).hexdigest(), BASELINE_SHA256)
+
     def test_report_stage_does_not_claim_unavailable_search_as_zero(self):
         target, competitors, keywords, searches, metrics, visibility = fixture()
         result = generate_report_stage_core(
