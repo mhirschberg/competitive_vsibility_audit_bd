@@ -104,6 +104,20 @@ The strict and fallback Markdown SERP parsers, country/localization rules, and
 the complete service-native runner remain future work. This checkpoint made
 no live Bright Data request and did not change the hosted deployment.
 
+Eleventh checkpoint: `audit_core.serp_markdown` now owns both strict Google
+and Bing Markdown parsers plus the effective Google generic fallback. It takes
+URL/domain/redirect helpers through explicit ports and records fallback
+diagnostics in the adapter's dictionary. The notebook embeds the same source;
+its existing parser names are thin compatibility adapters. Synthetic tests
+cover organic ranking, rich-result and navigation exclusion, Bing tracking URL
+decoding, Google fallback, redirect avoidance when a direct URL is nearby, and
+service/notebook parity. The fallback now also decodes an absolute
+`https://www.google.com/url?...` redirect, not only relative `/url?...` links.
+Bing remains conservative: an unusable strict result is reported as empty, not
+invented from unrelated links. No live provider request or production change
+was made. Country/localization rules, report stages, and the complete
+service-native runner remain to be extracted.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints
