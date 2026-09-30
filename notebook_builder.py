@@ -14,6 +14,10 @@ REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 RESEARCH_RACE_SOURCE = ROOT / "audit_core" / "research_race.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
+DOMAINS_SOURCE = ROOT / "audit_core" / "domains.py"
+SERP_METRICS_SOURCE = ROOT / "audit_core" / "serp_metrics.py"
+BRAND_MENTIONS_SOURCE = ROOT / "audit_core" / "brand_mentions.py"
+VISIBILITY_STAGE_SOURCE = ROOT / "audit_core" / "visibility_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -35,6 +39,14 @@ ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
+DOMAINS_START = "# AUDIT-DOMAINS: start"
+DOMAINS_END = "# AUDIT-DOMAINS: end"
+SERP_METRICS_START = "# AUDIT-SERP-METRICS: start"
+SERP_METRICS_END = "# AUDIT-SERP-METRICS: end"
+BRAND_MENTIONS_START = "# AUDIT-BRAND-MENTIONS: start"
+BRAND_MENTIONS_END = "# AUDIT-BRAND-MENTIONS: end"
+VISIBILITY_STAGE_START = "# AUDIT-VISIBILITY-STAGE: start"
+VISIBILITY_STAGE_END = "# AUDIT-VISIBILITY-STAGE: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -124,6 +136,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    research_race_source=RESEARCH_RACE_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
+                   domains_source=DOMAINS_SOURCE,
+                   serp_metrics_source=SERP_METRICS_SOURCE,
+                   brand_mentions_source=BRAND_MENTIONS_SOURCE,
+                   visibility_stage_source=VISIBILITY_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -150,6 +166,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         PRIMITIVES_START,
         PRIMITIVES_END,
         Path(primitives_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        DOMAINS_START,
+        DOMAINS_END,
+        Path(domains_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,
@@ -278,6 +300,30 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         ),
     )
     orchestration_cell = _unique_cell(notebook, "final-orchestration")
+    _replace_embedded_source(
+        orchestration_cell,
+        BRAND_MENTIONS_START,
+        BRAND_MENTIONS_END,
+        _without_service_imports(
+            Path(brand_mentions_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        VISIBILITY_STAGE_START,
+        VISIBILITY_STAGE_END,
+        _without_service_imports(
+            Path(visibility_stage_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        SERP_METRICS_START,
+        SERP_METRICS_END,
+        _without_service_imports(
+            Path(serp_metrics_source).read_text(encoding="utf-8")
+        ),
+    )
     _replace_embedded_source(
         orchestration_cell,
         REPORT_EXPORT_START,

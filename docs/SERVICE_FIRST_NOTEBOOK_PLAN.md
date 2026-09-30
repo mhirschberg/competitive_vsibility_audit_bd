@@ -159,6 +159,20 @@ the hosted runner switches. PDF rendering, artifact writing, Reddit insertion,
 and the top-level orchestration remain notebook-owned. No live requests,
 production deployment, or cost incurred.
 
+Fifteenth checkpoint: `audit_core.domains` now owns registrable-domain
+normalization, `audit_core.serp_metrics` owns traditional-search visibility
+metrics, and `audit_core.brand_mentions` owns conservative brand-mention
+detection. `audit_core.visibility_stage` orchestrates the selected measured AI
+answers and Google AI Mode coverage, receiving the Bright Data client, prompt
+builder, and discovery sample as explicit inputs. The generated notebook
+embeds these modules and keeps a thin adapter for its current globals.
+Synthetic tests cover company/domain matching, partial and failed answers,
+per-engine wait settings, and service/notebook parity. The top-level audit
+orchestrator, provider adapters, social stages, PDF rendering, and artifact
+writing are still notebook-owned; the hosted worker has not switched to a
+service-native runner. No live provider call or production deployment was
+made at this checkpoint.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

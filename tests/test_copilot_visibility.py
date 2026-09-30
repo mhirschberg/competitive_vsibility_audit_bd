@@ -5,6 +5,7 @@ import asyncio
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import inspect
 from pathlib import Path
 import time
 import unittest
@@ -13,6 +14,7 @@ from urllib.parse import urlparse, urlunparse
 
 from audit_core.brightdata_usage import BrightDataUsageLedger
 from audit_core import ai_localization, ai_visibility_race
+from audit_core.visibility_stage import run_visibility_stage_core
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
@@ -192,27 +194,24 @@ class CopilotVisibilityTests(unittest.TestCase):
                 return {"engine": engine, "status": "success", "answer": "Apple", "citations": []}
 
         client = Client()
-        namespace = {
-            "asyncio": asyncio,
-            "time": time,
-            "bd_client": client,
-            "LAST_AI_MODE_DISCOVERY": {"results": []},
-            "build_visibility_prompt": lambda **_kwargs: "neutral buyer question",
-            "find_brand_mentions": lambda _answer, _profiles: [{
+        mentions = lambda _answer, _profiles: [{
                 "brand_name": "Apple", "domain": "apple.com", "role": "target",
                 "mentioned": True, "mention_count": 1, "first_position": 0,
                 "matched_aliases": ["Apple"],
-            }],
-        }
-        exec(definition("run_visibility_stage"), namespace)
-        result = asyncio.run(namespace["run_visibility_stage"](Profile(), [Profile()], [], True))
+            }]
+        with mock.patch("audit_core.visibility_stage.find_brand_mentions", mentions):
+            result = asyncio.run(run_visibility_stage_core(
+                Profile(), [Profile()], [], bd_client=client,
+                prompt_builder=lambda **_kwargs: "neutral buyer question",
+                ai_mode_discovery={"results": []}, include_copilot=True,
+            ))
 
         self.assertEqual(result["engines"]["copilot"]["status"], "failed")
         self.assertEqual(result["mentions"]["copilot"], [])
         self.assertIn(("copilot", 1, 360), client.calls)
 
     def test_copilot_is_absent_when_disabled(self):
-        source = definition("run_visibility_stage")
+        source = inspect.getsource(run_visibility_stage_core)
         self.assertIn('if include_copilot:', source)
         self.assertIn('scheduled.append(("copilot", run_engine(', source)
         self.assertIn('if item in engine_results', source)
@@ -235,25 +234,20 @@ class CopilotVisibilityTests(unittest.TestCase):
                 return {"engine": engine, "status": "success", "answer": "Apple", "citations": []}
 
         client = Client()
-        namespace = {
-            "asyncio": asyncio,
-            "time": time,
-            "bd_client": client,
-            "LAST_AI_MODE_DISCOVERY": {"results": []},
-            "build_visibility_prompt": lambda **_kwargs: "buyer question",
-            "find_brand_mentions": lambda _answer, _profiles: [{
+        mentions = lambda _answer, _profiles: [{
                 "brand_name": "Apple", "domain": "apple.com", "role": "target",
                 "mentioned": True, "mention_count": 1, "first_position": 0,
                 "matched_aliases": ["Apple"],
-            }],
-        }
-        exec(definition("run_visibility_stage"), namespace)
-        result = asyncio.run(namespace["run_visibility_stage"](
-            Profile(), [Profile()], [], include_google_ai_mode=False,
-            include_chatgpt=False, include_gemini=True,
-            wait_longer_for_gemini=True, include_copilot=True,
-            wait_longer_for_copilot=True,
-        ))
+            }]
+        with mock.patch("audit_core.visibility_stage.find_brand_mentions", mentions):
+            result = asyncio.run(run_visibility_stage_core(
+                Profile(), [Profile()], [], bd_client=client,
+                prompt_builder=lambda **_kwargs: "buyer question",
+                ai_mode_discovery={"results": []}, include_google_ai_mode=False,
+                include_chatgpt=False, include_gemini=True,
+                wait_longer_for_gemini=True, include_copilot=True,
+                wait_longer_for_copilot=True,
+            ))
         self.assertEqual(client.calls, [("gemini", 3, 1800), ("copilot", 1, 900)])
         self.assertEqual(set(result["engines"]), {"gemini", "copilot"})
 

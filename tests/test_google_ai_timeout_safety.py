@@ -4,9 +4,12 @@ import ast
 import asyncio
 from concurrent.futures import Future, as_completed
 import json
+import inspect
 from pathlib import Path
 import threading
 import unittest
+
+from audit_core.visibility_stage import run_visibility_stage_core
 
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
@@ -138,8 +141,8 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
         self.assertIn("snap-1", result["error"])
 
     def test_partial_google_sample_is_not_labeled_success(self):
-        source = definition("run_visibility_stage")
-        self.assertIn('if len(successful_ai_answers) == 3', source)
+        source = inspect.getsource(run_visibility_stage_core)
+        self.assertIn('len(successful_ai_answers) == 3', source)
         self.assertIn('else "partial" if ai_mode_answers', source)
         self.assertIn('else "unavailable"', source)
         self.assertIn('if google_ai_result["status"] == "success"', source)
