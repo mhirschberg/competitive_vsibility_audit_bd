@@ -80,6 +80,7 @@ class CompetitorDecisionTests(unittest.TestCase):
             "primary_customers": ["Premium smartphone buyers"],
             "core_offerings": ["iPhone"], "audit_focus": "premium smartphone",
             "substitute_definition": "Flagship smartphones", "country": "US",
+            "as_of_date": "2026-09-30",
         }
         self.discovered = [
             {"brand_name": "Samsung", "domain": "samsung.com",
@@ -134,6 +135,31 @@ class CompetitorDecisionTests(unittest.TestCase):
         )
         self.assertIn('"is_direct_competitor"', validation_prompt)
         self.assertIn("Samsung", validation_prompt)
+        self.assertIn("as of 2026-09-30", discovery_prompt)
+        self.assertNotIn("September 15, 2026", discovery_prompt)
+
+    def test_audit_start_date_is_stable_on_resume(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        orchestration = "".join(next(
+            cell for cell in notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "final-orchestration"
+        )["source"])
+        self.assertIn(
+            "settings['audit_as_of_date'] = run_timestamp.date().isoformat()",
+            orchestration,
+        )
+        self.assertIn(
+            "LOCKED_TARGET_SCOPE = restore_locked_target_scope(",
+            orchestration,
+        )
+        self.assertLess(
+            orchestration.index("run_timestamp = datetime.fromisoformat"),
+            orchestration.index("settings['audit_as_of_date']"),
+        )
+        self.assertLess(
+            orchestration.index("run_timestamp = datetime.now(timezone.utc)"),
+            orchestration.index("settings['audit_as_of_date']"),
+        )
 
     def test_structured_verdict_and_retry_match_notebook_wrappers(self):
         notebook = wrapper_namespace()

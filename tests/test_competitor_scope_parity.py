@@ -125,6 +125,34 @@ class CompetitorScopeParityTests(unittest.TestCase):
             original_order,
         )
 
+    def test_scope_keeps_the_original_audit_date(self):
+        company = brand("KEBA", role="manufacturer", confidence=0.9)
+        scope = competitor_scope.build_locked_target_scope(
+            company,
+            {"country": "DE", "audit_as_of_date": "2026-09-15"},
+        )
+        self.assertEqual(scope["as_of_date"], "2026-09-15")
+
+    def test_resume_preserves_saved_scope_and_backfills_old_date(self):
+        company = brand("KEBA", role="manufacturer", confidence=0.9)
+        saved = {"market_role": "manufacturer", "category": "Machine tools"}
+        checkpoint = {"locked_target_scope": saved}
+        restored = competitor_scope.restore_locked_target_scope(
+            checkpoint, company,
+            {"country": "DE", "audit_as_of_date": "2026-09-15"},
+        )
+        self.assertEqual(restored["as_of_date"], "2026-09-15")
+        self.assertEqual(restored["category"], "Machine tools")
+        self.assertNotIn("as_of_date", saved)
+        self.assertEqual(
+            competitor_scope.restore_locked_target_scope(
+                {"locked_target_scope": {**saved, "as_of_date": "2026-09-14"}},
+                company,
+                {"country": "DE", "audit_as_of_date": "2026-09-15"},
+            )["as_of_date"],
+            "2026-09-14",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

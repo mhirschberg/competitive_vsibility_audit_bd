@@ -46,6 +46,12 @@ notebook commit after accounting for only the new explicit port aliases and a
 renamed internal call. The hosted runner still executes the generated notebook;
 this does not yet switch production to a service-native runner.
 
+Date correction: the discovery prompt no longer contains the workshop date
+September 15, 2026. A new run records its UTC start date in the locked scope;
+a resumed run restores the saved scope and original run date. Older checkpoints
+without the date are backfilled from their `created_at` timestamp. This avoids
+re-dating a continued audit to the day it was resumed.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

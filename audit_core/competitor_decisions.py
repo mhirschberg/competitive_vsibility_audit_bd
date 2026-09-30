@@ -6,6 +6,7 @@ helpers were embedded in earlier notebook cells.
 """
 
 import json
+from datetime import datetime, timezone
 
 # SERVICE-ONLY-IMPORTS: start
 from .competitor_scope import LOCKED_SCOPE_CONFLICT_RETRY_MAX_RANK, LOCKED_SCOPE_CONFLICT_RETRY_MIN_CONFIDENCE, LOCKED_SCOPE_INACTIVE_TERMS, LOCKED_SCOPE_MIN_CONFIDENCE, LOCKED_SCOPE_REJECTED_ROLES, locked_scope_normalize_text, locked_scope_role
@@ -23,6 +24,12 @@ class CompetitorDecisionPorts:
         self.normalize_public_url = normalize_public_url
         self.brand_family = brand_family
         self.local_domain_bonus = local_domain_bonus
+
+
+def scope_as_of_date(scope):
+    """Use the audit's original date, including when a saved run resumes."""
+    saved = str(scope.get("as_of_date") or "").strip()
+    return saved or datetime.now(timezone.utc).date().isoformat()
 
 
 LOCKED_SCOPE_VALIDATION_CHECKS = (
@@ -90,10 +97,11 @@ def core_build_locked_scope_discovery_prompt(
             scope["country"]
         )
     )
+    as_of_date = scope_as_of_date(scope)
 
     return f"""
 Identify the strongest active direct competitors to this target in
-{country["name"]} ({country["code"]}) as of September 15, 2026.
+{country["name"]} ({country["code"]}) as of {as_of_date}.
 
 LOCKED TARGET SCOPE
 
