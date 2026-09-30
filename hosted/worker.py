@@ -153,7 +153,7 @@ def run_worker(
         options = audit.get("input_options") or {}
 
         if runner_source_factory is None:
-            from app import _build_runner_script
+            from runner_builder import _build_runner_script
 
             runner_source_factory = _build_runner_script
 

@@ -10,7 +10,7 @@ RUN apt-get update \
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --only-binary=:all: --timeout=60 --retries=3 -r /app/requirements.txt
-COPY app.py competitive_visibility_audit_bd.ipynb /app/
+COPY app.py runner_builder.py competitive_visibility_audit_bd.ipynb /app/
 COPY scripts /app/scripts
 COPY hosted /app/hosted
 
