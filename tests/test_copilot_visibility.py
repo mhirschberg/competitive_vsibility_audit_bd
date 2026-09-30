@@ -12,6 +12,7 @@ from unittest import mock
 from urllib.parse import urlparse, urlunparse
 
 from audit_core.brightdata_usage import BrightDataUsageLedger
+from audit_core import ai_visibility_race
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
@@ -49,6 +50,7 @@ class CopilotVisibilityTests(unittest.TestCase):
             "COPILOT_DATASET_ID": "gd_m7di5jy6s9geokz8w",
             "canonical_source_url": canonical_source_url,
             "BrightDataUsageLedger": BrightDataUsageLedger,
+            "race_ai_visibility_core": ai_visibility_race.race_ai_visibility_core,
         }
         exec(definition("BrightDataClient"), namespace)
         client = object.__new__(namespace["BrightDataClient"])
@@ -74,7 +76,8 @@ class CopilotVisibilityTests(unittest.TestCase):
             return "recovered-snapshot"
 
         client.trigger_dataset = trigger
-        result = client.race_ai_engine("copilot", "buyer question", 3, 60)
+        with mock.patch.object(ai_visibility_race.time, "sleep", sleep):
+            result = client.race_ai_engine("copilot", "buyer question", 3, 60)
 
         self.assertEqual(len(attempts), 4)
         sleep.assert_called_once_with(2)
@@ -91,8 +94,9 @@ class CopilotVisibilityTests(unittest.TestCase):
             raise RuntimeError("Snapshot trigger failed. HTTP 400: invalid payload")
 
         client.trigger_dataset = trigger
-        with self.assertRaisesRegex(RuntimeError, "HTTP 400"):
-            client.race_ai_engine("copilot", "buyer question", 3, 60)
+        with mock.patch.object(ai_visibility_race.time, "sleep", sleep):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 400"):
+                client.race_ai_engine("copilot", "buyer question", 3, 60)
 
         self.assertEqual(len(attempts), 3)
         sleep.assert_not_called()
@@ -135,6 +139,7 @@ class CopilotVisibilityTests(unittest.TestCase):
             "COPILOT_DATASET_ID": "gd_m7di5jy6s9geokz8w",
             "canonical_source_url": canonical_source_url,
             "BrightDataUsageLedger": BrightDataUsageLedger,
+            "race_ai_visibility_core": ai_visibility_race.race_ai_visibility_core,
         }
         exec(definition("BrightDataClient"), namespace)
         client_type = namespace["BrightDataClient"]

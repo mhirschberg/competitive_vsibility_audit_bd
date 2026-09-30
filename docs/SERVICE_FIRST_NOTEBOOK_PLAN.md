@@ -92,6 +92,18 @@ orchestration still live in notebook cells; this checkpoint is not a complete
 service-native client. No live provider request or production deployment was
 made.
 
+Tenth checkpoint: `audit_core.ai_visibility_race` now owns the measured
+ChatGPT/Gemini/Copilot snapshot race. It keeps the real engine label, winning
+snapshot, citations, retry-on-transient-trigger behavior, and result-based
+accounting. The notebook's client retains a thin adapter so the existing
+country-payload and localization wrappers continue to apply. The parsed-light
+organic-result normalizer now lives in `audit_core.serp_parsing`, also embedded
+in the notebook. Synthetic tests cover measured-answer labels, Copilot cited
+sources, failed snapshots, nested Google result shapes, and adapter parity.
+The strict and fallback Markdown SERP parsers, country/localization rules, and
+the complete service-native runner remain future work. This checkpoint made
+no live Bright Data request and did not change the hosted deployment.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

@@ -18,6 +18,8 @@ BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
 SERP_TRANSPORT_SOURCE = ROOT / "audit_core" / "serp_transport.py"
 SERP_SELECTION_SOURCE = ROOT / "audit_core" / "serp_selection.py"
+SERP_PARSING_SOURCE = ROOT / "audit_core" / "serp_parsing.py"
+AI_VISIBILITY_RACE_SOURCE = ROOT / "audit_core" / "ai_visibility_race.py"
 SCOPE_SOURCE = ROOT / "audit_core" / "competitor_scope.py"
 COMPETITOR_RESEARCH_SOURCE = ROOT / "audit_core" / "competitor_research.py"
 COMPETITOR_DECISIONS_SOURCE = ROOT / "audit_core" / "competitor_decisions.py"
@@ -34,6 +36,10 @@ SERP_TRANSPORT_START = "# AUDIT-SERP-TRANSPORT: start"
 SERP_TRANSPORT_END = "# AUDIT-SERP-TRANSPORT: end"
 SERP_SELECTION_START = "# AUDIT-SERP-SELECTION: start"
 SERP_SELECTION_END = "# AUDIT-SERP-SELECTION: end"
+SERP_PARSING_START = "# AUDIT-SERP-PARSING: start"
+SERP_PARSING_END = "# AUDIT-SERP-PARSING: end"
+AI_VISIBILITY_RACE_START = "# AUDIT-AI-VISIBILITY-RACE: start"
+AI_VISIBILITY_RACE_END = "# AUDIT-AI-VISIBILITY-RACE: end"
 SCOPE_CELL_ID = "runtime-utilities-merged"
 SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
 SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
@@ -101,6 +107,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
                    serp_transport_source=SERP_TRANSPORT_SOURCE,
                    serp_selection_source=SERP_SELECTION_SOURCE,
+                   serp_parsing_source=SERP_PARSING_SOURCE,
+                   ai_visibility_race_source=AI_VISIBILITY_RACE_SOURCE,
                    scope_source=SCOPE_SOURCE,
                    competitor_research_source=COMPETITOR_RESEARCH_SOURCE,
                    competitor_decisions_source=COMPETITOR_DECISIONS_SOURCE,
@@ -141,6 +149,20 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SERP_SELECTION_END,
         _without_service_imports(
             Path(serp_selection_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        SERP_PARSING_START,
+        SERP_PARSING_END,
+        Path(serp_parsing_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        primitives_cell,
+        AI_VISIBILITY_RACE_START,
+        AI_VISIBILITY_RACE_END,
+        _without_service_imports(
+            Path(ai_visibility_race_source).read_text(encoding="utf-8")
         ),
     )
     scope_text = Path(scope_source).read_text(encoding="utf-8")
