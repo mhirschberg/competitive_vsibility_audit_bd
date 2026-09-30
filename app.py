@@ -9,8 +9,6 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import gradio as gr
-
 
 APP_ROOT = Path(__file__).resolve().parent
 NOTEBOOK_PATH = APP_ROOT / "competitive_visibility_audit_bd.ipynb"
@@ -289,6 +287,8 @@ def _collect_downloads(run_dir: Path):
 
 
 def _validate_audit_request(company_name, company_domain):
+    import gradio as gr
+
     if not NOTEBOOK_PATH.exists():
         raise gr.Error(f"Notebook not found: {NOTEBOOK_PATH.name}")
     if not os.getenv("BRIGHTDATA_API_TOKEN", "").strip():
@@ -436,6 +436,8 @@ def start_audit_job(
     include_copilot_visibility=True,
     reddit_comment_posts_per_cohort=0,
 ):
+    import gradio as gr
+
     _validate_audit_request(company_name, company_domain)
 
     saved_state = dict(browser_state or {})
@@ -511,6 +513,8 @@ def restore_audit_session(browser_state):
 
 
 def build_ui():
+    import gradio as gr
+
     with gr.Blocks(title="Competitive Visibility Audit") as demo:
         browser_state = gr.BrowserState(
             {},
