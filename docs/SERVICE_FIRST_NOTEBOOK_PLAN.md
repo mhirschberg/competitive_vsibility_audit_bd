@@ -16,6 +16,15 @@ sources without touching unrelated notebook cells. Run
 refresh generated cells. Most audit stages still live in the notebook; the
 hosted worker has not switched to a service-native audit runner.
 
+Third checkpoint: locked market-scope construction, role classification, and
+ranking of eligible direct competitors now live in
+`audit_core.competitor_scope`. The notebook embeds the same source; a small
+service-only relative import is removed during bundling because its primitive
+dependency was embedded in an earlier cell. Fixture parity covers KEBA and
+Apple/Samsung/Google smartphone scopes, plus rejection and stable ranking.
+Candidate discovery and AI validation still depend on the notebook runtime and
+are not yet service-native.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
