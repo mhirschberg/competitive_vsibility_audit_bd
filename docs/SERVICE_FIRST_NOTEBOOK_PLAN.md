@@ -78,6 +78,20 @@ overrides for SERP and answer-engine behavior. Those overrides must be mapped
 and extracted before an imported service client would be equivalent to the
 notebook's effective client. No live requests or production change were made.
 
+Ninth checkpoint: `audit_core.serp_transport` owns the effective SERP request,
+retry, parsing dispatch, and quality check; `audit_core.serp_selection` owns the
+Google/Bing health-check decision and one-use result cache. The notebook embeds
+these sources and keeps thin client methods for its existing configuration and
+progress state. `audit_core.research_race` owns the ChatGPT/Gemini research
+snapshot race, including resume-only behavior and the winning provider label;
+`research_fallback.py` supplies the current provider adapters. Fake-response
+tests cover empty SERP responses, selector timeouts, Bing fallback, explicit
+Google selection, caching, and notebook state synchronization. The remaining
+SERP parsers, measured AI-answer engine races, report stages, and top-level
+orchestration still live in notebook cells; this checkpoint is not a complete
+service-native client. No live provider request or production deployment was
+made.
+
 Date correction: the discovery prompt no longer contains the workshop date
 September 15, 2026. A new run records its UTC start date in the locked scope;
 a resumed run restores the saved scope and original run date. Older checkpoints

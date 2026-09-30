@@ -11,12 +11,10 @@ from urllib.parse import quote_plus, urlparse
 
 import requests
 
+from audit_core import serp_transport
+from audit_core.brightdata_transport import BrightDataAPIError
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
-
-
-class BrightDataAPIError(Exception):
-    pass
 
 
 class FakeClient:
@@ -82,10 +80,13 @@ class SerpTransportTests(unittest.TestCase):
         normalize_start = runtime.index("def find_parsed_organic_results(")
         normalize_end = runtime.index("def reliable_bing_serp(", normalize_start)
         exec(runtime[normalize_start:normalize_end], namespace)
-        request_start = runtime.index("def resilient_serp_request(")
-        request_end = runtime.index("def search_result_quality(", request_start)
-        exec(runtime[request_start:request_end], namespace)
-        cls.search = staticmethod(namespace["resilient_serp_request"])
+        cls.search = staticmethod(
+            lambda client, query, engine: serp_transport.run_resilient_serp_request(
+                client, query, engine,
+                normalize_serp_records=namespace["normalize_serp_records"],
+                parse_bing_markdown=namespace["parse_bing_markdown"],
+            )
+        )
 
     def test_retries_empty_http_200_and_preserves_direct_links_and_rank(self):
         client = FakeClient()
@@ -93,7 +94,7 @@ class SerpTransportTests(unittest.TestCase):
             {"link": "https://example.com/a", "title": "A", "global_rank": 3},
             {"link": "https://example.org/b", "title": "B", "global_rank": 4},
         ]}
-        with mock.patch.object(
+        with mock.patch.object(serp_transport.time, "sleep"), mock.patch.object(
             requests, "post", side_effect=[fake_response(None), fake_response(records)]
         ) as post:
             result = self.search(client, "website builders", "google")
@@ -111,7 +112,7 @@ class SerpTransportTests(unittest.TestCase):
 
     def test_three_empty_http_200_responses_raise_instead_of_returning_zero(self):
         client = FakeClient()
-        with mock.patch.object(
+        with mock.patch.object(serp_transport.time, "sleep"), mock.patch.object(
             requests,
             "post",
             return_value=fake_response(
