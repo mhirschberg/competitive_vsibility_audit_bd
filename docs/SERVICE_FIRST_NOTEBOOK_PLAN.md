@@ -219,6 +219,18 @@ and resume without new provider calls. Later stages and the top-level
 scheduler remain notebook-driven. No paid provider request or production
 deployment was made.
 
+Twentieth checkpoint: `audit_core.competitor_selection_stage` now owns Stage 3
+orchestration around the already shared competitor-selection engine. It records
+selected and rejected candidates, preserves continuation warnings and the
+Google AI snapshot-cache transition, and starts optional Reddit discovery
+only after selection artifacts are saved. The notebook keeps a thin adapter
+for provider calls, progress output, and files. Synthetic tests cover fresh
+and continued runs, artifact contents, warning propagation, social-prefetch
+ordering, and notebook adapter wiring. Profile, visibility, social, and report
+orchestration still need migration before the hosted job can use a fully
+service-native runner. No paid provider request or production deployment was
+made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

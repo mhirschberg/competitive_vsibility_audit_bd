@@ -33,7 +33,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
     def test_orchestration_hooks_are_present_once(self):
         orchestration = "".join(self.notebook["cells"][5]["source"])
         for hook in (
-            "start_reddit_discovery_prefetch(",
+            "start_reddit_prefetch=start_reddit_discovery_prefetch",
             "run_reddit_social_stage(",
             "discovery_prefetch_task=reddit_prefetch_task",
             'output_directory / "05_reddit_social.json"',
