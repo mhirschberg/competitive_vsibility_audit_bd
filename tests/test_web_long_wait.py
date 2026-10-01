@@ -47,7 +47,7 @@ class WebLongWaitTests(unittest.TestCase):
         notebook = json.loads((ROOT / "competitive_visibility_audit_bd.ipynb").read_text(encoding="utf-8"))
         source = "\n".join("".join(cell["source"]) for cell in notebook["cells"] if cell["cell_type"] == "code")
         self.assertIn('if measure_google_ai_mode else []', source)
-        self.assertIn('1800 if long_wait', source)
+        self.assertIn('1800 if wait_longer_for_google_ai_mode', source)
         self.assertIn('900 if wait_longer_for_copilot else 360', source)
         compile(extended, "<extended-runner>", "exec")
 
