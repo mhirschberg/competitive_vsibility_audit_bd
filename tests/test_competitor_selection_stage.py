@@ -76,6 +76,8 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             result = asyncio.run(run())
             self.assertEqual(warnings, [])
             self.assertEqual(result["selected_competitors"][0].brand_name, "Samsung")
+            self.assertEqual(result["selection_result"]["validation_results"],
+                             [{"status": "success"}])
             self.assertLess(
                 calls.index(("write", "03_competitor_selection.json")),
                 calls.index(("notice",)),
@@ -142,16 +144,17 @@ class CompetitorSelectionStageTests(unittest.TestCase):
                 "stage_started_at, include_reddit_analysis, stage_durations, "
                 "warnings):\n"
                 + COMPETITOR_SELECTION_STAGE_CALL_SOURCE
-                + "\n    return selected_competitors, reddit_prefetch_task\n"
+                + "\n    return selected_competitors, selection_result, reddit_prefetch_task\n"
             )
             exec(compile(script, "notebook-competitor-adapter", "exec"), namespace)
             durations, warnings = {}, []
-            selected, task = asyncio.run(namespace["adapter"](
+            selected, selection, task = asyncio.run(namespace["adapter"](
                 {"audit_focus": "premium smartphone"}, Model(brand_name="Apple"),
                 [], ["premium smartphone"], False, output, raw,
                 time.monotonic(), False, durations, warnings,
             ))
             self.assertEqual(selected[0].brand_name, "Samsung")
+            self.assertEqual(selection["selected"][0].brand_name, "Samsung")
             self.assertIsNone(task)
             self.assertIn("competitor_selection", durations)
             self.assertEqual(warnings, [])

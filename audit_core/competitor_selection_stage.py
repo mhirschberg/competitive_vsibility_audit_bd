@@ -82,6 +82,7 @@ async def run_competitor_selection_stage_core(
             )
         )
     return {
+        "selection_result": selection,
         "selected_competitors": selected,
         "duration_seconds": duration_seconds,
         "warnings": warnings,
