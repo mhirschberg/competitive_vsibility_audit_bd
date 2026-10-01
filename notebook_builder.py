@@ -26,6 +26,7 @@ ARTIFACT_WRITES_SOURCE = ROOT / "audit_core" / "artifact_writes.py"
 ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
 AUDIT_PREPARATION_SOURCE = ROOT / "audit_core" / "audit_preparation.py"
 COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
+COMPANY_ANALYSIS_SOURCE = ROOT / "audit_core" / "company_analysis.py"
 SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
 SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
 COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_stage.py"
@@ -82,6 +83,8 @@ COMPANY_STAGE_START = "# AUDIT-COMPANY-STAGE: start"
 COMPANY_STAGE_END = "# AUDIT-COMPANY-STAGE: end"
 COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
 COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
+COMPANY_ANALYSIS_PROVIDER_START = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: start"
+COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
 SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
 SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
@@ -236,6 +239,22 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
         global LOCKED_TARGET_SCOPE
         LOCKED_TARGET_SCOPE = scope
 
+    def run_company_analysis(settings):
+        return run_company_analysis_core(
+            settings,
+            ports=CompanyAnalysisPorts(
+                client=bd_client,
+                run_utility=run_chatgpt_without_web,
+                parse_json=parse_ai_json,
+                normalize_intake=normalize_company_intake,
+                select_relevant_research=select_relevant_company_research,
+                complete_keywords=complete_company_keywords,
+                proofread_keywords=proofread_buyer_keywords,
+                build_locked_scope=build_locked_target_scope,
+                error_type=BrightDataAPIError,
+            ),
+        )
+
     company_stage = await run_company_stage_core(
         settings,
         continuing=continuing,
@@ -244,7 +263,7 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
         run_timestamp=run_timestamp,
         started_at=stage_started_at,
         ports=CompanyStagePorts(
-            analyze=analyze_company_stage,
+            analyze=run_company_analysis,
             intake_factory=CompanyIntake,
             brand_factory=BrandAnalysis,
             keyword_factory=BuyerIntentKeyword,
@@ -675,6 +694,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    artifact_resume_source=ARTIFACT_RESUME_SOURCE,
                    audit_preparation_source=AUDIT_PREPARATION_SOURCE,
                    company_stage_source=COMPANY_STAGE_SOURCE,
+                   company_analysis_source=COMPANY_ANALYSIS_SOURCE,
                    search_discovery_source=SEARCH_DISCOVERY_SOURCE,
                    search_stage_source=SEARCH_STAGE_SOURCE,
                    competitor_selection_stage_source=COMPETITOR_SELECTION_STAGE_SOURCE,
@@ -936,7 +956,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         orchestration_cell,
         COMPANY_STAGE_START,
         COMPANY_STAGE_END,
-        Path(company_stage_source).read_text(encoding="utf-8"),
+        Path(company_stage_source).read_text(encoding="utf-8").rstrip()
+        + "\n\n"
+        + COMPANY_ANALYSIS_PROVIDER_START + "\n"
+        + _without_service_imports(
+            Path(company_analysis_source).read_text(encoding="utf-8")
+        )
+        + "\n" + COMPANY_ANALYSIS_PROVIDER_END,
     )
     _replace_embedded_source(
         orchestration_cell,

@@ -13,7 +13,7 @@ import tldextract
 import reddit_social
 
 from hosted.service_adapter import (
-    _service_reddit_runners, _service_utility_ai_race,
+    _service_company_analyzer, _service_reddit_runners, _service_utility_ai_race,
     build_runtime_ports, run_with_legacy_runtime,
 )
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
@@ -162,7 +162,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'CompanyIntake': company.intake_factory,
             'BrandAnalysis': company.brand_factory,
             'BuyerIntentKeyword': company.keyword_factory,
-            'analyze_company_stage': company.analyze,
             'run_serp_stage': search.run_search,
             'CompetitorCandidate': search.candidate_factory,
             'select_competitors_stage': competitor.select_competitors,
@@ -228,7 +227,7 @@ class ServiceAdapterTests(unittest.TestCase):
             start_reddit_discovery_prefetch=runtime['start_reddit_discovery_prefetch'],
             run_reddit_social_stage=runtime['run_reddit_social_stage'],
         )
-        original_analyze = runtime['analyze_company_stage']
+        original_analyze = company.analyze
         def analyze_and_lock(settings):
             scope = {
                 'brand_name': 'Apple', 'domain': 'apple.com',
@@ -243,8 +242,32 @@ class ServiceAdapterTests(unittest.TestCase):
             # may still publish it globally in its own wrapper.
             result['locked_target_scope'] = scope
             return result
-        runtime['analyze_company_stage'] = analyze_and_lock
+        runtime['company_analysis_runner'] = analyze_and_lock
         return runtime
+
+    def test_service_company_analyzer_uses_shared_provider_core(self):
+        runtime = {
+            'run_chatgpt_without_web': lambda *_args, **_kwargs: None,
+            'parse_ai_json': json.loads,
+            'normalize_company_intake': lambda **kwargs: kwargs,
+            'select_relevant_company_research': lambda **kwargs: kwargs,
+            'complete_company_keywords': lambda **kwargs: kwargs,
+            'proofread_buyer_keywords': lambda **kwargs: kwargs,
+            'build_locked_target_scope': lambda *_args: {},
+            'BrightDataAPIError': RuntimeError,
+        }
+        client = object()
+        expected = {'workflow': 'shared-company-core'}
+        with patch(
+            'hosted.service_adapter.run_company_analysis_core',
+            return_value=expected,
+        ) as run_core:
+            result = _service_company_analyzer(runtime, client)({'company_name': 'Acme'})
+        self.assertIs(result, expected)
+        ports = run_core.call_args.kwargs['ports']
+        self.assertIs(ports.client, client)
+        self.assertIs(ports.parse_json, json.loads)
+        self.assertEqual(ports.error_type, RuntimeError)
 
     def test_adapter_runs_same_fixture_with_and_without_social(self):
         for reddit in (False, True):
