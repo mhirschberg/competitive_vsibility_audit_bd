@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import tldextract
@@ -37,21 +38,22 @@ class ServiceAdapterTests(unittest.TestCase):
             return kwargs
 
         runtime = {
-            'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
-            'race_utility_ai': utility_race,
-            'start_reddit_discovery_prefetch': check_context,
-            'run_reddit_social_stage': check_context,
+            'parse_ai_json': json.loads,
         }
-        start_discovery, run_social = _service_reddit_runners(runtime, client)
-
-        self.assertEqual(
-            asyncio.run(start_discovery(brand='Acme')),
-            {'brand': 'Acme'},
-        )
-        self.assertEqual(
-            asyncio.run(run_social(brand='Acme')),
-            {'brand': 'Acme'},
-        )
+        with patch.object(
+            reddit_social, 'start_reddit_discovery_prefetch', check_context
+        ), patch.object(reddit_social, 'run_reddit_social_stage', check_context):
+            start_discovery, run_social = _service_reddit_runners(
+                runtime, client, utility_race=utility_race,
+            )
+            self.assertEqual(
+                asyncio.run(start_discovery(brand='Acme')),
+                {'brand': 'Acme'},
+            )
+            self.assertEqual(
+                asyncio.run(run_social(brand='Acme')),
+                {'brand': 'Acme'},
+            )
 
     def test_service_utility_race_uses_shared_core_and_country_free_payloads(self):
         class Client:
@@ -174,6 +176,8 @@ class ServiceAdapterTests(unittest.TestCase):
             'BrightDataAPIError': RuntimeError,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
             'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
+            'is_google_goto_url': lambda _url: False,
+            'resolve_google_goto_url': lambda url: url,
             'run_profile_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
                     'service profile must not call notebook wrapper'
@@ -218,6 +222,11 @@ class ServiceAdapterTests(unittest.TestCase):
             'import_google_ai_snapshot_ids': lambda ids: len(ids),
             'LAST_UTILITY_REPORT_RESULT': {'engine_name': 'ChatGPT'},
         }
+        runtime['reddit_module'] = SimpleNamespace(
+            bind_reddit_runtime=runtime['bind_reddit_runtime'],
+            start_reddit_discovery_prefetch=runtime['start_reddit_discovery_prefetch'],
+            run_reddit_social_stage=runtime['run_reddit_social_stage'],
+        )
         original_analyze = runtime['analyze_company_stage']
         def analyze_and_lock(settings):
             scope = {
@@ -363,6 +372,24 @@ class ServiceAdapterTests(unittest.TestCase):
                 ))
             self.assertEqual(events, [])
             self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_service_adapter_does_not_require_notebook_reddit_wrappers(self):
+        runtime = self.runtime([])
+        for name in (
+            'bind_reddit_runtime',
+            'start_reddit_discovery_prefetch',
+            'run_reddit_social_stage',
+        ):
+            runtime.pop(name)
+        ports = build_runtime_ports(runtime)
+        self.assertTrue(callable(ports.visibility_stage.run_reddit_social))
+        self.assertTrue(callable(ports.competitor_stage.start_reddit_prefetch))
+
+    def test_worker_images_copy_the_importable_reddit_module(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ('Dockerfile.worker', 'Dockerfile.worker.overlay'):
+            dockerfile = (root / 'hosted' / name).read_text(encoding='utf-8')
+            self.assertIn('COPY reddit_social.py /app/reddit_social.py', dockerfile)
 
     def test_service_boundary_installs_explicit_chatgpt_gemini_research_race(self):
         events = []

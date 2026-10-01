@@ -22,9 +22,23 @@ from urllib.parse import urlparse as reddit_urlparse
 
 import requests as reddit_requests
 
+# SERVICE-ONLY-IMPORTS: start
+from audit_core.brightdata_transport import (
+    BD_REQUEST_URL,
+    BD_SCRAPE_URL,
+    BD_TRIGGER_URL,
+    BrightDataAPIError,
+    CHATGPT_DATASET_ID,
+    GEMINI_DATASET_ID,
+    SnapshotTimeoutError,
+    decode_bright_data_response,
+)
+# SERVICE-ONLY-IMPORTS: end
+
 
 _REDDIT_CLIENT_CONTEXT = ContextVar("reddit_bd_client", default=None)
 _REDDIT_UTILITY_RACE_CONTEXT = ContextVar("reddit_utility_race", default=None)
+_REDDIT_HELPERS_CONTEXT = ContextVar("reddit_helpers", default=None)
 
 
 class RedditExecutor(_RedditExecutor):
@@ -36,13 +50,22 @@ class RedditExecutor(_RedditExecutor):
 
 
 @contextmanager
-def bind_reddit_runtime(client, utility_race):
+def bind_reddit_runtime(
+    client, utility_race, *, parse_json=None,
+    is_google_goto_url=None, resolve_google_goto_url=None,
+):
     """Bind the provider operations used by Reddit for this audit task."""
     client_token = _REDDIT_CLIENT_CONTEXT.set(client)
     race_token = _REDDIT_UTILITY_RACE_CONTEXT.set(utility_race)
+    helpers_token = _REDDIT_HELPERS_CONTEXT.set({
+        "parse_json": parse_json,
+        "is_google_goto_url": is_google_goto_url,
+        "resolve_google_goto_url": resolve_google_goto_url,
+    })
     try:
         yield
     finally:
+        _REDDIT_HELPERS_CONTEXT.reset(helpers_token)
         _REDDIT_UTILITY_RACE_CONTEXT.reset(race_token)
         _REDDIT_CLIENT_CONTEXT.reset(client_token)
 
@@ -65,6 +88,31 @@ def _reddit_utility_race():
     if not callable(race):
         raise RuntimeError("Reddit utility AI race is not bound")
     return race
+
+
+def _reddit_helper(name, legacy_name):
+    helpers = _REDDIT_HELPERS_CONTEXT.get() or {}
+    helper = helpers.get(name)
+    if callable(helper):
+        return helper
+    helper = globals().get(legacy_name)
+    if callable(helper):
+        return helper
+    raise RuntimeError(f"Reddit helper {legacy_name} is not bound")
+
+
+def _reddit_parse_json(answer):
+    return _reddit_helper("parse_json", "parse_ai_json")(answer)
+
+
+def _reddit_is_google_goto_url(url):
+    return _reddit_helper("is_google_goto_url", "is_google_goto_url")(url)
+
+
+def _reddit_resolve_google_goto_url(url):
+    return _reddit_helper(
+        "resolve_google_goto_url", "resolve_google_goto_url",
+    )(url)
 
 
 def _usage_start(operation, dataset_id="", input_count=1):
@@ -841,8 +889,8 @@ def _discover_reddit_with_serp(queries):
                 raw_url = str(item.get("url") or item.get("link") or "").strip()
                 if raw_url.startswith("/"):
                     raw_url = "https://www.google.com" + raw_url
-                if raw_url and is_google_goto_url(raw_url):
-                    raw_url = resolve_google_goto_url(raw_url) or raw_url
+                if raw_url and _reddit_is_google_goto_url(raw_url):
+                    raw_url = _reddit_resolve_google_goto_url(raw_url) or raw_url
                 url = canonical_reddit_url(raw_url)
                 if not url:
                     continue
@@ -1302,7 +1350,7 @@ def _reddit_analysis_validator(expected_posts):
 
     def validate(answer):
         try:
-            parsed = parse_ai_json(answer)
+            parsed = _reddit_parse_json(answer)
         except Exception as exc:
             return {"valid": False, "reason": f"Invalid JSON: {exc}"}
         items = parsed.get("items") if isinstance(parsed, dict) else None
@@ -1805,7 +1853,7 @@ def _scoped_reddit_profile(profile, focus):
 def _competitor_focus_validator(options_by_brand):
     def validate(answer):
         try:
-            parsed = parse_ai_json(answer)
+            parsed = _reddit_parse_json(answer)
         except Exception as exc:
             return {"valid": False, "reason": f"Invalid JSON: {exc}"}
         selections = parsed.get("selections") if isinstance(parsed, dict) else None

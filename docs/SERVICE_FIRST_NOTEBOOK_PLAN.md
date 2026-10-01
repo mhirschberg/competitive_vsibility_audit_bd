@@ -455,6 +455,30 @@ a resumed run restores the saved scope and original run date. Older checkpoints
 without the date are backfilled from their `created_at` timestamp. This avoids
 re-dating a continued audit to the day it was resumed.
 
+Thirty-eighth checkpoint: Reddit's Gemini/ChatGPT utility race now lives in
+`audit_core.utility_ai_race` and is shared by the service adapter and generated
+notebook. Both requests retain their provider-specific payloads; country is
+omitted, only a validator-approved answer wins, returned records remain in the
+Bright Data usage ledger, and Reddit's audit metadata is preserved. Offline
+tests cover provider failures, invalid answers, payloads, accounting, and the
+notebook wrapper. No live request or deployment was made.
+
+Thirty-ninth checkpoint: the hosted service adapter now calls the importable
+`reddit_social` module directly for Reddit discovery and collection instead of
+requiring those callables from the notebook runtime. The adapter binds the
+Bright Data client, utility race, JSON parser, and Google redirect helpers in
+context variables propagated into Reddit's thread pool. Service-only transport
+imports are stripped from the generated notebook, and both worker image paths
+copy the standalone module. Fixture tests can still inject a fake Reddit
+module. Other audit stages still load notebook-derived code, so this is not a
+notebook-free worker or a memory reduction claim; no paid request or deployment
+was made.
+
+Next: continue extracting the remaining provider callbacks used by company and
+competitor research and the measured Google AI Mode path. Then remove the
+worker's notebook expansion only after all provider/parity fixtures are in
+place, followed by a live canary and process-tree memory comparison.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

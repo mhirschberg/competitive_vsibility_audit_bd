@@ -11,6 +11,7 @@ RUN apt-get update \
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --only-binary=:all: --timeout=60 --retries=3 -r /app/requirements.txt
 COPY app.py runner_builder.py competitive_visibility_audit_bd.ipynb /app/
+COPY reddit_social.py /app/reddit_social.py
 COPY scripts /app/scripts
 COPY hosted /app/hosted
 COPY audit_core /app/audit_core
