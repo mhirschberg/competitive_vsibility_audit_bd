@@ -43,6 +43,7 @@ from audit_core.report_render_stage import ReportRenderPorts
 from audit_core.report_stage import generate_report_stage_core
 from audit_core.serp_metrics import calculate_all_serp_metrics
 from audit_core.search_stage import SearchStagePorts
+from audit_core.search_discovery import run_search_discovery_core
 from audit_core.social_completion_stage import SocialCompletionPorts
 from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
 from audit_core.visibility_prompt import build_visibility_prompt_core
@@ -318,6 +319,60 @@ def _service_visibility_runner(runtime, client):
     return run_visibility
 
 
+def _service_search_runner(runtime, client):
+    """Bind shared Stage 2 discovery to the active provider and settings."""
+    discovery_bindings = (
+        'run_ai_mode_question', 'run_keyword_serp_task',
+        'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
+        'merge_discovery_candidates',
+    )
+    if not all(name in runtime for name in discovery_bindings):
+        # Retain the old port only for minimal transition/test runtimes. The
+        # generated hosted runner provides the granular ports and takes the
+        # shared-core path below.
+        legacy_runner = runtime.get('run_serp_stage')
+        if callable(legacy_runner):
+            return legacy_runner
+        missing = [name for name in discovery_bindings if name not in runtime]
+        raise KeyError(f'Missing Stage 2 discovery bindings: {missing}')
+
+    async def run_search(keywords, target_domain):
+        settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
+            'AUDIT_SETTINGS', {}
+        )
+        return await run_search_discovery_core(
+            keywords,
+            target_domain,
+            client=client,
+            requested_engine=settings.get(
+                'search_engine', runtime.get('SEARCH_ENGINE', 'auto'),
+            ),
+            measure_google_ai_mode=bool(
+                settings.get('include_google_ai_mode', True)
+            ),
+            wait_longer_for_google_ai_mode=bool(
+                settings.get('wait_longer_for_google_ai_mode', False)
+            ),
+            only_reuse_google_ai=bool(
+                runtime.get('_GOOGLE_AI_ONLY_REUSE', False)
+            ),
+            run_ai_mode_question=runtime['run_ai_mode_question'],
+            run_keyword_serp_task=runtime['run_keyword_serp_task'],
+            aggregate_competitor_domains=runtime[
+                'aggregate_competitor_domains'
+            ],
+            build_ai_mode_source_candidates=runtime[
+                'build_ai_mode_source_candidates'
+            ],
+            merge_discovery_candidates=runtime[
+                'merge_discovery_candidates'
+            ],
+            model_to_dict=runtime['model_to_dict'],
+        )
+
+    return run_search
+
+
 def _service_utility_ai_race(runtime, client):
     """Build Reddit's utility race from shared code and explicit providers."""
     def validate_json_object(answer):
@@ -480,7 +535,7 @@ def build_runtime_ports(runtime):
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
             'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
-            'BuyerIntentKeyword', 'run_serp_stage',
+            'BuyerIntentKeyword',
             'CompetitorCandidate', '_competitor_decision_ports',
             'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
@@ -506,10 +561,18 @@ def build_runtime_ports(runtime):
             'proofread_buyer_keywords',
             ):
                 need(name)
+        search_bindings = (
+            'run_ai_mode_question', 'run_keyword_serp_task',
+            'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
+            'merge_discovery_candidates',
+        )
+        if not all(name in runtime for name in search_bindings):
+            need('run_serp_stage')
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
     preflight()
     generate_report = _service_report_generator(runtime, client)
+    run_search = _service_search_runner(runtime, client)
     run_profiles = _service_profile_runner(runtime)
     run_visibility = _service_visibility_runner(runtime, client)
     start_reddit_discovery, run_reddit_social = _service_reddit_runners(
@@ -534,7 +597,7 @@ def build_runtime_ports(runtime):
             clean_record=clean_record, stage_success=success,
         ),
         search_stage=SearchStagePorts(
-            run_search=need('run_serp_stage'),
+            run_search=run_search,
             candidate_factory=need('CompetitorCandidate'),
             model_to_dict=model_to_dict, write_json=write_json,
             stage_success=success, stage_warning=warning,

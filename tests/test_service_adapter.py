@@ -14,7 +14,7 @@ import reddit_social
 
 from hosted.service_adapter import (
     _service_company_analyzer, _service_reddit_runners, _service_utility_ai_race,
-    build_runtime_ports, run_with_legacy_runtime,
+    _service_search_runner, build_runtime_ports, run_with_legacy_runtime,
 )
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
 from audit_core.competitor_scope import build_locked_target_scope
@@ -409,6 +409,79 @@ class ServiceAdapterTests(unittest.TestCase):
         ports = build_runtime_ports(runtime)
         self.assertTrue(callable(ports.visibility_stage.run_reddit_social))
         self.assertTrue(callable(ports.competitor_stage.start_reddit_prefetch))
+
+    def test_service_search_runner_uses_shared_core_and_explicit_settings(self):
+        class Client:
+            debug = False
+            active_search_engine = None
+
+            def choose_search_engine(self, _query, requested):
+                self.requested_engine = requested
+                return 'google'
+
+            @staticmethod
+            def log(*_args):
+                pass
+
+        client = Client()
+        search_calls = []
+
+        async def keyword_task(**kwargs):
+            search_calls.append(kwargs)
+            return {
+                'keyword': kwargs['keyword'],
+                'engine': kwargs['search_engine'],
+                'success': True,
+                'results': [{'domain': 'example.com'}],
+            }
+
+        async def unexpected_ai_question(**_kwargs):
+            raise AssertionError('Google AI Mode is disabled in this test')
+
+        runtime = {
+            'SERVICE_AUDIT_SETTINGS': {
+                'search_engine': 'auto',
+                'include_google_ai_mode': False,
+                'wait_longer_for_google_ai_mode': True,
+            },
+            '_GOOGLE_AI_ONLY_REUSE': True,
+            'run_ai_mode_question': unexpected_ai_question,
+            'run_keyword_serp_task': keyword_task,
+            'aggregate_competitor_domains': lambda **_kwargs: [],
+            'build_ai_mode_source_candidates': lambda **_kwargs: [],
+            'merge_discovery_candidates': lambda **kwargs: kwargs['serp_candidates'],
+            'model_to_dict': lambda item: item,
+            'run_serp_stage': lambda *_args, **_kwargs: (
+                (_ for _ in ()).throw(AssertionError(
+                    'shared search core must bypass the notebook stage wrapper'
+                ))
+            ),
+        }
+
+        result = asyncio.run(_service_search_runner(runtime, client)(
+            ['first keyword', 'second keyword'], 'example.com',
+        ))
+
+        self.assertEqual(client.requested_engine, 'auto')
+        self.assertEqual(result['search_status'], 'available')
+        self.assertEqual(result['ai_mode_discovery']['results'], [])
+        self.assertEqual(len(search_calls), 2)
+        self.assertTrue(all(call['search_engine'] == 'google' for call in search_calls))
+
+    def test_runtime_ports_do_not_require_notebook_search_stage_wrapper(self):
+        runtime = self.runtime([])
+        runtime.pop('run_serp_stage')
+        runtime.update({
+            'run_ai_mode_question': lambda **_kwargs: None,
+            'run_keyword_serp_task': lambda **_kwargs: None,
+            'aggregate_competitor_domains': lambda **_kwargs: [],
+            'build_ai_mode_source_candidates': lambda **_kwargs: [],
+            'merge_discovery_candidates': lambda **kwargs: kwargs['serp_candidates'],
+        })
+
+        ports = build_runtime_ports(runtime)
+
+        self.assertTrue(callable(ports.search_stage.run_search))
 
     def test_worker_images_copy_the_importable_reddit_module(self):
         root = Path(__file__).resolve().parents[1]
