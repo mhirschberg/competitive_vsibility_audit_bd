@@ -276,20 +276,6 @@ def build_runtime_ports(runtime):
     format_duration = need('format_duration')
     company_scope = {'value': None}
 
-    def analyze_company(settings):
-        """Translate the old analyzer's runtime write into an explicit result."""
-        # The notebook analyzer still publishes this value into its flat
-        # namespace. Keep that compatibility at the provider boundary only;
-        # the hosted coordinator and its stages consume the returned value.
-        runtime.pop('LOCKED_TARGET_SCOPE', None)
-        result = need('analyze_company_stage')(settings)
-        legacy_scope = runtime.pop('LOCKED_TARGET_SCOPE', None)
-        if isinstance(result, dict) and not result.get('locked_target_scope'):
-            if legacy_scope:
-                result = dict(result)
-                result['locked_target_scope'] = legacy_scope
-        return result
-
     def write_company_json(path, data):
         return write_json_with_scope(
             path,
@@ -377,7 +363,7 @@ def build_runtime_ports(runtime):
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
-            analyze=analyze_company,
+            analyze=need('analyze_company_stage'),
             intake_factory=need('CompanyIntake'),
             brand_factory=need('BrandAnalysis'),
             keyword_factory=need('BuyerIntentKeyword'),

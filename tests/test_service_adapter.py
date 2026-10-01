@@ -157,9 +157,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 'core_offerings': ['premium smartphones'], 'audit_focus': '',
             }
             result = original_analyze(settings)
-            # Model the legacy notebook analyzer: it writes scope into the
-            # flat namespace instead of returning it as part of its result.
-            runtime['LOCKED_TARGET_SCOPE'] = scope
+            # The analyzer returns scope explicitly. Notebook compatibility
+            # may still publish it globally in its own wrapper.
+            result['locked_target_scope'] = scope
             return result
         runtime['analyze_company_stage'] = analyze_and_lock
         return runtime
