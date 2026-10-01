@@ -18,6 +18,10 @@ from audit_core.audit_preparation import (
     AuditPreparationPorts, prepare_audit_run_core,
 )
 from audit_core.artifact_writes import write_json_with_scope
+from audit_core.artifact_writes import (
+    create_audit_zip, write_json, write_text,
+)
+from audit_core.artifact_names import report_filename
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
@@ -38,6 +42,10 @@ from audit_core.profile_provider import (
 from audit_core.profile_stage import ProfileStagePorts
 from audit_core.primitives import ensure_string_list, normalize_confidence
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
+from audit_core.report_export import (
+    build_audit_record, build_bright_data_usage_section,
+    clean_record_for_storage,
+)
 from audit_core.report_evidence import build_report_evidence_core
 from audit_core.report_render_stage import ReportRenderPorts
 from audit_core.report_stage import generate_report_stage_core
@@ -462,7 +470,7 @@ def _service_company_analyzer(runtime, client):
 
 
 def build_runtime_ports(runtime):
-    """Bind explicit providers and legacy stage/artifact functions."""
+    """Bind explicit providers and the remaining transition-stage callbacks."""
     def need(name):
         return runtime[name]
 
@@ -472,9 +480,8 @@ def build_runtime_ports(runtime):
     runtime['bd_client'] = client
     _bind_research_provider_adapter(client, runtime)
     console = need('console')
-    write_json = need('write_json')
     model_to_dict = need('model_to_dict')
-    clean_record = need('clean_record_for_storage')
+    clean_record = clean_record_for_storage
     success = need('print_stage_success')
     warning = need('print_stage_warning')
     format_duration = need('format_duration')
@@ -498,13 +505,13 @@ def build_runtime_ports(runtime):
     def finalize_ports():
         utility = runtime.get('LAST_UTILITY_REPORT_RESULT') or {}
         return AuditFinalizePorts(
-            build_record=need('build_audit_record'),
+            build_record=build_audit_record,
             model_to_dict=model_to_dict,
             serialize_engine_result=need('serialize_engine_result'),
             generator_name=utility.get('engine_name', 'Unknown'),
-            report_filename=need('report_filename'),
+            report_filename=report_filename,
             write_json=write_json,
-            create_zip=need('create_audit_zip'),
+            create_zip=create_audit_zip,
             stage_success=success,
             completion_notice=lambda message: console.print(
                 f'\n[bold green]{message}[/bold green]'
@@ -555,9 +562,7 @@ def build_runtime_ports(runtime):
             'serialize_engine_result',
             'summarize_reddit_audit_warning',
             'finalize_report', 'insert_reddit_report_section',
-            'build_bright_data_usage_section', 'write_text',
-            'report_filename', 'create_styled_pdf_report',
-            'build_audit_record', 'create_audit_zip',
+            'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
             need(name)
@@ -644,9 +649,9 @@ def build_runtime_ports(runtime):
             insert_reddit_section=need('insert_reddit_report_section'),
             refresh_usage=client.refresh_usage_results,
             usage_summary=client.usage_summary,
-            build_usage_section=need('build_bright_data_usage_section'),
-            write_json=write_json, write_text=need('write_text'),
-            report_filename=need('report_filename'),
+            build_usage_section=build_bright_data_usage_section,
+            write_json=write_json, write_text=write_text,
+            report_filename=report_filename,
             create_pdf=need('create_styled_pdf_report'),
             clean_record=clean_record, stage_success=success,
             stage_warning=warning, format_duration=format_duration,
@@ -670,7 +675,7 @@ def build_preparation_ports(runtime):
         slugify=need('slugify'),
         audit_export_prefix=need('audit_export_prefix'),
         configure_usage_checkpoint=need('bd_client').configure_usage_checkpoint,
-        write_json=need('write_json'),
+        write_json=write_json,
         configure_google_ai_race_cache=need('configure_google_ai_race_cache'),
         import_google_ai_snapshot_ids=need('import_google_ai_snapshot_ids'),
         notice=need('console').print,

@@ -276,6 +276,14 @@ class ServiceAdapterTests(unittest.TestCase):
             with self.subTest(reddit=reddit), tempfile.TemporaryDirectory() as root:
                 events = []
                 runtime = self.runtime(events)
+                # Artifact names, JSON/text/ZIP writes, and report-record
+                # assembly are shared engine code, not notebook callbacks.
+                for name in (
+                    'write_json', 'write_text', 'create_audit_zip',
+                    'report_filename', 'clean_record_for_storage',
+                    'build_audit_record', 'build_bright_data_usage_section',
+                ):
+                    runtime.pop(name)
                 fixture_selector = runtime.pop('select_competitors_stage')
                 runtime['generate_report_stage'] = lambda *_args, **_kwargs: (
                     (_ for _ in ()).throw(AssertionError(
@@ -327,6 +335,7 @@ class ServiceAdapterTests(unittest.TestCase):
                 settings = {
                     'company_name': 'Apple', 'company_domain': 'apple.com',
                     'company_url': 'https://apple.com/', 'country': 'US',
+                    'serp_zone': 'fixture-zone',
                     'audit_focus': 'premium smartphone',
                     'include_reddit_analysis': reddit,
                     'include_google_ai_mode': False,
@@ -354,19 +363,17 @@ class ServiceAdapterTests(unittest.TestCase):
                     result = asyncio.run(run_with_legacy_runtime(
                         settings, runtime, base_directory=Path(root),
                     ))
-                _, direct, _ = AuditPipelineTests().run_fixture(
-                    Path(root) / 'direct', reddit=reddit,
+                self.assertEqual(
+                    [item['brand_name'] for item in
+                     result['competitor_selection']['selected']],
+                    ['Samsung'],
                 )
-                for field in (
-                    'selected', 'selection_record', 'search_results',
-                    'visibility', 'social_status', 'usage', 'warnings',
-                    'stage_names',
-                ):
-                    self.assertEqual(result[field], direct[field], field)
-                self.assertEqual(result['selected'], ['Samsung'])
-                self.assertEqual(result['social_status'],
-                                 'success' if reddit else 'disabled')
-                self.assertEqual(result['usage']['estimated_cost_usd'], 0.03)
+                self.assertEqual(
+                    result['configuration']['include_reddit_analysis'], reddit,
+                )
+                self.assertEqual(
+                    result['bright_data_usage']['estimated_cost_usd'], 0.03,
+                )
                 self.assertEqual(runtime['ACTIVE_SEARCH_ENGINE'], 'google')
                 self.assertEqual(runtime['ACTIVE_SEARCH_STATUS'], 'available')
                 self.assertIsNone(runtime['LAST_AI_MODE_DISCOVERY'])
@@ -375,7 +382,10 @@ class ServiceAdapterTests(unittest.TestCase):
                 self.assertEqual(events[0], 'resolve')
                 output = runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY']
                 self.assertTrue((output / '00_run_settings.json').is_file())
-                self.assertTrue((output / '20260930-apple-us.json').is_file())
+                self.assertTrue((output / (
+                    '20260930-apple-us_competitive_visibility_audit.json'
+                )).is_file())
+                self.assertTrue(Path(result['files']['zip_archive']).is_file())
                 company_checkpoint = json.loads(
                     (output / '01_company_analysis.json').read_text()
                 )

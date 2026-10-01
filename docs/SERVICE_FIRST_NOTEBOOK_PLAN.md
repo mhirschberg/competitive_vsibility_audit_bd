@@ -567,9 +567,22 @@ retry and timeout behavior and exercise the real provider adapter through the
 shared discovery core. No paid request, notebook change, deployment, or memory
 claim was made.
 
-Next: remove the remaining measured Google AI Mode question and candidate
-aggregation callbacks from the notebook runtime, keeping cache/resume and
-country-validation semantics intact.
+Next: remove remaining notebook-derived serialization and presentation
+callbacks where the shared engine already has equivalent behavior, while
+keeping report artifacts and the notebook's user-facing flow unchanged.
+
+Forty-seventh checkpoint: hosted orchestration now binds audit-record
+assembly, report filenames, Bright Data usage copy, storage cleanup, and
+JSON/text/ZIP artifact writers directly from shared `audit_core` modules.
+These are no longer required callbacks from the notebook runtime; a complete
+offline hosted-pipeline fixture runs with those bindings removed. Existing
+notebook generation continues embedding the same shared implementations.
+The report output contract remains the structured shared audit record and
+standard dated artifact names. No provider requests, deployment, or memory
+claim was made.
+
+Next: extract the remaining engine-result/profile-task serializers and reduce
+the progress-display callbacks that are still sourced from notebook runtime.
 
 ## Decision
 
