@@ -34,7 +34,7 @@ from audit_core.competitor_scope import (
 )
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
-from audit_core.domains import get_root_domain
+from audit_core.domains import get_root_domain, normalize_public_url
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
@@ -267,7 +267,7 @@ def _service_profile_runner(runtime):
             data,
             job,
             profile_factory=runtime['BrandProfile'],
-            normalize_public_url=runtime['normalize_public_url'],
+            normalize_public_url=normalize_public_url,
             get_root_domain=get_root_domain,
             ensure_string_list=ensure_string_list,
             normalize_confidence=normalize_confidence,
@@ -580,7 +580,7 @@ def build_runtime_ports(runtime):
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
-            'parse_ai_json', 'normalize_public_url',
+            'parse_ai_json',
             'remove_ai_boilerplate',
             'SnapshotTimeoutError',
             'create_styled_pdf_report',
