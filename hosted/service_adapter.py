@@ -38,6 +38,8 @@ from audit_core.serp_metrics import calculate_all_serp_metrics
 from audit_core.search_stage import SearchStagePorts
 from audit_core.social_completion_stage import SocialCompletionPorts
 from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
+from audit_core.visibility_prompt import build_visibility_prompt_core
+from audit_core.visibility_stage import run_visibility_stage_core
 from audit_core.visibility_sources import collect_visibility_sources_service
 
 
@@ -257,6 +259,42 @@ def _service_profile_runner(runtime):
     return run_profiles
 
 
+def _service_visibility_runner(runtime, client):
+    """Bind the measured-visibility core to the standalone provider client."""
+    async def run_visibility(
+        *, target_profile, all_profiles, keywords, include_copilot,
+        include_google_ai_mode, include_chatgpt, include_gemini,
+        wait_longer_for_chatgpt, wait_longer_for_gemini,
+        wait_longer_for_copilot,
+    ):
+        settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
+            'AUDIT_SETTINGS', {}
+        )
+        return await run_visibility_stage_core(
+            target_profile,
+            all_profiles,
+            keywords,
+            bd_client=client,
+            prompt_builder=lambda target_profile, keywords: (
+                build_visibility_prompt_core(
+                    target_profile,
+                    keywords,
+                    audit_focus=settings.get('audit_focus', ''),
+                )
+            ),
+            ai_mode_discovery=runtime.get('LAST_AI_MODE_DISCOVERY'),
+            include_copilot=include_copilot,
+            include_google_ai_mode=include_google_ai_mode,
+            include_chatgpt=include_chatgpt,
+            include_gemini=include_gemini,
+            wait_longer_for_chatgpt=wait_longer_for_chatgpt,
+            wait_longer_for_gemini=wait_longer_for_gemini,
+            wait_longer_for_copilot=wait_longer_for_copilot,
+        )
+
+    return run_visibility
+
+
 def build_runtime_ports(runtime):
     """Bind explicit providers and legacy stage/artifact functions."""
     def need(name):
@@ -345,7 +383,7 @@ def build_runtime_ports(runtime):
             'start_reddit_discovery_prefetch', 'BrandProfile',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'SnapshotTimeoutError',
-            'serialize_profile_task', 'run_visibility_stage',
+            'serialize_profile_task',
             'run_reddit_social_stage', 'serialize_engine_result',
             'summarize_reddit_audit_warning',
             'finalize_report', 'insert_reddit_report_section',
@@ -360,6 +398,7 @@ def build_runtime_ports(runtime):
     preflight()
     generate_report = _service_report_generator(runtime, client)
     run_profiles = _service_profile_runner(runtime)
+    run_visibility = _service_visibility_runner(runtime, client)
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
@@ -403,7 +442,7 @@ def build_runtime_ports(runtime):
             write_json=write_json, stage_success=success, stage_warning=warning,
         ),
         visibility_stage=VisibilityCheckpointPorts(
-            run_visibility=need('run_visibility_stage'),
+            run_visibility=run_visibility,
             run_reddit_social=need('run_reddit_social_stage'),
             serialize_engine_result=need('serialize_engine_result'),
             write_json=write_json, stage_success=success,
