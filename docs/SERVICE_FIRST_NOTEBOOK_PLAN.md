@@ -153,11 +153,10 @@ source collector and boilerplate cleaner, and the top-level notebook runner
 passes its measured stage results into `build_audit_record`. Synthetic tests
 cover source-appendix idempotence, lower-bound cost wording, retained engine
 labels, and the audit object schema. This stage does not write files or call
-providers. The notebook's later `write_json` override still adds locked scope
-to saved files, so the service-native file writer must account for that before
-the hosted runner switches. PDF rendering, artifact writing, Reddit insertion,
-and the top-level orchestration remain notebook-owned. No live requests,
-production deployment, or cost incurred.
+providers. File writing and locked-scope augmentation were later extracted in
+the seventeenth checkpoint. PDF rendering, Reddit insertion, and the top-level
+orchestration remain notebook-owned. No live requests, production deployment,
+or cost incurred.
 
 Fifteenth checkpoint: `audit_core.domains` now owns registrable-domain
 normalization, `audit_core.serp_metrics` owns traditional-search visibility
@@ -185,6 +184,17 @@ service/notebook parity; the base prompt and source outputs were also compared
 against the preceding notebook commit. This still does not provide a complete
 service-native Bright Data client or top-level runner. No paid request or
 production deployment was made.
+
+Seventeenth checkpoint: `audit_core.artifact_writes` now owns JSON/text output,
+ZIP assembly, and the locked-scope augmentation formerly duplicated in a late
+notebook override. `audit_core.artifact_resume` selects a matching incomplete
+audit or restores its checkpoint ZIP. The notebook embeds both modules and
+keeps only a settings adapter for the locked-scope write. Tests cover old and
+dated report names, archive contents, unsafe ZIP members, resumed checkpoints,
+and notebook/service parity. The dated final JSON now retains locked-scope
+metadata, which the old exact-name condition silently missed. PDF rendering,
+social insertion, the remaining provider adapters, and top-level orchestration
+are still notebook-owned. No live request or production deployment was made.
 
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
