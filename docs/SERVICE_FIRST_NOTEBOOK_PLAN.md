@@ -243,6 +243,17 @@ unchanged: Stage 4 is recalculated rather than loaded from its prior artifact.
 Later stages and the top-level scheduler remain notebook-driven. No paid
 provider request or production deployment was made.
 
+Twenty-second checkpoint: `audit_core.visibility_checkpoint_stage` now owns
+Stage 5 orchestration around the previously shared visibility measurement.
+It starts optional Reddit work concurrently, records successful and failed
+AI engines without turning unavailable answers into zero scores, and saves the
+measured visibility artifact before Stage 6 waits for social results. The
+notebook retains a thin provider/progress adapter. Synthetic tests cover
+partial engine failure, checkpoint contents, parallel Reddit timing, and
+adapter wiring. Reddit completion/reporting and final report orchestration
+remain notebook-driven. No paid provider request or production deployment was
+made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

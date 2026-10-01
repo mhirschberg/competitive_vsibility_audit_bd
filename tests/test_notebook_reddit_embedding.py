@@ -34,7 +34,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
         orchestration = "".join(self.notebook["cells"][5]["source"])
         for hook in (
             "start_reddit_prefetch=start_reddit_discovery_prefetch",
-            "run_reddit_social_stage(",
+            "run_reddit_social=run_reddit_social_stage",
             "discovery_prefetch_task=reddit_prefetch_task",
             'output_directory / "05_reddit_social.json"',
             'output_directory / "05_reddit_snapshot_manifest.json"',

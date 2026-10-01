@@ -28,6 +28,7 @@ SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
 COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_stage.py"
 PROFILE_RESEARCH_SOURCE = ROOT / "audit_core" / "profile_research.py"
 PROFILE_STAGE_SOURCE = ROOT / "audit_core" / "profile_stage.py"
+VISIBILITY_CHECKPOINT_STAGE_SOURCE = ROOT / "audit_core" / "visibility_checkpoint_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -85,6 +86,10 @@ PROFILE_STAGE_START = "# AUDIT-PROFILE-STAGE: start"
 PROFILE_STAGE_END = "# AUDIT-PROFILE-STAGE: end"
 PROFILE_STAGE_CALL_START = "# AUDIT-PROFILE-STAGE-CALL: start"
 PROFILE_STAGE_CALL_END = "    # AUDIT-PROFILE-STAGE-CALL: end"
+VISIBILITY_CHECKPOINT_STAGE_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: start"
+VISIBILITY_CHECKPOINT_STAGE_END = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: end"
+VISIBILITY_CHECKPOINT_STAGE_CALL_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: start"
+VISIBILITY_CHECKPOINT_STAGE_CALL_END = "    # AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -254,6 +259,36 @@ PROFILE_STAGE_CALL_SOURCE = '''    profile_stage = await run_profile_stage_core(
     all_profiles = profile_stage["all_profiles"]
     stage_durations["brand_profiles"] = profile_stage["duration_seconds"]
     warnings.extend(profile_stage["warnings"])'''
+VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE = '''    visibility_stage = await run_visibility_checkpoint_stage_core(
+        target_profile, competitor_profiles, all_profiles, keywords,
+        keyword_serp_results,
+        include_copilot=include_copilot_visibility,
+        include_google_ai_mode=include_google_ai_mode,
+        include_chatgpt=include_chatgpt_visibility,
+        include_gemini=include_gemini_visibility,
+        wait_longer_for_chatgpt=bool(settings.get("wait_longer_for_chatgpt", False)),
+        wait_longer_for_gemini=bool(settings.get("wait_longer_for_gemini", False)),
+        wait_longer_for_copilot=bool(settings.get("wait_longer_for_copilot", False)),
+        include_reddit_analysis=include_reddit_analysis,
+        audit_focus=settings.get("audit_focus", ""),
+        reddit_prefetch_task=reddit_prefetch_task,
+        output_directory=output_directory,
+        started_at=stage_started_at,
+        ports=VisibilityCheckpointPorts(
+            run_visibility=run_visibility_stage,
+            run_reddit_social=run_reddit_social_stage,
+            serialize_engine_result=serialize_engine_result,
+            write_json=write_json,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+        ),
+    )
+    visibility_result = visibility_stage["visibility_result"]
+    reddit_task = visibility_stage["reddit_task"]
+    reddit_social_result = visibility_stage["reddit_social_result"]
+    stage_durations["ai_visibility"] = visibility_stage["duration_seconds"]
+    warnings.extend(visibility_stage["warnings"])'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -306,6 +341,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    competitor_selection_stage_source=COMPETITOR_SELECTION_STAGE_SOURCE,
                    profile_research_source=PROFILE_RESEARCH_SOURCE,
                    profile_stage_source=PROFILE_STAGE_SOURCE,
+                   visibility_checkpoint_stage_source=VISIBILITY_CHECKPOINT_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -579,6 +615,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         PROFILE_STAGE_CALL_START,
         PROFILE_STAGE_CALL_END,
         PROFILE_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        VISIBILITY_CHECKPOINT_STAGE_START,
+        VISIBILITY_CHECKPOINT_STAGE_END,
+        Path(visibility_checkpoint_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        VISIBILITY_CHECKPOINT_STAGE_CALL_START,
+        VISIBILITY_CHECKPOINT_STAGE_CALL_END,
+        VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
