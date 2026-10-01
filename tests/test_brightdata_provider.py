@@ -1,10 +1,11 @@
 """The standalone service provider client reuses shared result accounting."""
 
+import asyncio
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID,
@@ -26,6 +27,41 @@ class FakeResponse:
 
 
 class BrightDataProviderTests(unittest.TestCase):
+    def test_keyword_serp_task_retries_low_quality_google_once(self):
+        client = BrightDataProviderClient("test-token", "test-zone", "US")
+        client.search_serp = Mock(side_effect=[
+            {"results": [{"domain": "one.example", "rank": 1}]},
+            {"results": [
+                {"domain": f"site-{index}.example", "rank": index}
+                for index in range(1, 6)
+            ], "raw_result_count": 5, "requested_country": "US"},
+        ])
+
+        with patch(
+            "hosted.brightdata_provider.asyncio.sleep", new=AsyncMock(),
+        ):
+            result = asyncio.run(client.run_keyword_serp_task(
+                "neutral query", asyncio.Semaphore(1), search_engine="google",
+            ))
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["attempt"], 2)
+        self.assertEqual(client.search_serp.call_count, 2)
+
+    def test_keyword_serp_task_does_not_repeat_google_selector_timeout(self):
+        client = BrightDataProviderClient("test-token", "test-zone", "US")
+        selector_error = RuntimeError("selector #main timed out")
+        selector_error.selector_timeout = True
+        client.search_serp = Mock(side_effect=selector_error)
+
+        result = asyncio.run(client.run_keyword_serp_task(
+            "neutral query", asyncio.Semaphore(1), search_engine="google",
+        ))
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["attempt"], 1)
+        self.assertEqual(client.search_serp.call_count, 1)
+
     def test_measured_google_ai_mode_uses_provider_transport_and_ledger(self):
         client = BrightDataProviderClient("test-token", "test-zone", "DE")
         calls = []

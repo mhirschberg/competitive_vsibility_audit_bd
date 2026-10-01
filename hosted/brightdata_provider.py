@@ -5,6 +5,7 @@ It owns credentials, result accounting, and the effective snapshot operations;
 it deliberately does not import or execute the generated notebook.
 """
 
+import asyncio
 import json
 
 from audit_core.brightdata_transport import (
@@ -27,6 +28,7 @@ from audit_core.brightdata_transport import (
     reliable_trigger_dataset,
     wait_for_snapshot,
 )
+from audit_core.serp_transport import search_result_quality
 from audit_core.brightdata_usage import BrightDataUsageLedger
 from audit_core.ai_visibility_race import race_ai_visibility_core
 from audit_core.ai_localization import (
@@ -183,6 +185,66 @@ class BrightDataProviderClient(BrightDataUsageLedger):
             normalize_serp_records=self.normalize_serp_records,
             parse_bing_markdown=self._parse_bing_markdown,
         )
+
+    async def run_keyword_serp_task(
+        self, keyword, semaphore, num_results=20, search_engine=None,
+    ):
+        """Measure one keyword with the audit's outer SERP quality retry."""
+        async with semaphore:
+            engine = str(search_engine or "").lower()
+            max_attempts = 2 if engine == "google" else 1
+            last_error = None
+            attempt = 0
+
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = await asyncio.to_thread(
+                        self.search_serp,
+                        keyword,
+                        engine,
+                        "en",
+                        num_results,
+                    )
+                    if search_result_quality(response, engine) != "available":
+                        raise BrightDataAPIError(
+                            f"{engine.title()} returned no usable organic results."
+                        )
+                    return {
+                        "keyword": keyword,
+                        "engine": engine,
+                        "success": True,
+                        "results": response.get("results", []),
+                        "raw_result_count": response.get("raw_result_count", 0),
+                        "requested_country": response.get("requested_country"),
+                        "observed_country": response.get("observed_country"),
+                        "localization_warning": response.get(
+                            "localization_warning", False,
+                        ),
+                        "attempt": attempt,
+                        "error": None,
+                    }
+                except Exception as exc:
+                    last_error = exc
+                    self.log(
+                        f"{engine.title()} attempt {attempt}/{max_attempts} "
+                        f"failed for {keyword!r}: {exc}",
+                        "yellow",
+                    )
+                    if getattr(exc, "selector_timeout", False):
+                        break
+                    if engine == "google" and attempt < max_attempts:
+                        self.log(f"Waiting 5 seconds before retrying {keyword!r}")
+                        await asyncio.sleep(5)
+
+            return {
+                "keyword": keyword,
+                "engine": engine,
+                "success": False,
+                "results": [],
+                "raw_result_count": 0,
+                "attempt": attempt,
+                "error": str(last_error),
+            }
 
     def choose_search_engine(self, test_query, requested_engine="auto"):
         return choose_search_engine_core(

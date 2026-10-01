@@ -557,6 +557,20 @@ Next: extract or directly bind the granular Stage 2 provider callbacks so they
 no longer resolve behavior from the notebook runtime, then continue removing
 remaining required notebook bindings.
 
+Forty-sixth checkpoint: the standalone Bright Data client now owns the
+per-keyword SERP task used by hosted Stage 2. It preserves Google’s single
+outer quality retry, Bing’s single attempt, semaphore behavior, result shape,
+and immediate stop on Google selector timeouts; the existing lower-level
+transport retains its own transient-response retries. Hosted Stage 2 no longer
+requires the notebook’s `run_keyword_serp_task` callback. Offline tests cover
+retry and timeout behavior and exercise the real provider adapter through the
+shared discovery core. No paid request, notebook change, deployment, or memory
+claim was made.
+
+Next: remove the remaining measured Google AI Mode question and candidate
+aggregation callbacks from the notebook runtime, keeping cache/resume and
+country-validation semantics intact.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

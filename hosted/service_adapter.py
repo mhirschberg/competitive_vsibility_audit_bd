@@ -322,7 +322,7 @@ def _service_visibility_runner(runtime, client):
 def _service_search_runner(runtime, client):
     """Bind shared Stage 2 discovery to the active provider and settings."""
     discovery_bindings = (
-        'run_ai_mode_question', 'run_keyword_serp_task',
+        'run_ai_mode_question',
         'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
         'merge_discovery_candidates',
     )
@@ -357,7 +357,7 @@ def _service_search_runner(runtime, client):
                 runtime.get('_GOOGLE_AI_ONLY_REUSE', False)
             ),
             run_ai_mode_question=runtime['run_ai_mode_question'],
-            run_keyword_serp_task=runtime['run_keyword_serp_task'],
+            run_keyword_serp_task=client.run_keyword_serp_task,
             aggregate_competitor_domains=runtime[
                 'aggregate_competitor_domains'
             ],
@@ -562,7 +562,7 @@ def build_runtime_ports(runtime):
             ):
                 need(name)
         search_bindings = (
-            'run_ai_mode_question', 'run_keyword_serp_task',
+            'run_ai_mode_question',
             'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
             'merge_discovery_candidates',
         )
