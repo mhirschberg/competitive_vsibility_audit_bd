@@ -43,6 +43,11 @@ from audit_core.visibility_prompt import build_visibility_prompt_core
 from audit_core.visibility_stage import run_visibility_stage_core
 from audit_core.visibility_sources import collect_visibility_sources_service
 from audit_core.utility_ai_race import race_utility_ai_core
+from audit_core.research_validation import (
+    identify_research_task,
+    snapshot_is_materializing,
+    validate_research_answer,
+)
 from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
     BrightDataAPIError,
@@ -52,8 +57,7 @@ from audit_core.brightdata_transport import (
 _RESEARCH_BINDINGS = (
     'RESEARCH_PROVIDERS', 'cached_google_ai_snapshot_ids',
     'remember_google_ai_snapshot', 'localize_google_ai_prompt',
-    'identify_google_ai_research_task', 'validate_google_ai_research_answer',
-    'google_ai_snapshot_is_materializing', 'FAILED_STATUSES',
+    'FAILED_STATUSES',
     '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError', 'BrightDataAPIError',
 )
 
@@ -84,9 +88,14 @@ def _bind_research_provider_adapter(client, runtime):
         cached_snapshot_ids=runtime['cached_google_ai_snapshot_ids'],
         remember_snapshot=runtime['remember_google_ai_snapshot'],
         localize_prompt=runtime['localize_google_ai_prompt'],
-        identify_task=runtime['identify_google_ai_research_task'],
-        validate_answer=runtime['validate_google_ai_research_answer'],
-        is_materializing=runtime['google_ai_snapshot_is_materializing'],
+        identify_task=identify_research_task,
+        validate_answer=lambda answer, prompt: validate_research_answer(
+            answer,
+            prompt,
+            parse_json=runtime['parse_ai_json'],
+            remove_boilerplate=runtime['remove_ai_boilerplate'],
+        ),
+        is_materializing=snapshot_is_materializing,
         failed_statuses=runtime['FAILED_STATUSES'],
         only_reuse=lambda: runtime['_GOOGLE_AI_ONLY_REUSE'],
         semaphore=runtime.get('_RESEARCH_RACE_SEMAPHORE')
@@ -446,6 +455,7 @@ def build_runtime_ports(runtime):
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
+            'remove_ai_boilerplate',
             'SnapshotTimeoutError',
             'serialize_profile_task',
             'serialize_engine_result',

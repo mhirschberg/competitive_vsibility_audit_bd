@@ -8,6 +8,11 @@ import threading
 
 # SERVICE-ONLY-IMPORTS: start
 from audit_core.research_race import ResearchProviderAdapter
+from audit_core.research_validation import (
+    identify_research_task,
+    snapshot_is_materializing,
+    validate_research_answer,
+)
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -49,9 +54,14 @@ def _research_provider_adapter():
             remember_google_ai_snapshot(cache_key, snapshot_id)
         ),
         localize_prompt=localize_google_ai_prompt,
-        identify_task=identify_google_ai_research_task,
-        validate_answer=validate_google_ai_research_answer,
-        is_materializing=google_ai_snapshot_is_materializing,
+        identify_task=identify_research_task,
+        validate_answer=lambda answer, prompt: validate_research_answer(
+            answer,
+            prompt,
+            parse_json=parse_ai_json,
+            remove_boilerplate=remove_ai_boilerplate,
+        ),
+        is_materializing=snapshot_is_materializing,
         failed_statuses=FAILED_STATUSES,
         only_reuse=_GOOGLE_AI_ONLY_REUSE,
         semaphore=_RESEARCH_RACE_SEMAPHORE,

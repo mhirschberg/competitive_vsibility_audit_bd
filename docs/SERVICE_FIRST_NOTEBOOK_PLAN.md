@@ -479,6 +479,19 @@ competitor research and the measured Google AI Mode path. Then remove the
 worker's notebook expansion only after all provider/parity fixtures are in
 place, followed by a live canary and process-tree memory comparison.
 
+Fortieth checkpoint: research task classification, JSON/narrative answer
+validation, and transient-snapshot detection now live in
+`audit_core.research_validation`. The service adapter no longer requires the
+notebook's corresponding policy callbacks; the generated notebook embeds the
+same module source. Existing parser and answer-cleaning utilities remain
+explicit dependencies. Fixture coverage verifies task families, minimum
+answer quality, JSON requirements, transient records, service wiring, and
+notebook-source parity. No provider requests or deployment were made.
+
+Next: extract the remaining research prompt-localization and company-analysis
+provider boundary, then wire measured Google AI Mode through the standalone
+provider client rather than borrowing the notebook client's bound method.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
