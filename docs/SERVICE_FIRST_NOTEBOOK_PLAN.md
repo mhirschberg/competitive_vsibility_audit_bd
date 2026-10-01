@@ -231,6 +231,18 @@ orchestration still need migration before the hosted job can use a fully
 service-native runner. No paid provider request or production deployment was
 made.
 
+Twenty-first checkpoint: `audit_core.profile_research` now owns the Stage 4
+parallel profile jobs, recovery of late provider snapshots, fallbacks, and
+role/domain deduplication through explicit provider ports.
+`audit_core.profile_stage` owns the profile artifact, duration, and warnings;
+the target's official domain and URL are restored before writing the artifact.
+The notebook embeds both modules and retains thin provider and progress
+adapters. Synthetic tests cover pending recovery, fallback counts, deduped
+profiles, artifact contents, and adapter wiring. Continuation behavior is
+unchanged: Stage 4 is recalculated rather than loaded from its prior artifact.
+Later stages and the top-level scheduler remain notebook-driven. No paid
+provider request or production deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
