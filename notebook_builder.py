@@ -22,6 +22,7 @@ VISIBILITY_PROMPT_SOURCE = ROOT / "audit_core" / "visibility_prompt.py"
 VISIBILITY_SOURCES_SOURCE = ROOT / "audit_core" / "visibility_sources.py"
 ARTIFACT_WRITES_SOURCE = ROOT / "audit_core" / "artifact_writes.py"
 ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
+COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -59,6 +60,10 @@ ARTIFACT_WRITES_START = "# AUDIT-ARTIFACT-WRITES: start"
 ARTIFACT_WRITES_END = "# AUDIT-ARTIFACT-WRITES: end"
 ARTIFACT_RESUME_START = "# AUDIT-ARTIFACT-RESUME: start"
 ARTIFACT_RESUME_END = "# AUDIT-ARTIFACT-RESUME: end"
+COMPANY_STAGE_START = "# AUDIT-COMPANY-STAGE: start"
+COMPANY_STAGE_END = "# AUDIT-COMPANY-STAGE: end"
+COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
+COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -110,6 +115,36 @@ RESEARCH_HEADER = (
     "#@markdown Race ChatGPT and Gemini for internal research; "
     "keep Google AI Mode measured separately.\n\n"
 )
+COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
+        global LOCKED_TARGET_SCOPE
+        LOCKED_TARGET_SCOPE = scope
+
+    company_stage = await run_company_stage_core(
+        settings,
+        continuing=continuing,
+        output_directory=output_directory,
+        raw_directory=raw_directory,
+        run_timestamp=run_timestamp,
+        started_at=stage_started_at,
+        ports=CompanyStagePorts(
+            analyze=analyze_company_stage,
+            intake_factory=CompanyIntake,
+            brand_factory=BrandAnalysis,
+            keyword_factory=BuyerIntentKeyword,
+            get_locked_scope=lambda: LOCKED_TARGET_SCOPE,
+            set_locked_scope=set_company_locked_scope,
+            restore_locked_scope=restore_locked_target_scope,
+            model_to_dict=model_to_dict,
+            write_json=write_json,
+            clean_record=clean_record_for_storage,
+            stage_success=print_stage_success,
+        ),
+    )
+    LOCKED_TARGET_SCOPE = company_stage["locked_scope"]
+    target_brand = company_stage["target_brand"]
+    keyword_records = company_stage["keyword_records"]
+    keywords = company_stage["keywords"]
+    stage_durations["company_analysis"] = company_stage["duration_seconds"]'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -156,6 +191,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    visibility_sources_source=VISIBILITY_SOURCES_SOURCE,
                    artifact_writes_source=ARTIFACT_WRITES_SOURCE,
                    artifact_resume_source=ARTIFACT_RESUME_SOURCE,
+                   company_stage_source=COMPANY_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -367,6 +403,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         ARTIFACT_RESUME_START,
         ARTIFACT_RESUME_END,
         Path(artifact_resume_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        COMPANY_STAGE_START,
+        COMPANY_STAGE_END,
+        Path(company_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        COMPANY_STAGE_CALL_START,
+        COMPANY_STAGE_CALL_END,
+        COMPANY_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
