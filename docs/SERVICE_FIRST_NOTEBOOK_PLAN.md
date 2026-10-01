@@ -542,6 +542,21 @@ Next: keep removing correctness-sensitive runtime dependencies where an
 existing shared core already has parity coverage, then evaluate the remaining
 provider and Stage 2 boundaries before changing worker startup.
 
+Forty-fifth checkpoint: the hosted coordinator now binds Stage 2 through
+`audit_core.search_discovery.run_search_discovery_core`, using the saved audit
+settings and explicit callbacks for per-query SERP, Google AI Mode questions,
+and candidate aggregation. The service runtime no longer requires the
+notebook's `run_serp_stage` wrapper when those granular callbacks are present;
+a compatibility fallback remains only for reduced transition fixtures. The
+shared discovery core already has coverage for bounded first-wave searches,
+Google-to-Bing whole-set fallback, disabled Google AI Mode, partial results,
+and skipping paid questions after a failed health check. No provider requests,
+notebook changes, deployment, or memory claim were made.
+
+Next: extract or directly bind the granular Stage 2 provider callbacks so they
+no longer resolve behavior from the notebook runtime, then continue removing
+remaining required notebook bindings.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
