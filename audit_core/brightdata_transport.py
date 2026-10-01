@@ -14,6 +14,10 @@ GOOGLE_AI_MODE_DATASET_ID = (
     "gd_mcswdt6z2elth3zqr2"
 )
 
+GOOGLE_AI_OUTPUT_FIELDS = (
+    "prompt,answer_text,citations,answer_text_markdown,timestamp"
+)
+
 CHATGPT_DATASET_ID = (
     "gd_m7aof0k82r803d5bjm"
 )

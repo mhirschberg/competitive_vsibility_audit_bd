@@ -12,6 +12,8 @@ from audit_core.brightdata_transport import (
     COPILOT_DATASET_ID,
     FAILED_STATUSES,
     GEMINI_DATASET_ID,
+    GOOGLE_AI_MODE_DATASET_ID,
+    GOOGLE_AI_OUTPUT_FIELDS,
     BD_PROGRESS_URL,
     BD_REQUEST_URL,
     BD_SCRAPE_URL,
@@ -33,6 +35,7 @@ from audit_core.ai_localization import (
     annotate_country_transport,
     apply_compatible_country_payload,
     country_details,
+    localize_google_ai_prompt_core,
     race_localized_ai_visibility,
 )
 from audit_core.domains import canonical_source_url, get_root_domain
@@ -98,6 +101,31 @@ class BrightDataProviderClient(BrightDataUsageLedger):
         if isinstance(value, (dict, list)):
             return json.dumps(value, ensure_ascii=False)
         return str(value or "").strip()
+
+    def google_ai_mode_measured(self, prompt, timeout_seconds=720):
+        """Request a measured Google AI Mode answer through this provider."""
+        localized_prompt = localize_google_ai_prompt_core(
+            prompt, country_details(self.country),
+        )
+        payload = {
+            "input": [{
+                "url": "https://google.com/aimode",
+                "prompt": localized_prompt,
+                "country": self.country,
+            }]
+        }
+        records = self.scrape_dataset(
+            dataset_id=GOOGLE_AI_MODE_DATASET_ID,
+            payload=payload,
+            timeout_seconds=timeout_seconds,
+            custom_output_fields=GOOGLE_AI_OUTPUT_FIELDS,
+        )
+        for record in records:
+            if self.answer_text(record):
+                return record
+        raise BrightDataAPIError(
+            "Google AI Mode returned no answer text."
+        )
 
     def _engine_payload(self, engine, prompt, request_index, web_search=True):
         item = {

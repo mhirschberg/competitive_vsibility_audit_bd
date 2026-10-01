@@ -517,6 +517,19 @@ provider request, deployment, or memory reduction claim was made.
 Next: connect measured Google AI Mode directly to the standalone provider
 client, then continue shrinking the notebook-derived runtime callbacks.
 
+Forty-third checkpoint: measured Google AI Mode now has its own method on
+`BrightDataProviderClient`, using the existing Google dataset, country-targeted
+payload, requested output fields, timeout, and shared result-accounting
+transport. The service adapter no longer copies a bound method from the
+notebook-created client. Tests verify the exact request contract, empty-answer
+handling, and that the standalone method—not a legacy injected method—is used.
+The notebook implementation and its measurement/research separation remain
+unchanged. No live provider request or deployment was made.
+
+Next: continue shrinking notebook-derived runtime callbacks and remove the
+notebook expansion from the worker only after the remaining provider and stage
+boundaries have parity coverage.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
