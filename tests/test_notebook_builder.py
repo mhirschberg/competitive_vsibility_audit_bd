@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 
 from audit_core import primitives
+from audit_core.text_cleaning import remove_ai_boilerplate
+from notebook_builder import TEXT_CLEANING_END, TEXT_CLEANING_START
 from notebook_builder import (
     NOTEBOOK,
     PRIMITIVES_END,
@@ -88,6 +90,30 @@ class NotebookBuilderTests(unittest.TestCase):
         ]
         self.assertEqual(definitions.count("clean_ai_json_text"), 1)
         self.assertEqual(definitions.count("parse_ai_json"), 1)
+
+    def test_shared_text_cleaner_is_not_shadowed_by_legacy_copies(self):
+        notebook = json.loads(build_notebook())
+        cell = next(
+            cell for cell in notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "final-core"
+        )
+        source = "".join(cell["source"])
+        tree = ast.parse(source)
+        definitions = [
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        self.assertEqual(definitions.count("remove_ai_boilerplate"), 1)
+        embedded = source.split(TEXT_CLEANING_START, 1)[1].split(
+            TEXT_CLEANING_END, 1,
+        )[0]
+        namespace = {}
+        exec(embedded, namespace)
+        sample = "Here is the requested audit\nUseful findings\nLog in"
+        self.assertEqual(
+            namespace["remove_ai_boilerplate"](sample),
+            remove_ai_boilerplate(sample),
+        )
 
     def test_source_change_updates_only_owned_cell(self):
         original = json.loads(NOTEBOOK.read_text(encoding="utf-8"))

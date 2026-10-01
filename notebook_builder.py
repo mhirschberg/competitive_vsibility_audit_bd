@@ -63,6 +63,8 @@ DOMAINS_START = "# AUDIT-DOMAINS: start"
 DOMAINS_END = "# AUDIT-DOMAINS: end"
 JSON_PARSING_START = "# AUDIT-JSON-PARSING: start"
 JSON_PARSING_END = "# AUDIT-JSON-PARSING: end"
+TEXT_CLEANING_START = "# AUDIT-TEXT-CLEANING: start"
+TEXT_CLEANING_END = "# AUDIT-TEXT-CLEANING: end"
 SERP_METRICS_START = "# AUDIT-SERP-METRICS: start"
 SERP_METRICS_END = "# AUDIT-SERP-METRICS: end"
 BRAND_MENTIONS_START = "# AUDIT-BRAND-MENTIONS: start"
@@ -731,6 +733,21 @@ def _replace_json_parsing_source(cell, source):
     _replace_last_python_function(cell, "parse_ai_json", wrapped)
 
 
+def _replace_text_cleaning_source(cell, source):
+    text = "".join(cell["source"])
+    if TEXT_CLEANING_START in text or TEXT_CLEANING_END in text:
+        _replace_embedded_source(
+            cell, TEXT_CLEANING_START, TEXT_CLEANING_END, source,
+        )
+        return
+
+    wrapped = (
+        TEXT_CLEANING_START + "\n" + source.rstrip("\n")
+        + "\n" + TEXT_CLEANING_END
+    )
+    _replace_last_python_function(cell, "remove_ai_boilerplate", wrapped)
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -836,7 +853,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    report_export_source=REPORT_EXPORT_SOURCE,
                    artifact_names_source=ARTIFACT_NAMES_SOURCE,
                    utility_ai_race_source=UTILITY_AI_RACE_SOURCE,
-                   json_parsing_source=ROOT / "audit_core" / "json_parsing.py"):
+                   json_parsing_source=ROOT / "audit_core" / "json_parsing.py",
+                   text_cleaning_source=ROOT / "audit_core" / "text_cleaning.py"):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -855,6 +873,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     _replace_json_parsing_source(
         primitives_cell,
         Path(json_parsing_source).read_text(encoding="utf-8"),
+    )
+    _replace_text_cleaning_source(
+        primitives_cell,
+        Path(text_cleaning_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,
@@ -1250,6 +1272,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         {
             "extract_visible_url", "normalize_public_url", "get_hostname",
             "clean_ai_json_text", "parse_ai_json",
+            "remove_ai_boilerplate",
         },
     )
     _remove_python_function_occurrences(

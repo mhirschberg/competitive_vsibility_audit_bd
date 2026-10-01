@@ -36,6 +36,7 @@ from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.domains import get_root_domain, normalize_public_url
 from audit_core.json_parsing import parse_ai_json
+from audit_core.text_cleaning import remove_ai_boilerplate
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
@@ -131,7 +132,7 @@ def _bind_research_provider_adapter(client, runtime):
             answer,
             prompt,
             parse_json=parse_ai_json,
-            remove_boilerplate=runtime['remove_ai_boilerplate'],
+            remove_boilerplate=remove_ai_boilerplate,
         ),
         is_materializing=snapshot_is_materializing,
         failed_statuses=runtime['FAILED_STATUSES'],
@@ -255,7 +256,7 @@ def _service_report_finalizer(runtime):
             collect_sources=lambda value: _collect_visibility_sources(
                 runtime, value,
             ),
-            clean_boilerplate=runtime['remove_ai_boilerplate'],
+            clean_boilerplate=remove_ai_boilerplate,
         )
 
     return finalize
