@@ -6,6 +6,9 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
+
+import tldextract
 
 from hosted.service_adapter import build_runtime_ports, run_with_legacy_runtime
 from runner_builder import _build_service_runner_script
@@ -100,6 +103,11 @@ class ServiceAdapterTests(unittest.TestCase):
             with self.subTest(reddit=reddit), tempfile.TemporaryDirectory() as root:
                 events = []
                 runtime = self.runtime(events)
+                runtime['generate_report_stage'] = lambda *_args, **_kwargs: (
+                    (_ for _ in ()).throw(AssertionError(
+                        'service report must not call notebook wrapper'
+                    ))
+                )
                 original_visibility = runtime['run_visibility_stage']
                 async def checked_visibility(**kwargs):
                     self.assertEqual(runtime['ACTIVE_SEARCH_ENGINE'], 'google')
@@ -117,9 +125,13 @@ class ServiceAdapterTests(unittest.TestCase):
                     'include_gemini_visibility': False,
                     'include_copilot_visibility': False,
                 }
-                result = asyncio.run(run_with_legacy_runtime(
-                    settings, runtime, base_directory=Path(root),
-                ))
+                offline_tldextract = tldextract.TLDExtract(
+                    cache_dir=None, suffix_list_urls=(),
+                )
+                with patch('tldextract.extract', offline_tldextract):
+                    result = asyncio.run(run_with_legacy_runtime(
+                        settings, runtime, base_directory=Path(root),
+                    ))
                 _, direct, _ = AuditPipelineTests().run_fixture(
                     Path(root) / 'direct', reddit=reddit,
                 )
@@ -227,7 +239,6 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime.update({
             'BrightDataProviderClient': FakeStandaloneProvider,
             'parse_bing_markdown': lambda **kwargs: kwargs,
-            'remove_ai_boilerplate': lambda text: text,
         })
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
