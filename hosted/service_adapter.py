@@ -17,6 +17,7 @@ from audit_core.audit_pipeline import (
 from audit_core.audit_preparation import (
     AuditPreparationPorts, prepare_audit_run_core,
 )
+from audit_core.artifact_writes import write_json_with_scope
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
@@ -273,6 +274,29 @@ def build_runtime_ports(runtime):
     success = need('print_stage_success')
     warning = need('print_stage_warning')
     format_duration = need('format_duration')
+    company_scope = {'value': None}
+
+    def analyze_company(settings):
+        """Translate the old analyzer's runtime write into an explicit result."""
+        # The notebook analyzer still publishes this value into its flat
+        # namespace. Keep that compatibility at the provider boundary only;
+        # the hosted coordinator and its stages consume the returned value.
+        runtime.pop('LOCKED_TARGET_SCOPE', None)
+        result = need('analyze_company_stage')(settings)
+        legacy_scope = runtime.pop('LOCKED_TARGET_SCOPE', None)
+        if isinstance(result, dict) and not result.get('locked_target_scope'):
+            if legacy_scope:
+                result = dict(result)
+                result['locked_target_scope'] = legacy_scope
+        return result
+
+    def write_company_json(path, data):
+        return write_json_with_scope(
+            path,
+            data,
+            locked_target_scope=company_scope['value'],
+            write_json_fn=write_json,
+        )
 
     def after_search(search):
         runtime['ACTIVE_SEARCH_ENGINE'] = search['search_engine']
@@ -353,14 +377,16 @@ def build_runtime_ports(runtime):
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
-            analyze=need('analyze_company_stage'),
+            analyze=analyze_company,
             intake_factory=need('CompanyIntake'),
             brand_factory=need('BrandAnalysis'),
             keyword_factory=need('BuyerIntentKeyword'),
             get_locked_scope=lambda: None,
-            set_locked_scope=lambda scope: runtime.__setitem__('LOCKED_TARGET_SCOPE', scope),
+            set_locked_scope=lambda scope: company_scope.__setitem__(
+                'value', dict(scope) if isinstance(scope, dict) else scope
+            ),
             restore_locked_scope=need('restore_locked_target_scope'),
-            model_to_dict=model_to_dict, write_json=write_json,
+            model_to_dict=model_to_dict, write_json=write_company_json,
             clean_record=clean_record, stage_success=success,
         ),
         search_stage=SearchStagePorts(
@@ -450,7 +476,6 @@ async def run_with_legacy_runtime(settings, runtime, *, base_directory):
     pipeline_ports = build_runtime_ports(runtime)
     preparation_ports = build_preparation_ports(runtime)
     runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY'] = None
-    runtime['LOCKED_TARGET_SCOPE'] = None
     prepared = await prepare_audit_run_core(
         settings, base_directory=Path(base_directory), ports=preparation_ports,
     )
