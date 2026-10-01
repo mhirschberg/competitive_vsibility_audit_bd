@@ -295,6 +295,25 @@ def _service_visibility_runner(runtime, client):
     return run_visibility
 
 
+def _service_reddit_runners(runtime, client):
+    """Bind legacy-compatible Reddit collection to explicit audit providers."""
+    def reddit_context():
+        return runtime['bind_reddit_runtime'](
+            client,
+            runtime['race_utility_ai'],
+        )
+
+    async def start_discovery(**kwargs):
+        with reddit_context():
+            return await runtime['start_reddit_discovery_prefetch'](**kwargs)
+
+    async def run_social_stage(**kwargs):
+        with reddit_context():
+            return await runtime['run_reddit_social_stage'](**kwargs)
+
+    return start_discovery, run_social_stage
+
+
 def build_runtime_ports(runtime):
     """Bind explicit providers and legacy stage/artifact functions."""
     def need(name):
@@ -381,6 +400,7 @@ def build_runtime_ports(runtime):
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'start_reddit_discovery_prefetch', 'BrandProfile',
+            'bind_reddit_runtime', 'race_utility_ai',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'SnapshotTimeoutError',
             'serialize_profile_task',
@@ -399,6 +419,9 @@ def build_runtime_ports(runtime):
     generate_report = _service_report_generator(runtime, client)
     run_profiles = _service_profile_runner(runtime)
     run_visibility = _service_visibility_runner(runtime, client)
+    start_reddit_discovery, run_reddit_social = _service_reddit_runners(
+        runtime, client,
+    )
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
@@ -433,7 +456,7 @@ def build_runtime_ports(runtime):
                 '      [cyan]↗ Social discovery started in parallel; '
                 'snapshots are labelled [Social · …].[/cyan]'
             ),
-            start_reddit_prefetch=need('start_reddit_discovery_prefetch'),
+            start_reddit_prefetch=start_reddit_discovery,
         ),
         profile_stage=ProfileStagePorts(
             run_profiles=run_profiles,
@@ -443,7 +466,7 @@ def build_runtime_ports(runtime):
         ),
         visibility_stage=VisibilityCheckpointPorts(
             run_visibility=run_visibility,
-            run_reddit_social=need('run_reddit_social_stage'),
+            run_reddit_social=run_reddit_social,
             serialize_engine_result=need('serialize_engine_result'),
             write_json=write_json, stage_success=success,
             stage_warning=warning, format_duration=format_duration,

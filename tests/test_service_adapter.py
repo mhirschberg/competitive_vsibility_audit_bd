@@ -9,8 +9,11 @@ import unittest
 from unittest.mock import patch
 
 import tldextract
+import reddit_social
 
-from hosted.service_adapter import build_runtime_ports, run_with_legacy_runtime
+from hosted.service_adapter import (
+    _service_reddit_runners, build_runtime_ports, run_with_legacy_runtime,
+)
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -22,6 +25,32 @@ class SnapshotTimeoutError(TimeoutError):
 
 
 class ServiceAdapterTests(unittest.TestCase):
+    def test_reddit_runners_bind_provider_context_for_each_call(self):
+        client = object()
+        utility_race = lambda **_kwargs: "answer"
+
+        async def check_context(**kwargs):
+            self.assertIs(reddit_social._reddit_client(), client)
+            self.assertIs(reddit_social._reddit_utility_race(), utility_race)
+            return kwargs
+
+        runtime = {
+            'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
+            'race_utility_ai': utility_race,
+            'start_reddit_discovery_prefetch': check_context,
+            'run_reddit_social_stage': check_context,
+        }
+        start_discovery, run_social = _service_reddit_runners(runtime, client)
+
+        self.assertEqual(
+            asyncio.run(start_discovery(brand='Acme')),
+            {'brand': 'Acme'},
+        )
+        self.assertEqual(
+            asyncio.run(run_social(brand='Acme')),
+            {'brand': 'Acme'},
+        )
+
     def test_opt_in_runner_calls_shared_coordinator_once(self):
         source = _build_service_runner_script(
             'Apple', 'apple.com', 'premium smartphone', 'US',
@@ -102,6 +131,8 @@ class ServiceAdapterTests(unittest.TestCase):
             'SelectedCompetitor': Model,
             'BrightDataAPIError': RuntimeError,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
+            'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
+            'race_utility_ai': lambda **_kwargs: None,
             'run_profile_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
                     'service profile must not call notebook wrapper'

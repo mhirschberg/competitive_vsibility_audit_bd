@@ -1,17 +1,19 @@
-"""Reddit conversation collection and analysis for the audit notebook.
+"""Reddit conversation collection and analysis for service and notebook.
 
-This file is embedded verbatim into the notebook by scripts/embed_reddit_social.py.
-It intentionally uses the notebook's ``bd_client`` and ``race_utility_ai`` globals.
+The standalone notebook falls back to its historical provider globals. Hosted
+callers bind the client and utility race explicitly for each async audit.
 """
 
 import asyncio
+from contextlib import contextmanager
+from contextvars import ContextVar, copy_context
 import json
 import math
 import os
 import re
 import time
 from collections import Counter as RedditCounter
-from concurrent.futures import ThreadPoolExecutor as RedditExecutor
+from concurrent.futures import ThreadPoolExecutor as _RedditExecutor
 from concurrent.futures import as_completed as reddit_as_completed
 from threading import Semaphore as RedditSemaphore
 from types import SimpleNamespace as RedditSubject
@@ -21,8 +23,52 @@ from urllib.parse import urlparse as reddit_urlparse
 import requests as reddit_requests
 
 
+_REDDIT_CLIENT_CONTEXT = ContextVar("reddit_bd_client", default=None)
+_REDDIT_UTILITY_RACE_CONTEXT = ContextVar("reddit_utility_race", default=None)
+
+
+class RedditExecutor(_RedditExecutor):
+    """Carry explicitly bound provider context into Reddit worker threads."""
+
+    def submit(self, fn, /, *args, **kwargs):
+        context = copy_context()
+        return super().submit(context.run, fn, *args, **kwargs)
+
+
+@contextmanager
+def bind_reddit_runtime(client, utility_race):
+    """Bind the provider operations used by Reddit for this audit task."""
+    client_token = _REDDIT_CLIENT_CONTEXT.set(client)
+    race_token = _REDDIT_UTILITY_RACE_CONTEXT.set(utility_race)
+    try:
+        yield
+    finally:
+        _REDDIT_UTILITY_RACE_CONTEXT.reset(race_token)
+        _REDDIT_CLIENT_CONTEXT.reset(client_token)
+
+
+def _reddit_client():
+    client = _REDDIT_CLIENT_CONTEXT.get()
+    if client is not None:
+        return client
+    client = globals().get("bd_client")
+    if client is None:
+        raise RuntimeError("Reddit provider client is not bound")
+    return client
+
+
+def _reddit_utility_race():
+    race = _REDDIT_UTILITY_RACE_CONTEXT.get()
+    if callable(race):
+        return race
+    race = globals().get("race_utility_ai")
+    if not callable(race):
+        raise RuntimeError("Reddit utility AI race is not bound")
+    return race
+
+
 def _usage_start(operation, dataset_id="", input_count=1):
-    tracker = getattr(bd_client, "start_usage_operation", None)
+    tracker = getattr(_reddit_client(), "start_usage_operation", None)
     if not callable(tracker):
         return None
     return tracker(
@@ -33,13 +79,13 @@ def _usage_start(operation, dataset_id="", input_count=1):
 
 
 def _usage_update(operation_id, **updates):
-    tracker = getattr(bd_client, "update_usage_operation", None)
+    tracker = getattr(_reddit_client(), "update_usage_operation", None)
     if operation_id is not None and callable(tracker):
         tracker(operation_id, **updates)
 
 
 def _usage_snapshot_results(snapshot_id, result_count):
-    tracker = getattr(bd_client, "record_snapshot_results", None)
+    tracker = getattr(_reddit_client(), "record_snapshot_results", None)
     if callable(tracker):
         tracker(snapshot_id, result_count)
 
@@ -162,7 +208,7 @@ def _reddit_log(context, message, color=None):
         for part in str(context or "Reddit").split("·")
         if part.strip()
     )
-    logger = getattr(bd_client, "log", None)
+    logger = getattr(_reddit_client(), "log", None)
     if callable(logger):
         rendered = f"[Social · {label}] {message}"
         if color is None:
@@ -210,7 +256,7 @@ def _wait_reddit_snapshot(
                 timeout_seconds,
             )
 
-        status_result = bd_client.snapshot_status(snapshot_id)
+        status_result = _reddit_client().snapshot_status(snapshot_id)
         status = str(status_result.get("status") or "unknown").lower()
         if status != last_status or elapsed >= next_progress_log:
             _reddit_log(
@@ -236,7 +282,7 @@ def _wait_reddit_snapshot(
                 f"Snapshot {snapshot_id} ended with status {status}."
             )
         if status == "ready":
-            records = bd_client.download_snapshot(snapshot_id)
+            records = _reddit_client().download_snapshot(snapshot_id)
             materializing = (
                 len(records) == 1
                 and isinstance(records[0], dict)
@@ -270,7 +316,7 @@ def _scrape_reddit_dataset(
     )
     response = reddit_requests.post(
         BD_SCRAPE_URL,
-        headers=bd_client.headers,
+        headers=_reddit_client().headers,
         params={
             "dataset_id": dataset_id,
             "format": "json",
@@ -292,7 +338,7 @@ def _scrape_reddit_dataset(
     )
     snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
     if not snapshot_id:
-        records = bd_client.normalize_records(data)
+        records = _reddit_client().normalize_records(data)
         _usage_update(
             usage_operation_id,
             status="success",
@@ -489,7 +535,7 @@ def _trigger_native_reddit_discovery(
         )
         response = reddit_requests.post(
             BD_TRIGGER_URL,
-            headers=bd_client.headers,
+            headers=_reddit_client().headers,
             params={
                 "dataset_id": REDDIT_POSTS_DATASET_ID,
                 "type": "discover_new",
@@ -514,7 +560,7 @@ def _trigger_native_reddit_discovery(
                 "Reddit discovery response was not valid JSON."
             ) from exc
         snapshot_id = data.get("snapshot_id") if isinstance(data, dict) else None
-        records = [] if snapshot_id else bd_client.normalize_records(data)
+        records = [] if snapshot_id else _reddit_client().normalize_records(data)
         _usage_update(
             usage_operation_id,
             snapshot_id=snapshot_id,
@@ -611,7 +657,9 @@ def _wait_for_native_reddit_discovery(native, context="Reddit discovery"):
         failed_ids = []
         with RedditExecutor(max_workers=len(active)) as executor:
             futures = {
-                executor.submit(bd_client.snapshot_status, snapshot_id): snapshot_id
+                executor.submit(
+                    _reddit_client().snapshot_status, snapshot_id
+                ): snapshot_id
                 for snapshot_id in active
             }
             for future in reddit_as_completed(futures):
@@ -635,7 +683,7 @@ def _wait_for_native_reddit_discovery(native, context="Reddit discovery"):
             active.pop(snapshot_id, None)
         for snapshot_id in ready_ids:
             try:
-                downloaded = bd_client.download_snapshot(snapshot_id)
+                downloaded = _reddit_client().download_snapshot(snapshot_id)
                 materializing = (
                     len(downloaded) == 1
                     and isinstance(downloaded[0], dict)
@@ -712,7 +760,7 @@ def _discover_reddit_with_serp(queries):
         search_url = (
             "https://www.google.com/search"
             f"?q={reddit_quote_plus(search_query)}"
-            f"&gl={bd_client.country.lower()}&hl=en&num=10"
+            f"&gl={_reddit_client().country.lower()}&hl=en&num=10"
         )
         last_error = None
         for attempt in range(1, 4):
@@ -722,9 +770,9 @@ def _discover_reddit_with_serp(queries):
                 with REDDIT_SERP_SEMAPHORE:
                     response = reddit_requests.post(
                         BD_REQUEST_URL,
-                        headers=bd_client.headers,
+                        headers=_reddit_client().headers,
                         json={
-                            "zone": bd_client.serp_zone,
+                            "zone": _reddit_client().serp_zone,
                             "url": search_url,
                             "format": "raw",
                             "data_format": "parsed_light",
@@ -1454,7 +1502,7 @@ def analyze_reddit_posts(
     def analyze_batch(batch, batch_label):
         task_name = f"Social · {context} · {batch_label}"
         with REDDIT_AI_RACE_SEMAPHORE:
-            result = race_utility_ai(
+            result = _reddit_utility_race()(
                 prompt=_reddit_analysis_prompt(batch, target_profile, competitor_profiles, focus),
                 validator=_reddit_analysis_validator(batch),
                 timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
@@ -1869,7 +1917,7 @@ Competitor offerings: {options_by_brand!r}
 Audited competitor evidence: {evidence_by_brand!r}
 Return JSON only: {{"comparison_type":"one allowed value","selections":[{{"brand":"exact brand","offering":"exact supplied offering or concise evidence-derived offering"}}]}}"""
     try:
-        race = race_utility_ai(
+        race = _reddit_utility_race()(
             prompt=prompt,
             validator=_competitor_focus_validator(options_by_brand),
             timeout_seconds=REDDIT_AI_TIMEOUT_SECONDS,
