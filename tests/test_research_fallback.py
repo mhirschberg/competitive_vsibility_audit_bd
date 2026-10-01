@@ -1,10 +1,12 @@
 """Research can fail over between assistants without forging Google metrics."""
 
 import json
+import inspect
 from pathlib import Path
 import unittest
 
 from audit_core.research_race import ResearchProviderAdapter
+from audit_core.search_discovery import run_google_ai_mode_question_core
 from audit_core.ai_localization import country_details, localize_google_ai_prompt_core
 from notebook_builder import (
     RESEARCH_RACE_END, RESEARCH_RACE_SOURCE, RESEARCH_RACE_START,
@@ -125,12 +127,10 @@ class ResearchFallbackTests(unittest.TestCase):
             FakeClient().google_ai_mode_measured("buyer prompt")["answer_text"],
             "Google measured",
         )
-        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-        source = "\n".join(
-            "".join(cell["source"])
-            for cell in notebook["cells"] if cell["cell_type"] == "code"
+        self.assertIn(
+            "client.google_ai_mode_measured",
+            inspect.getsource(run_google_ai_mode_question_core),
         )
-        self.assertIn("bd_client.google_ai_mode_measured,", source)
 
     def test_notebook_embeds_current_source(self):
         notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))

@@ -304,6 +304,26 @@ SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
     LAST_AI_MODE_DISCOVERY = search_stage["ai_mode_discovery"]
     bd_client.active_search_engine = ACTIVE_SEARCH_ENGINE
     warnings.extend(search_stage["warnings"])'''
+AI_MODE_QUESTION_ADAPTER_SOURCE = '''async def run_ai_mode_question(
+    question, question_index, timeout_seconds=720, max_attempts=None,
+):
+    """Notebook adapter for the shared measured Google AI Mode runner."""
+    return await run_google_ai_mode_question_core(
+        question,
+        question_index,
+        client=bd_client,
+        country_code=AUDIT_SETTINGS.get("country"),
+        timeout_seconds=timeout_seconds,
+        max_attempts=max_attempts,
+        is_google_goto_url=is_google_goto_url,
+        resolve_google_goto_url=resolve_google_goto_url,
+        get_root_domain=get_root_domain,
+        country_details_fn=get_ai_country_details,
+        market_language_fn=get_market_language,
+        acknowledge_market_fn=answer_acknowledges_target_market,
+        timeout_error_type=SnapshotTimeoutError,
+    )
+'''
 COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_competitor_selection_stage_core(
         target_brand, competitor_candidates, keywords,
         locked_scope=company_stage["locked_scope"],
@@ -619,6 +639,26 @@ def _replace_python_function_before_marker(cell, name, marker, replacement):
     cell["source"] = lines
 
 
+def _replace_last_python_function(cell, name, replacement):
+    """Replace the final notebook definition of a function with an adapter."""
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
+    matches = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name
+    ]
+    if not matches:
+        raise ValueError(f"Could not find notebook function {name!r}")
+    node = matches[-1]
+    start_line = min(
+        [node.lineno] + [item.lineno for item in node.decorator_list]
+    )
+    lines = source.splitlines(keepends=True)
+    lines[start_line - 1:node.end_lineno] = [replacement.rstrip("\n") + "\n"]
+    cell["source"] = lines
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -881,6 +921,14 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         _without_service_imports(
             Path(search_discovery_source).read_text(encoding="utf-8")
         ),
+    )
+    _replace_last_python_function(
+        analysis_cell, "run_ai_mode_question", AI_MODE_QUESTION_ADAPTER_SOURCE,
+    )
+    _replace_last_python_function(
+        _unique_cell(notebook, "runtime-utilities-merged"),
+        "run_ai_mode_question",
+        AI_MODE_QUESTION_ADAPTER_SOURCE,
     )
     _replace_embedded_source(
         analysis_cell,

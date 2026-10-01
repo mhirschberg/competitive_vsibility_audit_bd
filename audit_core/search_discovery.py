@@ -6,11 +6,19 @@ never mixed in one result set.
 """
 
 import asyncio
+import json
+import time
 from collections import Counter, defaultdict
 from urllib.parse import urlparse
 
 # SERVICE-ONLY-IMPORTS: start
 from .domains import get_root_domain
+from .ai_localization import (
+    answer_acknowledges_target_market,
+    country_details,
+    market_language,
+)
+from .brightdata_transport import SnapshotTimeoutError
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -81,6 +89,176 @@ def preferred_homepage_url(root_domain, hostnames):
         else root_domain
     )
     return homepage_hostname, f"https://{homepage_hostname}/"
+
+
+def normalize_google_ai_citation(
+    citation, position, *, is_google_goto_url,
+    resolve_google_goto_url, get_root_domain,
+):
+    """Resolve and normalize one measured AI citation, if usable."""
+    if not isinstance(citation, dict):
+        return None
+    original_url = str(
+        citation.get("url") or citation.get("link")
+        or citation.get("href") or ""
+    ).strip()
+    if not original_url:
+        return None
+    resolved_url = resolve_google_goto_url(original_url)
+    final_url = resolved_url or original_url
+    if is_google_goto_url(final_url):
+        return None
+    domain = get_root_domain(final_url)
+    if not domain:
+        return None
+    return {
+        "position": position,
+        "title": str(citation.get("title") or citation.get("name") or domain).strip(),
+        "url": final_url,
+        "original_url": original_url,
+        "resolved": bool(resolved_url and resolved_url != original_url),
+        "domain": domain,
+    }
+
+
+def _google_ai_customer_prompt(question, details, language):
+    return f"""
+A customer physically located in {details["name"]}
+({details["code"]}) is researching this need:
+
+{question}
+
+Recommend and compare the leading brands, products, services, or
+providers that genuinely address this need in {details["name"]}.
+
+Prioritize offerings that are meaningfully available, supported, or
+sold in {details["name"]}. Use sources relevant to this market.
+
+Do not silently substitute US, UK, global, or other-country results.
+If global information is used, explicitly confirm that it applies to
+{details["name"]}.
+
+State clearly that the evaluation is for the {details["name"]} market.
+The buyer query may be in {language}, but keep the explanatory answer
+in English.
+
+Use current public web information. Do not ask follow-up questions.
+""".strip()
+
+
+async def run_google_ai_mode_question_core(
+    question, question_index, *, client, country_code, timeout_seconds=720,
+    max_attempts=None, is_google_goto_url, resolve_google_goto_url,
+    get_root_domain, country_details_fn=None, market_language_fn=None,
+    acknowledge_market_fn=None, timeout_error_type=None,
+):
+    """Measure one localized Google AI Mode question with safe retry rules."""
+    started_at = time.monotonic()
+    get_details = country_details_fn or globals().get("country_details")
+    get_language = market_language_fn or globals().get("market_language")
+    acknowledge_market = (
+        acknowledge_market_fn
+        or globals().get("answer_acknowledges_target_market")
+    )
+    timeout_type = timeout_error_type or globals().get("SnapshotTimeoutError")
+    if not all((get_details, get_language, acknowledge_market, timeout_type)):
+        raise RuntimeError("Google AI Mode question runner is missing localization or timeout bindings.")
+
+    details = get_details(country_code)
+    language = get_language(details["code"])
+    prompt = _google_ai_customer_prompt(question, details, language)
+    attempt_failures = []
+    attempts = max_attempts or 2
+
+    for market_attempt in range(1, attempts + 1):
+        try:
+            record = await asyncio.to_thread(
+                client.google_ai_mode_measured, prompt, timeout_seconds,
+            )
+            answer = client.answer_text(record)
+            acknowledgment = acknowledge_market(answer, details)
+            if not acknowledgment.get("acknowledged"):
+                attempt_failures.append({
+                    "attempt": market_attempt,
+                    "reason": (
+                        "Answer did not explicitly acknowledge the "
+                        f"{details['name']} market."
+                    ),
+                })
+                client.log(
+                    "Google AI Mode customer-question "
+                    f"attempt {market_attempt} was not localized to "
+                    f"{details['name']}.", "yellow",
+                )
+                continue
+
+            raw_citations = (
+                record.get("citations", []) if isinstance(record, dict) else []
+            )
+            citations = []
+            for position, citation in enumerate(raw_citations, start=1):
+                normalized = normalize_google_ai_citation(
+                    citation, position,
+                    is_google_goto_url=is_google_goto_url,
+                    resolve_google_goto_url=resolve_google_goto_url,
+                    get_root_domain=get_root_domain,
+                )
+                if normalized:
+                    citations.append(normalized)
+
+            if isinstance(record, dict):
+                record["_market_consistency"] = {
+                    "requested_country": details["code"],
+                    "requested_country_name": details["name"],
+                    "search_language": language,
+                    "market_acknowledged": True,
+                    "matched_aliases": acknowledgment.get("matched_aliases", []),
+                    "market_attempt": market_attempt,
+                }
+            return {
+                "question_index": question_index,
+                "question": question,
+                "prompt": prompt,
+                "success": bool(answer),
+                "answer": answer,
+                "citations": citations,
+                "duration_seconds": round(time.monotonic() - started_at, 2),
+                "requested_country": details["code"],
+                "requested_country_name": details["name"],
+                "search_language": language,
+                "market_acknowledged": True,
+                "market_attempt": market_attempt,
+                "error": None,
+            }
+        except timeout_type as exc:
+            # The launched snapshot may still be running; retrying would spend again.
+            attempt_failures.append({"attempt": market_attempt, "reason": str(exc)})
+            break
+        except Exception as exc:
+            attempt_failures.append({
+                "attempt": market_attempt,
+                "reason": f"{type(exc).__name__}: {exc}",
+            })
+
+    return {
+        "question_index": question_index,
+        "question": question,
+        "prompt": prompt,
+        "success": False,
+        "answer": "",
+        "citations": [],
+        "duration_seconds": round(time.monotonic() - started_at, 2),
+        "requested_country": details["code"],
+        "requested_country_name": details["name"],
+        "search_language": language,
+        "market_acknowledged": False,
+        "market_attempt": len(attempt_failures),
+        "error": (
+            "Google AI Mode did not return a "
+            f"{details['name']}-specific answer: "
+            + json.dumps(attempt_failures, ensure_ascii=False)
+        ),
+    }
 
 
 def aggregate_competitor_domains(
