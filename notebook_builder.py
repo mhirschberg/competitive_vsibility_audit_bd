@@ -28,6 +28,7 @@ SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
 SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
 COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_stage.py"
 PROFILE_RESEARCH_SOURCE = ROOT / "audit_core" / "profile_research.py"
+PROFILE_PROVIDER_SOURCE = ROOT / "audit_core" / "profile_provider.py"
 PROFILE_STAGE_SOURCE = ROOT / "audit_core" / "profile_stage.py"
 VISIBILITY_CHECKPOINT_STAGE_SOURCE = ROOT / "audit_core" / "visibility_checkpoint_stage.py"
 SOCIAL_COMPLETION_STAGE_SOURCE = ROOT / "audit_core" / "social_completion_stage.py"
@@ -90,6 +91,8 @@ COMPETITOR_SELECTION_STAGE_CALL_START = "# AUDIT-COMPETITOR-SELECTION-STAGE-CALL
 COMPETITOR_SELECTION_STAGE_CALL_END = "    # AUDIT-COMPETITOR-SELECTION-STAGE-CALL: end"
 PROFILE_RESEARCH_START = "# AUDIT-PROFILE-RESEARCH: start"
 PROFILE_RESEARCH_END = "# AUDIT-PROFILE-RESEARCH: end"
+PROFILE_PROVIDER_START = "# AUDIT-PROFILE-PROVIDER: start"
+PROFILE_PROVIDER_END = "# AUDIT-PROFILE-PROVIDER: end"
 PROFILE_STAGE_START = "# AUDIT-PROFILE-STAGE: start"
 PROFILE_STAGE_END = "# AUDIT-PROFILE-STAGE: end"
 PROFILE_STAGE_CALL_START = "# AUDIT-PROFILE-STAGE-CALL: start"
@@ -296,6 +299,52 @@ PROFILE_RESEARCH_ADAPTER_SOURCE = '''async def run_profile_stage(
             ),
         ),
     )'''
+PROFILE_PROVIDER_ADAPTER_SOURCE = '''def build_profile_prompt(job, target_brand, audit_focus=""):
+    return build_profile_prompt_core(job, target_brand, audit_focus)
+
+
+def clean_profile_label(value):
+    return clean_profile_label_core(value)
+
+
+def normalize_brand_profile(data, job):
+    return normalize_brand_profile_core(
+        data,
+        job,
+        profile_factory=BrandProfile,
+        normalize_public_url=normalize_public_url,
+        get_root_domain=get_root_domain,
+        ensure_string_list=ensure_string_list,
+        normalize_confidence=normalize_confidence,
+    )
+
+
+def generate_profile_sync(job, target_brand, audit_focus=""):
+    return generate_profile_sync_core(
+        job,
+        target_brand,
+        audit_focus,
+        client=bd_client,
+        parse_ai_json=parse_ai_json,
+        normalize_profile=normalize_brand_profile,
+        snapshot_timeout_error=SnapshotTimeoutError,
+    )
+
+
+def recover_profile_sync(task_result):
+    return recover_profile_sync_core(
+        task_result,
+        client=bd_client,
+        parse_ai_json=parse_ai_json,
+        normalize_profile=normalize_brand_profile,
+        provider_error=BrightDataAPIError,
+    )
+
+
+def fallback_profile(job, target_brand):
+    return fallback_profile_core(
+        job, target_brand, profile_factory=BrandProfile,
+    )'''
 PROFILE_STAGE_CALL_SOURCE = '''    profile_stage = await run_profile_stage_core(
         target_brand, selected_competitors,
         audit_focus=settings.get("audit_focus", ""),
@@ -470,6 +519,37 @@ def _replace_embedded_source(cell, start, end, source):
     ).splitlines(keepends=True)
 
 
+def _replace_source_region(cell, start, end, source):
+    text = "".join(cell["source"])
+    if text.count(start) != 1 or text.count(end) != 1:
+        raise ValueError(f"Expected exactly one {start!r}/{end!r} region")
+    begin = text.index(start)
+    finish = text.index(end)
+    if finish < begin:
+        raise ValueError("Generated source region markers are out of order")
+    cell["source"] = (
+        text[:begin] + source.rstrip("\n") + "\n\n" + text[finish:]
+    ).splitlines(keepends=True)
+
+
+def _replace_profile_provider_source(cell, source):
+    wrapped = (
+        PROFILE_PROVIDER_START + "\n" + source.rstrip("\n")
+        + "\n" + PROFILE_PROVIDER_END
+    )
+    text = "".join(cell["source"])
+    if PROFILE_PROVIDER_START in text or PROFILE_PROVIDER_END in text:
+        _replace_embedded_source(
+            cell, PROFILE_PROVIDER_START, PROFILE_PROVIDER_END, source,
+        )
+        return
+
+    legacy_start = "def build_profile_prompt(\n"
+    generated_start = "def build_profile_prompt_core("
+    start = legacy_start if legacy_start in text else generated_start
+    _replace_source_region(cell, start, PROFILE_RESEARCH_START, wrapped)
+
+
 def _without_service_imports(source):
     if (source.count(SERVICE_IMPORTS_START) != 1
             or source.count(SERVICE_IMPORTS_END) != 1):
@@ -497,6 +577,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    search_stage_source=SEARCH_STAGE_SOURCE,
                    competitor_selection_stage_source=COMPETITOR_SELECTION_STAGE_SOURCE,
                    profile_research_source=PROFILE_RESEARCH_SOURCE,
+                   profile_provider_source=PROFILE_PROVIDER_SOURCE,
                    profile_stage_source=PROFILE_STAGE_SOURCE,
                    visibility_checkpoint_stage_source=VISIBILITY_CHECKPOINT_STAGE_SOURCE,
                    social_completion_stage_source=SOCIAL_COMPLETION_STAGE_SOURCE,
@@ -662,6 +743,11 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         ),
     )
     analysis_cell = _unique_cell(notebook, "final-analysis")
+    _replace_profile_provider_source(
+        analysis_cell,
+        Path(profile_provider_source).read_text(encoding="utf-8")
+        + "\n\n" + PROFILE_PROVIDER_ADAPTER_SOURCE,
+    )
     _replace_embedded_source(
         analysis_cell,
         SEARCH_DISCOVERY_START,

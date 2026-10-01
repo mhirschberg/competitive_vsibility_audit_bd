@@ -358,8 +358,8 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
     def test_profile_prompt_strictly_scopes_target_and_competitors(self):
         runtime = "".join(self.notebook["cells"][4]["source"])
-        start = runtime.index("def build_profile_prompt")
-        end = runtime.index("def clean_profile_label")
+        start = runtime.index("# AUDIT-PROFILE-PROVIDER: start")
+        end = runtime.index("# AUDIT-PROFILE-PROVIDER: end")
         namespace = {}
         exec(runtime[start:end], namespace)
         target_brand = SimpleNamespace(brand_name="KEBA")
@@ -703,8 +703,8 @@ class NotebookEmbeddingTests(unittest.TestCase):
 
     def test_profile_label_removes_google_shopping_markup(self):
         runtime = "".join(self.notebook["cells"][4]["source"])
-        start = runtime.index("def clean_profile_label")
-        end = runtime.index("def normalize_brand_profile")
+        start = runtime.index("# AUDIT-PROFILE-PROVIDER: start")
+        end = runtime.index("# AUDIT-PROFILE-PROVIDER: end")
         namespace = {"re": re}
         exec(runtime[start:end], namespace)
 
