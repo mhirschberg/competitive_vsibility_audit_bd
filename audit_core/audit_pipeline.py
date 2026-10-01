@@ -160,6 +160,7 @@ async def run_audit_pipeline(settings, context, *, ports):
     rendered = await run_report_render_stage_core(
         target_profile, competitor_profiles, keywords,
         keyword_serp_results, visibility_result, reddit_social_result,
+        locked_scope=company["locked_scope"],
         site_resolution=context.site_resolution,
         country=settings["country"],
         run_timestamp=context.run_timestamp,
