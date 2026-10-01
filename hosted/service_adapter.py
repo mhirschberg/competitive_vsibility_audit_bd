@@ -7,7 +7,6 @@ never reads or executes the notebook and never initiates a provider call.
 
 from pathlib import Path
 import threading
-from types import MethodType
 
 import reddit_social
 from audit_core.research_race import ResearchProviderAdapter
@@ -162,15 +161,6 @@ def _standalone_brightdata_client(runtime):
         logger=logger,
         parse_bing_markdown=runtime.get('parse_bing_markdown'),
     )
-
-    measured_google = getattr(legacy, 'google_ai_mode_measured', None)
-    measured_function = getattr(measured_google, '__func__', None)
-    if measured_function is not None:
-        client.google_ai_mode_measured = MethodType(measured_function, client)
-    elif callable(measured_google):
-        client.google_ai_mode_measured = (
-            lambda *args, **kwargs: measured_google(*args, **kwargs)
-        )
 
     runtime['bd_client'] = client
     return client

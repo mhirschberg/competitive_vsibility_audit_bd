@@ -6,7 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from audit_core.brightdata_transport import CHATGPT_DATASET_ID
+from audit_core.brightdata_transport import (
+    CHATGPT_DATASET_ID,
+    GOOGLE_AI_MODE_DATASET_ID,
+    GOOGLE_AI_OUTPUT_FIELDS,
+)
 from hosted.brightdata_provider import BrightDataProviderClient
 
 
@@ -22,6 +26,48 @@ class FakeResponse:
 
 
 class BrightDataProviderTests(unittest.TestCase):
+    def test_measured_google_ai_mode_uses_provider_transport_and_ledger(self):
+        client = BrightDataProviderClient("test-token", "test-zone", "DE")
+        calls = []
+
+        def scrape_dataset(**kwargs):
+            calls.append(kwargs)
+            return [
+                {"answer_text": ""},
+                {"answer_text_markdown": "A measured Google answer."},
+            ]
+
+        client.scrape_dataset = scrape_dataset
+        result = client.google_ai_mode_measured(
+            "neutral product question", timeout_seconds=900,
+        )
+
+        self.assertEqual(result["answer_text_markdown"], "A measured Google answer.")
+        self.assertEqual(calls, [{
+            "dataset_id": GOOGLE_AI_MODE_DATASET_ID,
+            "payload": {"input": [{
+                "url": "https://google.com/aimode",
+                "prompt": (
+                    "STRICT TARGET MARKET: Germany (DE). "
+                    "Use Germany-specific availability, relevance, competitors, "
+                    "and sources. Do not silently substitute US, UK, global, "
+                    "or other-market results. Buyer search queries must be "
+                    "written in German. Keep explanatory analysis in English."
+                    "\n\nneutral product question"
+                ),
+                "country": "DE",
+            }]},
+            "timeout_seconds": 900,
+            "custom_output_fields": GOOGLE_AI_OUTPUT_FIELDS,
+        }])
+
+    def test_measured_google_ai_mode_rejects_empty_answer(self):
+        client = BrightDataProviderClient("test-token", "test-zone", "US")
+        client.scrape_dataset = lambda **_kwargs: [{"answer_text": "  "}]
+
+        with self.assertRaisesRegex(RuntimeError, "returned no answer text"):
+            client.google_ai_mode_measured("question")
+
     def test_trigger_wait_and_download_share_result_ledger(self):
         client = BrightDataProviderClient("test-token", "test-zone", "US")
         self.assertEqual(

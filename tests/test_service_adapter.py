@@ -423,9 +423,10 @@ class ServiceAdapterTests(unittest.TestCase):
         legacy_client.serp_zone = 'test-zone'
         legacy_client.country = 'DE'
         legacy_client.debug = False
-        measured_google = lambda *_args, **_kwargs: {
-            'answer_text': 'measured Google AI Mode'
-        }
+        legacy_measurement_calls = []
+        measured_google = lambda *_args, **_kwargs: legacy_measurement_calls.append(
+            'legacy'
+        ) or {'answer_text': 'legacy measurement'}
         legacy_client.google_ai_mode_measured = measured_google
         fixture_path = Path(__file__).parent / 'fixtures' / 'research_provider_responses.json'
         fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
@@ -451,6 +452,10 @@ class ServiceAdapterTests(unittest.TestCase):
                     'prompt': prompt, 'request_index': request_index,
                     'web_search': web_search,
                 }
+
+            @staticmethod
+            def google_ai_mode_measured(*_args, **_kwargs):
+                return {'answer_text': 'standalone measured Google AI Mode'}
 
             def trigger_dataset(self, dataset, payload):
                 return trigger(dataset, payload)
@@ -535,8 +540,9 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertTrue(callable(client.google_ai_mode_measured))
         self.assertEqual(
             client.google_ai_mode_measured()['answer_text'],
-            'measured Google AI Mode',
+            'standalone measured Google AI Mode',
         )
+        self.assertEqual(legacy_measurement_calls, [])
 
     def test_research_provider_preflight_no_longer_requires_notebook_policy_helpers(self):
         events = []
