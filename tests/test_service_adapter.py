@@ -4,9 +4,10 @@ import asyncio
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 
-from hosted.service_adapter import run_with_legacy_runtime
+from hosted.service_adapter import build_runtime_ports, run_with_legacy_runtime
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -155,6 +156,79 @@ class ServiceAdapterTests(unittest.TestCase):
                 ))
             self.assertEqual(events, [])
             self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_service_boundary_installs_explicit_chatgpt_gemini_research_race(self):
+        events = []
+        runtime = self.runtime(events)
+        client = runtime['bd_client']
+        measured_google = lambda *_args, **_kwargs: {
+            'answer_text': 'measured Google AI Mode'
+        }
+        client.google_ai_mode_measured = measured_google
+        fixture_path = Path(__file__).parent / 'fixtures' / 'research_provider_responses.json'
+        fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
+        saved_by_snapshot = {}
+        triggered = []
+        saved_cache = {}
+        client._engine_payload = lambda engine, prompt, request_index, web_search: (
+            engine, {'prompt': prompt, 'request_index': request_index,
+                   'web_search': web_search},
+        )
+
+        def trigger(dataset, payload):
+            snapshot_id = f'snapshot-{dataset}'
+            triggered.append(dataset)
+            saved_by_snapshot[snapshot_id] = fixture['snapshots'][dataset]
+            return snapshot_id
+
+        client.trigger_dataset = trigger
+        client.snapshot_status = lambda _snapshot: {'status': 'ready'}
+        client.download_snapshot = lambda snapshot: saved_by_snapshot[snapshot]
+        client.record_snapshot_results = lambda *_args: None
+        client.answer_text = lambda record: record.get('answer_text', '')
+        client.log = lambda *_args: None
+        runtime.update({
+            'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
+            'cached_google_ai_snapshot_ids': lambda key: saved_cache.get(key, []),
+            'remember_google_ai_snapshot': lambda key, sid: saved_cache.setdefault(
+                key, []
+            ).append(sid),
+            'localize_google_ai_prompt': lambda prompt: f'DE: {prompt}',
+            'identify_google_ai_research_task': lambda _prompt: 'company_research',
+            'validate_google_ai_research_answer': lambda answer, _prompt: {
+                'valid': answer == 'usable research',
+                'reason': 'no usable answer',
+            },
+            'google_ai_snapshot_is_materializing': lambda _records: False,
+            'FAILED_STATUSES': {'failed', 'canceled'},
+            '_GOOGLE_AI_ONLY_REUSE': False,
+            '_RESEARCH_RACE_SEMAPHORE': threading.BoundedSemaphore(3),
+            'RESEARCH_POLL_SECONDS': 0,
+            'ResearchRaceTimeoutError': TimeoutError,
+            'BrightDataAPIError': RuntimeError,
+        })
+
+        build_runtime_ports(runtime)
+        runtime['_GOOGLE_AI_ONLY_REUSE'] = True
+        with self.assertRaisesRegex(RuntimeError, 'No saved research snapshots'):
+            client.google_ai_mode('research question', timeout_seconds=3)
+        self.assertEqual(triggered, [])
+
+        runtime['_GOOGLE_AI_ONLY_REUSE'] = False
+        result = client.google_ai_mode('research question', timeout_seconds=3)
+
+        self.assertCountEqual(triggered, ['chatgpt', 'gemini'])
+        self.assertEqual(result['_research_race']['provider'], 'gemini')
+        self.assertEqual(result['answer_text'], 'usable research')
+        self.assertEqual(
+            runtime['RESEARCH_PROVIDER_ADAPTER'].__class__.__name__,
+            'ResearchProviderAdapter',
+        )
+        self.assertIs(client.google_ai_mode_measured, measured_google)
+        self.assertEqual(
+            client.google_ai_mode_measured()['answer_text'],
+            'measured Google AI Mode',
+        )
 
 
 if __name__ == '__main__':

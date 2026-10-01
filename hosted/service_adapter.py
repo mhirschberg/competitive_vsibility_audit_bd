@@ -6,7 +6,9 @@ never reads or executes the notebook and never initiates a provider call.
 """
 
 from pathlib import Path
+import threading
 
+from audit_core.research_race import ResearchProviderAdapter
 from audit_core.audit_finalize_stage import AuditFinalizePorts
 from audit_core.audit_pipeline import (
     AuditPipelinePorts, AuditRunContext, run_audit_pipeline,
@@ -23,12 +25,65 @@ from audit_core.social_completion_stage import SocialCompletionPorts
 from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
 
 
+_RESEARCH_BINDINGS = (
+    'RESEARCH_PROVIDERS', 'cached_google_ai_snapshot_ids',
+    'remember_google_ai_snapshot', 'localize_google_ai_prompt',
+    'identify_google_ai_research_task', 'validate_google_ai_research_answer',
+    'google_ai_snapshot_is_materializing', 'FAILED_STATUSES',
+    '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError', 'BrightDataAPIError',
+)
+
+
+def _bind_research_provider_adapter(client, runtime):
+    """Install the explicit ChatGPT/Gemini race at the legacy-client boundary.
+
+    The generated notebook provides these callbacks today; the service runner
+    captures them once here, so its coordinator invokes the standalone adapter
+    rather than the notebook's monkey-patched ``google_ai_mode`` function.
+    Measured Google AI Mode is intentionally untouched.
+    """
+    present = [name for name in _RESEARCH_BINDINGS if name in runtime]
+    if not present:
+        # Small stage-fixture runtimes may not model any research provider.
+        return None
+    missing = [name for name in _RESEARCH_BINDINGS if name not in runtime]
+    if missing:
+        raise KeyError(f'Missing research provider bindings: {missing}')
+
+    adapter = ResearchProviderAdapter(
+        providers=runtime['RESEARCH_PROVIDERS'],
+        cached_snapshot_ids=runtime['cached_google_ai_snapshot_ids'],
+        remember_snapshot=runtime['remember_google_ai_snapshot'],
+        localize_prompt=runtime['localize_google_ai_prompt'],
+        identify_task=runtime['identify_google_ai_research_task'],
+        validate_answer=runtime['validate_google_ai_research_answer'],
+        is_materializing=runtime['google_ai_snapshot_is_materializing'],
+        failed_statuses=runtime['FAILED_STATUSES'],
+        only_reuse=lambda: runtime['_GOOGLE_AI_ONLY_REUSE'],
+        semaphore=runtime.get('_RESEARCH_RACE_SEMAPHORE')
+        or threading.BoundedSemaphore(3),
+        poll_seconds=runtime.get('RESEARCH_POLL_SECONDS', 5),
+        error_type=runtime['BrightDataAPIError'],
+        timeout_type=runtime['ResearchRaceTimeoutError'],
+        legacy_snapshot_ids=runtime['cached_google_ai_snapshot_ids'],
+    )
+
+    def race(prompt, timeout_seconds=720):
+        return adapter.race(client, prompt, timeout_seconds)
+
+    client.google_ai_mode = race
+    runtime['RESEARCH_PROVIDER_ADAPTER'] = adapter
+    runtime['race_research_providers'] = race
+    return adapter
+
+
 def build_runtime_ports(runtime):
     """Bind legacy provider/artifact functions before any audit work starts."""
     def need(name):
         return runtime[name]
 
     client = need('bd_client')
+    _bind_research_provider_adapter(client, runtime)
     console = need('console')
     write_json = need('write_json')
     model_to_dict = need('model_to_dict')

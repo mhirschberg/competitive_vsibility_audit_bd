@@ -1,0 +1,11 @@
+{
+  "origin": "synthetic regression fixture; not a captured Bright Data response",
+  "snapshots": {
+    "chatgpt": [
+      {"answer_text": "The answer does not contain usable evidence."}
+    ],
+    "gemini": [
+      {"answer_text": "usable research", "answer_text_markdown": "usable research"}
+    ]
+  }
+}

@@ -361,6 +361,19 @@ The generated notebook is refreshed and targeted adapter/builder tests pass.
 This adapter is not yet wired into the hosted service runner, so this is not a
 memory reduction or a notebook-free hosted execution path.
 
+Thirty-first checkpoint: `hosted.service_adapter` now installs the explicit
+research adapter at the client boundary for the opt-in service-coordinator
+runner. It uses the existing low-level client's snapshot transport and the
+same validation/cache callbacks, but captures them explicitly; the run-only
+reuse policy remains dynamic so continuation setup occurs before the first
+research call. A saved-response fixture verifies that an invalid ChatGPT
+answer falls through to Gemini, resume-only mode makes no replacement calls,
+and measured Google AI Mode remains untouched. Seventeen targeted service,
+research, and notebook-builder tests pass; no paid calls or deployment were
+made. The standalone `BrightDataProviderClient` is still not wired into this
+runner, so the service path still initializes legacy notebook definitions and
+no memory reduction is claimed.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
