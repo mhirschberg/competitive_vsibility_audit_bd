@@ -7,6 +7,7 @@ never reads or executes the notebook and never initiates a provider call.
 
 from pathlib import Path
 import threading
+from types import MethodType
 
 from audit_core.research_race import ResearchProviderAdapter
 from audit_core.audit_finalize_stage import AuditFinalizePorts
@@ -77,12 +78,63 @@ def _bind_research_provider_adapter(client, runtime):
     return adapter
 
 
+def _standalone_brightdata_client(runtime):
+    """Replace the initialized notebook client when its credentials exist."""
+    legacy = runtime.get('bd_client')
+    if legacy is None or not all(
+        hasattr(legacy, name) for name in ('token', 'serp_zone', 'country')
+    ):
+        # Lightweight coordinator fixtures can continue to inject a fake port.
+        return legacy
+
+    for name in ('parse_bing_markdown', 'remove_ai_boilerplate'):
+        if not callable(runtime.get(name)):
+            raise KeyError(f'Missing standalone Bright Data binding: {name}')
+
+    factory = runtime.get('BrightDataProviderClient')
+    if factory is None:
+        from hosted.brightdata_provider import BrightDataProviderClient
+        factory = BrightDataProviderClient
+
+    console = runtime.get('console')
+    logger = (
+        (lambda message, style='dim': console.print(
+            f'[{style}]{message}[/{style}]'
+        ))
+        if console is not None else None
+    )
+    client = factory(
+        token=legacy.token,
+        serp_zone=legacy.serp_zone,
+        country=legacy.country,
+        debug=getattr(legacy, 'debug', False),
+        logger=logger,
+        parse_bing_markdown=runtime.get('parse_bing_markdown'),
+        remove_ai_boilerplate=runtime.get('remove_ai_boilerplate'),
+    )
+
+    measured_google = getattr(legacy, 'google_ai_mode_measured', None)
+    measured_function = getattr(measured_google, '__func__', None)
+    if measured_function is not None:
+        client.google_ai_mode_measured = MethodType(measured_function, client)
+    elif callable(measured_google):
+        client.google_ai_mode_measured = (
+            lambda *args, **kwargs: measured_google(*args, **kwargs)
+        )
+
+    runtime['bd_client'] = client
+    return client
+
+
 def build_runtime_ports(runtime):
-    """Bind legacy provider/artifact functions before any audit work starts."""
+    """Bind explicit providers and legacy stage/artifact functions."""
     def need(name):
         return runtime[name]
 
-    client = need('bd_client')
+    client = _standalone_brightdata_client(runtime)
+    if client is None:
+        raise KeyError('bd_client')
+    runtime['bd_client'] = client
     _bind_research_provider_adapter(client, runtime)
     console = need('console')
     write_json = need('write_json')

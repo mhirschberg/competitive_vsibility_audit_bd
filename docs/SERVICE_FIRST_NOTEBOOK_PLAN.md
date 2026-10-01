@@ -374,6 +374,20 @@ made. The standalone `BrightDataProviderClient` is still not wired into this
 runner, so the service path still initializes legacy notebook definitions and
 no memory reduction is claimed.
 
+Thirty-second checkpoint: the opt-in service coordinator now swaps the
+notebook-created Bright Data client for `hosted.brightdata_provider.
+BrightDataProviderClient` when credentials are present, before preparation
+configures the run's usage checkpoint. The standalone client owns snapshots,
+SERP access, engine races, and result accounting; it also now implements the
+final ChatGPT report snapshot with an injected cleanup callback. The existing
+measured Google AI Mode method is rebound to the standalone client, while the
+internal research race remains ChatGPT/Gemini and uses the same standalone
+transport. A synthetic saved-response test exercises the service-side client
+swap, race winner, continuation-only safeguard, and separate Google measurement.
+The generated notebook and default worker path are unchanged. Remaining
+notebook dependencies include the SERP parser callback and the stage/prompt/
+report wrappers, so this is not yet a notebook-free runner or a memory claim.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
