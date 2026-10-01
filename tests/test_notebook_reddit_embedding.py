@@ -47,7 +47,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             3,
         )
         self.assertIn(
-            'settings.get(\n            "include_reddit_analysis",\n            False,',
+            "include_reddit_analysis = bool(settings.get('include_reddit_analysis', False))",
             orchestration,
         )
         self.assertIn("if include_reddit_analysis:", orchestration)

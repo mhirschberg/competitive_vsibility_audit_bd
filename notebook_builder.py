@@ -22,6 +22,7 @@ VISIBILITY_PROMPT_SOURCE = ROOT / "audit_core" / "visibility_prompt.py"
 VISIBILITY_SOURCES_SOURCE = ROOT / "audit_core" / "visibility_sources.py"
 ARTIFACT_WRITES_SOURCE = ROOT / "audit_core" / "artifact_writes.py"
 ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
+AUDIT_PREPARATION_SOURCE = ROOT / "audit_core" / "audit_preparation.py"
 COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
 SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
 SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
@@ -69,6 +70,10 @@ ARTIFACT_WRITES_START = "# AUDIT-ARTIFACT-WRITES: start"
 ARTIFACT_WRITES_END = "# AUDIT-ARTIFACT-WRITES: end"
 ARTIFACT_RESUME_START = "# AUDIT-ARTIFACT-RESUME: start"
 ARTIFACT_RESUME_END = "# AUDIT-ARTIFACT-RESUME: end"
+AUDIT_PREPARATION_START = "# AUDIT-PREPARATION: start"
+AUDIT_PREPARATION_END = "# AUDIT-PREPARATION: end"
+AUDIT_PREPARATION_CALL_START = "    # AUDIT-PREPARATION-CALL: start"
+AUDIT_PREPARATION_CALL_END = "    # AUDIT-PREPARATION-CALL: end"
 COMPANY_STAGE_START = "# AUDIT-COMPANY-STAGE: start"
 COMPANY_STAGE_END = "# AUDIT-COMPANY-STAGE: end"
 COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
@@ -156,6 +161,43 @@ RESEARCH_HEADER = (
     "#@markdown Race ChatGPT and Gemini for internal research; "
     "keep Google AI Mode measured separately.\n\n"
 )
+AUDIT_PREPARATION_CALL_SOURCE = '''    def set_audit_output_directory(path):
+        global CURRENT_AUDIT_OUTPUT_DIRECTORY
+        CURRENT_AUDIT_OUTPUT_DIRECTORY = path
+
+    prepared = await prepare_audit_run_core(
+        settings,
+        base_directory=Path('/content'),
+        ports=AuditPreparationPorts(
+            resolve_official_site=resolve_official_site,
+            get_root_domain=get_root_domain,
+            find_latest_audit_to_continue=find_latest_audit_to_continue,
+            slugify=slugify,
+            audit_export_prefix=audit_export_prefix,
+            configure_usage_checkpoint=bd_client.configure_usage_checkpoint,
+            write_json=write_json,
+            configure_google_ai_race_cache=configure_google_ai_race_cache,
+            import_google_ai_snapshot_ids=import_google_ai_snapshot_ids,
+            notice=console.print,
+            set_output_directory=set_audit_output_directory,
+        ),
+    )
+    settings = prepared['settings']
+    site_resolution = prepared['site_resolution']
+    continuing = prepared['continuing']
+    run_timestamp = prepared['run_timestamp']
+    run_id = prepared['run_id']
+    output_directory = prepared['output_directory']
+    raw_directory = prepared['raw_directory']
+    export_prefix = prepared['export_prefix']
+    audit_started_at = prepared['audit_started_at']
+    include_reddit_analysis = bool(settings.get('include_reddit_analysis', False))
+    include_copilot_visibility = bool(settings.get('include_copilot_visibility', False))
+    include_google_ai_mode = bool(settings.get('include_google_ai_mode', True))
+    include_chatgpt_visibility = bool(settings.get('include_chatgpt_visibility', True))
+    include_gemini_visibility = bool(settings.get('include_gemini_visibility', True))
+    total_stages = 7 if include_reddit_analysis else 6
+'''
 COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
         global LOCKED_TARGET_SCOPE
         LOCKED_TARGET_SCOPE = scope
@@ -449,6 +491,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    visibility_sources_source=VISIBILITY_SOURCES_SOURCE,
                    artifact_writes_source=ARTIFACT_WRITES_SOURCE,
                    artifact_resume_source=ARTIFACT_RESUME_SOURCE,
+                   audit_preparation_source=AUDIT_PREPARATION_SOURCE,
                    company_stage_source=COMPANY_STAGE_SOURCE,
                    search_discovery_source=SEARCH_DISCOVERY_SOURCE,
                    search_stage_source=SEARCH_STAGE_SOURCE,
@@ -684,6 +727,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         ARTIFACT_RESUME_START,
         ARTIFACT_RESUME_END,
         Path(artifact_resume_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        AUDIT_PREPARATION_START,
+        AUDIT_PREPARATION_END,
+        Path(audit_preparation_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        AUDIT_PREPARATION_CALL_START,
+        AUDIT_PREPARATION_CALL_END,
+        AUDIT_PREPARATION_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
