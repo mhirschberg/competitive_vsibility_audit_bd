@@ -2,7 +2,10 @@
 
 import unittest
 
-from audit_core.domains import extract_visible_url, get_hostname, normalize_public_url
+from audit_core.domains import (
+    extract_visible_url, get_hostname, is_google_goto_url,
+    normalize_public_url,
+)
 
 
 class DomainNormalizationTests(unittest.TestCase):
@@ -25,6 +28,13 @@ class DomainNormalizationTests(unittest.TestCase):
     def test_empty_values_remain_empty(self):
         self.assertEqual(normalize_public_url("  "), "")
         self.assertEqual(get_hostname(None), "")
+
+    def test_identifies_only_google_goto_redirect_urls(self):
+        self.assertTrue(is_google_goto_url("https://www.google.com/goto?url=abc"))
+        self.assertTrue(is_google_goto_url("https://google.com/goto/opaque"))
+        self.assertFalse(is_google_goto_url("https://google.com/search?q=topic"))
+        self.assertFalse(is_google_goto_url("https://google.co.uk/goto?url=abc"))
+        self.assertFalse(is_google_goto_url("not a url"))
 
 
 if __name__ == "__main__":

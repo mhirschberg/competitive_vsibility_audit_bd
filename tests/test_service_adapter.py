@@ -671,6 +671,8 @@ class ServiceAdapterTests(unittest.TestCase):
     def test_research_provider_preflight_no_longer_requires_notebook_policy_helpers(self):
         events = []
         runtime = self.runtime(events)
+        runtime.pop('is_google_goto_url', None)
+        runtime.pop('remove_ai_boilerplate', None)
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],
