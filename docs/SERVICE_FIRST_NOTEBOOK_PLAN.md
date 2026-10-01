@@ -636,6 +636,19 @@ memory claim was made.
 Next: characterize both JSON-parser variants against captured fixture cases,
 then decide whether one shared parser can safely replace the runtime callback.
 
+Fifty-second checkpoint: AI JSON cleaning and parsing now live in
+`audit_core.json_parsing`, and hosted provider flows use that implementation
+directly rather than requiring a notebook `parse_ai_json` callback. The more
+capable prior behavior is preserved: fenced and surrounding text, escaped
+Markdown delimiters, repairable JSON, first-object recovery from arrays, and
+diagnostic previews on failure. Notebook generation embeds the same module
+and removes shadowed parser copies. Parser, adapter, and notebook parity tests
+pass. No provider requests, deployment, or memory claim was made.
+
+Next: inventory the remaining runtime dependencies and identify the next
+shared policy/normalization helpers that can be moved without crossing
+provider or UI boundaries.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

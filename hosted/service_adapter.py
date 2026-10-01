@@ -35,6 +35,7 @@ from audit_core.competitor_scope import (
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.domains import get_root_domain, normalize_public_url
+from audit_core.json_parsing import parse_ai_json
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
@@ -129,7 +130,7 @@ def _bind_research_provider_adapter(client, runtime):
         validate_answer=lambda answer, prompt: validate_research_answer(
             answer,
             prompt,
-            parse_json=runtime['parse_ai_json'],
+            parse_json=parse_ai_json,
             remove_boilerplate=runtime['remove_ai_boilerplate'],
         ),
         is_materializing=snapshot_is_materializing,
@@ -279,7 +280,7 @@ def _service_profile_runner(runtime):
             target_brand,
             audit_focus,
             client=runtime['bd_client'],
-            parse_ai_json=runtime['parse_ai_json'],
+            parse_ai_json=parse_ai_json,
             normalize_profile=normalize_profile,
             snapshot_timeout_error=runtime['SnapshotTimeoutError'],
         )
@@ -288,7 +289,7 @@ def _service_profile_runner(runtime):
         return recover_profile_sync_core(
             task_result,
             client=runtime['bd_client'],
-            parse_ai_json=runtime['parse_ai_json'],
+            parse_ai_json=parse_ai_json,
             normalize_profile=normalize_profile,
             provider_error=RuntimeError,
         )
@@ -417,7 +418,7 @@ def _service_utility_ai_race(runtime, client):
     """Build Reddit's utility race from shared code and explicit providers."""
     def validate_json_object(answer):
         try:
-            parsed = runtime['parse_ai_json'](answer)
+            parsed = parse_ai_json(answer)
             if not isinstance(parsed, dict):
                 return {'valid': False, 'reason': 'Parsed result was not a JSON object.'}
             return {'valid': True, 'reason': 'Parseable JSON object', 'parsed': parsed}
@@ -455,7 +456,7 @@ def _service_reddit_runners(
         return reddit_module.bind_reddit_runtime(
             client,
             utility_race,
-            parse_json=runtime['parse_ai_json'],
+            parse_json=parse_ai_json,
             is_google_goto_url=runtime.get('is_google_goto_url'),
             resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
         )
@@ -481,7 +482,7 @@ def _service_company_analyzer(runtime, client):
         ports=CompanyAnalysisPorts(
             client=client,
             run_utility=runtime['run_chatgpt_without_web'],
-            parse_json=runtime['parse_ai_json'],
+            parse_json=parse_ai_json,
             normalize_intake=runtime['normalize_company_intake'],
             select_relevant_research=runtime[
                 'select_relevant_company_research'
@@ -555,7 +556,7 @@ def build_runtime_ports(runtime):
             keywords,
             scope=scope,
             client=client,
-            parse_ai_json=need('parse_ai_json'),
+            parse_ai_json=parse_ai_json,
             decision_ports=need('_competitor_decision_ports')(),
             local_domain_bonus=need('locked_scope_local_domain_bonus'),
             validation_workers=need('LOCKED_SCOPE_VALIDATION_WORKERS'),
@@ -580,7 +581,6 @@ def build_runtime_ports(runtime):
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
-            'parse_ai_json',
             'remove_ai_boilerplate',
             'SnapshotTimeoutError',
             'create_styled_pdf_report',
