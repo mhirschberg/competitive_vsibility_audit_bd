@@ -284,6 +284,8 @@ class ServiceAdapterTests(unittest.TestCase):
                     'build_audit_record', 'build_bright_data_usage_section',
                     'format_duration', 'serialize_profile_task',
                     'serialize_engine_result',
+                    'summarize_reddit_audit_warning', 'finalize_report',
+                    'insert_reddit_report_section',
                 ):
                     runtime.pop(name)
                 fixture_selector = runtime.pop('select_competitors_stage')

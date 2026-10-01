@@ -598,6 +598,18 @@ Next: review the remaining notebook-derived callbacks as adapter boundaries;
 only move console output if a shared presentation interface preserves the
 notebook and hosted UI behavior without coupling the core to either UI.
 
+Forty-ninth checkpoint: hosted reporting now calls the shared source-appendix
+finalizer directly and binds Reddit warning/section formatting from the same
+`reddit_social` module used by the notebook. The hosted runtime no longer
+requires notebook callbacks for `finalize_report`, Reddit section insertion,
+or Reddit warning summarization. A social-on/off offline adapter fixture
+passes with all three removed. Console progress callbacks remain explicit
+presentation ports. No provider requests, generated-notebook changes,
+deployment, or memory claim was made.
+
+Next: inventory the remaining runtime callbacks and separate genuine provider
+or UI ports from duplicated engine logic before removing any more bindings.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

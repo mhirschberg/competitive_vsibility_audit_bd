@@ -46,7 +46,8 @@ from audit_core.primitives import (
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_export import (
     build_audit_record, build_bright_data_usage_section,
-    clean_record_for_storage, serialize_engine_result,
+    clean_record_for_storage, finalize_report_core,
+    serialize_engine_result,
     serialize_profile_task,
 )
 from audit_core.report_evidence import build_report_evidence_core
@@ -188,12 +189,7 @@ def _standalone_brightdata_client(runtime):
 def _service_report_generator(runtime, client):
     """Generate the report through shared deterministic modules and explicit ports."""
     def collect_sources(visibility, max_per_engine=10):
-        return collect_visibility_sources_service(
-            visibility,
-            max_per_engine,
-            resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
-            is_google_goto_url=runtime.get('is_google_goto_url'),
-        )
+        return _collect_visibility_sources(runtime, visibility, max_per_engine)
 
     def generate_report(
         target_profile, competitor_profiles, keywords,
@@ -236,6 +232,29 @@ def _service_report_generator(runtime, client):
         return result
 
     return generate_report
+
+
+def _collect_visibility_sources(runtime, visibility, max_per_engine=10):
+    return collect_visibility_sources_service(
+        visibility,
+        max_per_engine,
+        resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
+        is_google_goto_url=runtime.get('is_google_goto_url'),
+    )
+
+
+def _service_report_finalizer(runtime):
+    def finalize(report, visibility):
+        return finalize_report_core(
+            report,
+            visibility,
+            collect_sources=lambda value: _collect_visibility_sources(
+                runtime, value,
+            ),
+            clean_boilerplate=runtime['remove_ai_boilerplate'],
+        )
+
+    return finalize
 
 
 def _service_profile_runner(runtime):
@@ -561,8 +580,6 @@ def build_runtime_ports(runtime):
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'remove_ai_boilerplate',
             'SnapshotTimeoutError',
-            'summarize_reddit_audit_warning',
-            'finalize_report', 'insert_reddit_report_section',
             'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
@@ -643,13 +660,13 @@ def build_runtime_ports(runtime):
         social_stage=SocialCompletionPorts(
             print_stage=need('print_stage'), stage_success=success,
             stage_warning=warning, format_duration=format_duration_fn,
-            summarize_warning=need('summarize_reddit_audit_warning'),
+            summarize_warning=reddit_social.summarize_reddit_audit_warning,
             write_json=write_json,
         ),
         report_stage=ReportRenderPorts(
             generate_report=generate_report,
-            finalize_report=need('finalize_report'),
-            insert_reddit_section=need('insert_reddit_report_section'),
+            finalize_report=_service_report_finalizer(runtime),
+            insert_reddit_section=reddit_social.insert_reddit_report_section,
             refresh_usage=client.refresh_usage_results,
             usage_summary=client.usage_summary,
             build_usage_section=build_bright_data_usage_section,
