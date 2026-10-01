@@ -349,6 +349,18 @@ skipped). This client is not yet wired into `hosted.service_adapter`, and
 Google AI Mode research, Reddit, and profile/report provider wrappers are still outstanding.
 The legacy notebook runner remains the only end-to-end path for now.
 
+Thirtieth checkpoint: the internal research race is now bound through the
+standalone `audit_core.research_race.ResearchProviderAdapter`. Its Bright Data
+snapshot and cache operations, prompt localization, task identification,
+answer validation, throttling, and error types are explicit dependencies; the
+adapter no longer needs notebook globals. The notebook wrapper still installs
+the same behavior and keeps old Google-only snapshot checkpoints resumable.
+This confirms the architecture distinction: internal research races across
+ChatGPT and Gemini; measured Google AI Mode remains a separate audit source.
+The generated notebook is refreshed and targeted adapter/builder tests pass.
+This adapter is not yet wired into the hosted service runner, so this is not a
+memory reduction or a notebook-free hosted execution path.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

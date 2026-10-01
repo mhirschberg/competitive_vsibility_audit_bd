@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import unittest
 
+from audit_core.research_race import ResearchProviderAdapter
 from notebook_builder import (
     RESEARCH_RACE_END, RESEARCH_RACE_SOURCE, RESEARCH_RACE_START,
     _without_service_imports,
@@ -56,6 +57,7 @@ class FakeClient:
 def load_runtime(*, cache=None, only_reuse=False):
     cache = cache or {}
     namespace = {
+        "ResearchProviderAdapter": ResearchProviderAdapter,
         "SnapshotTimeoutError": SnapshotTimeoutError,
         "BrightDataAPIError": RuntimeError,
         "BrightDataClient": FakeClient,
@@ -96,6 +98,18 @@ class ResearchFallbackTests(unittest.TestCase):
         self.assertEqual(
             namespace["cached_research_snapshot_ids"]("research"),
             {"gemini": ["snapshot-gemini"]},
+        )
+
+    def test_legacy_google_research_checkpoint_remains_resumable(self):
+        cache = {"DE: research": ["snapshot-legacy-google"]}
+        namespace = load_runtime(cache=cache, only_reuse=True)
+        client = FakeClient()
+        result = client.google_ai_mode("research", timeout_seconds=3)
+        self.assertEqual(client.triggers, [])
+        self.assertEqual(result["_research_race"]["provider"], "google_ai_mode")
+        self.assertEqual(
+            namespace["cached_research_snapshot_ids"]("research"),
+            {"google_ai_mode": ["snapshot-legacy-google"]},
         )
 
     def test_google_measurement_stays_separate(self):
