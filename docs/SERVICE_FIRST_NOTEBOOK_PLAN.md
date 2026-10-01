@@ -315,6 +315,27 @@ This adapter still loads the legacy notebook definitions and therefore is a
 compatibility bridge, not yet the expected memory reduction. A live canary,
 memory measurement, and removal of those definitions remain future work.
 
+Twenty-eighth checkpoint: the service-adapter live canary completed a full
+Trello audit on 2026-10-01 with Reddit, Copilot, and measured Google AI Mode
+disabled; ChatGPT and Gemini both returned measured answers. The audit took
+11m58s, estimated Bright Data usage was $0.087, and the runner's child-process
+peak was 245.1 MiB. The run exposed a flat-notebook-namespace collision between
+the AI race and source-label constants; the constants were given distinct names
+and a regression test was added. All 358 offline unit tests pass (4 optional
+integration tests skipped), and the generated notebook is current. This is a
+functional canary, not evidence of lower memory: `_build_service_runner_script`
+still expands the notebook into a 26,990-line / 739 KiB runner and imports its
+legacy dependencies. No push or deployment was made.
+
+The next migration slice is to replace those implicit notebook-global provider
+bindings with explicit service adapters, starting with the Bright Data client
+and its effective snapshot, SERP, and answer-engine methods. Then extract the
+stage-specific provider wrappers (company research, competitor selection,
+profiles, Reddit, and report generation) behind the existing `audit_core`
+ports. The service runner can become genuinely notebook-free only after all
+required bindings have parity fixtures; a fresh live canary and memory
+comparison come after that, before any worker-default or deployment decision.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
