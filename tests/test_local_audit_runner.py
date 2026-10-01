@@ -49,6 +49,34 @@ class LocalAuditRunnerTests(unittest.TestCase):
         )
         self.assertEqual(selected_args.reddit_comment_posts_per_cohort, 2)
 
+    def test_service_adapter_dry_run_selects_opt_in_builder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / '.env.local'
+            env_file.write_text(
+                'BRIGHTDATA_API_TOKEN=test-token\nSERP_ZONE=test-zone\n',
+                encoding='utf-8',
+            )
+            with mock.patch.dict(os.environ, {}, clear=True):
+                with mock.patch('runner_builder._build_runner_script') as old:
+                    with mock.patch(
+                        'runner_builder._build_service_runner_script',
+                        return_value='print("dry run")\n',
+                    ) as new:
+                        result = run_local_audit.main([
+                            '--company', 'Apple', '--domain', 'apple.com',
+                            '--env-file', str(env_file), '--dry-run',
+                            '--engine-mode', 'service_adapter',
+                        ])
+            self.assertEqual(result, 0)
+            old.assert_not_called()
+            new.assert_called_once()
+
+    def test_process_tree_rss_includes_descendants(self):
+        snapshot = '10 1 100\n11 10 200\n12 11 300\n13 1 400\n'
+        with mock.patch.object(run_local_audit.subprocess, 'run') as run:
+            run.return_value.stdout = snapshot
+            self.assertEqual(run_local_audit.process_tree_rss_kib(10), 600)
+
 
 if __name__ == "__main__":
     unittest.main()

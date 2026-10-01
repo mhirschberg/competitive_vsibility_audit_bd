@@ -45,7 +45,7 @@ MARKET_RESEARCH_TITLE_PATTERNS = (
     r"\bindustry report\b", r"\btop \d+ companies\b",
     r"\bleading companies\b", r"\bcompanies in\b",
 )
-ENGINE_NAMES = (
+VISIBILITY_SOURCE_ENGINE_NAMES = (
     ("google_ai_mode", "Google AI Mode"), ("chatgpt", "ChatGPT"),
     ("gemini", "Gemini"), ("copilot", "Copilot"),
 )
@@ -93,7 +93,7 @@ def collect_visibility_sources_core(
     seen = set()
     audited_domains = visibility.get("audited_domains", {})
 
-    for engine, display_name in ENGINE_NAMES:
+    for engine, display_name in VISIBILITY_SOURCE_ENGINE_NAMES:
         if engine not in visibility["engines"]:
             continue
         result = visibility["engines"].get(engine, {})
