@@ -278,6 +278,19 @@ individual stages are importable, but the top-level scheduler and hosted job
 switch still need migration and end-to-end parity checks. No paid provider
 request or production deployment was made.
 
+Twenty-fifth checkpoint: `audit_core.audit_pipeline` is an importable,
+notebook-free coordinator for all audit stages. It accepts a prepared run
+context and explicit provider, artifact, progress, and finalization ports; it
+does not import Colab, the notebook, or the web app. An offline fixture now
+runs the complete service coordinator and the generated notebook's top-level
+function with the same provider answers, both with Reddit disabled and
+enabled. The normalized final record matches across the two paths for
+selected competitors, search results, AI visibility, Reddit status, Bright
+Data usage, warnings, and stage names; the service path also writes all
+expected artifacts. Real Bright Data/provider adapters, canonical-site and
+checkpoint preparation, and a hosted worker switch remain separate work.
+No paid provider request or production deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
