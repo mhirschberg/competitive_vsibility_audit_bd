@@ -61,6 +61,8 @@ PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
 DOMAINS_START = "# AUDIT-DOMAINS: start"
 DOMAINS_END = "# AUDIT-DOMAINS: end"
+JSON_PARSING_START = "# AUDIT-JSON-PARSING: start"
+JSON_PARSING_END = "# AUDIT-JSON-PARSING: end"
 SERP_METRICS_START = "# AUDIT-SERP-METRICS: start"
 SERP_METRICS_END = "# AUDIT-SERP-METRICS: end"
 BRAND_MENTIONS_START = "# AUDIT-BRAND-MENTIONS: start"
@@ -714,6 +716,21 @@ def _remove_shadowed_python_functions(cell, names):
     ]
 
 
+def _replace_json_parsing_source(cell, source):
+    text = "".join(cell["source"])
+    if JSON_PARSING_START in text or JSON_PARSING_END in text:
+        _replace_embedded_source(
+            cell, JSON_PARSING_START, JSON_PARSING_END, source,
+        )
+        return
+
+    wrapped = (
+        JSON_PARSING_START + "\n" + source.rstrip("\n")
+        + "\n" + JSON_PARSING_END
+    )
+    _replace_last_python_function(cell, "parse_ai_json", wrapped)
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -818,7 +835,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    report_stage_source=REPORT_STAGE_SOURCE,
                    report_export_source=REPORT_EXPORT_SOURCE,
                    artifact_names_source=ARTIFACT_NAMES_SOURCE,
-                   utility_ai_race_source=UTILITY_AI_RACE_SOURCE):
+                   utility_ai_race_source=UTILITY_AI_RACE_SOURCE,
+                   json_parsing_source=ROOT / "audit_core" / "json_parsing.py"):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -833,6 +851,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         DOMAINS_START,
         DOMAINS_END,
         Path(domains_source).read_text(encoding="utf-8"),
+    )
+    _replace_json_parsing_source(
+        primitives_cell,
+        Path(json_parsing_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,
@@ -1225,7 +1247,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _remove_shadowed_python_functions(
         primitives_cell,
-        {"extract_visible_url", "normalize_public_url", "get_hostname"},
+        {
+            "extract_visible_url", "normalize_public_url", "get_hostname",
+            "clean_ai_json_text", "parse_ai_json",
+        },
     )
     _remove_python_function_occurrences(
         analysis_cell,

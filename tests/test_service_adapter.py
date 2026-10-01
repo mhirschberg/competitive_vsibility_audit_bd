@@ -19,6 +19,7 @@ from hosted.service_adapter import (
 from hosted.brightdata_provider import BrightDataProviderClient
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
 from audit_core.competitor_scope import build_locked_target_scope
+from audit_core.json_parsing import parse_ai_json as shared_parse_ai_json
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -40,7 +41,6 @@ class ServiceAdapterTests(unittest.TestCase):
             return kwargs
 
         runtime = {
-            'parse_ai_json': json.loads,
         }
         with patch.object(
             reddit_social, 'start_reddit_discovery_prefetch', check_context
@@ -83,7 +83,7 @@ class ServiceAdapterTests(unittest.TestCase):
                 return record['answer_text']
 
         client = Client()
-        runtime = {'parse_ai_json': json.loads}
+        runtime = {}
         race = _service_utility_ai_race(runtime, client)
         result = race('Return JSON')
         self.assertEqual(result['status'], 'success')
@@ -185,7 +185,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 ))
             ),
             'BrandProfile': Model,
-            'parse_ai_json': json.loads,
             'remove_ai_boilerplate': lambda value: value,
             'normalize_public_url': lambda value: value,
             'get_root_domain': lambda value: value.split('/', 1)[0],
@@ -250,7 +249,6 @@ class ServiceAdapterTests(unittest.TestCase):
     def test_service_company_analyzer_uses_shared_provider_core(self):
         runtime = {
             'run_chatgpt_without_web': lambda *_args, **_kwargs: None,
-            'parse_ai_json': json.loads,
             'normalize_company_intake': lambda **kwargs: kwargs,
             'select_relevant_company_research': lambda **kwargs: kwargs,
             'complete_company_keywords': lambda **kwargs: kwargs,
@@ -267,7 +265,7 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(result, expected)
         ports = run_core.call_args.kwargs['ports']
         self.assertIs(ports.client, client)
-        self.assertIs(ports.parse_json, json.loads)
+        self.assertIs(ports.parse_json, shared_parse_ai_json)
         self.assertEqual(ports.error_type, RuntimeError)
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
 
