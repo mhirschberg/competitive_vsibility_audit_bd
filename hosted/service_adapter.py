@@ -299,8 +299,7 @@ def build_runtime_ports(runtime):
             format_duration=format_duration,
         )
 
-    def select_competitors(target_brand, candidates, keywords):
-        scope = runtime.get('LOCKED_TARGET_SCOPE')
+    def select_competitors(target_brand, candidates, keywords, scope):
         if not isinstance(scope, dict) or not scope:
             raise need('BrightDataAPIError')(
                 'Target scope was not locked during Stage 1.'
@@ -360,7 +359,7 @@ def build_runtime_ports(runtime):
             intake_factory=need('CompanyIntake'),
             brand_factory=need('BrandAnalysis'),
             keyword_factory=need('BuyerIntentKeyword'),
-            get_locked_scope=lambda: runtime.get('LOCKED_TARGET_SCOPE'),
+            get_locked_scope=lambda: None,
             set_locked_scope=lambda scope: runtime.__setitem__('LOCKED_TARGET_SCOPE', scope),
             restore_locked_scope=need('restore_locked_target_scope'),
             model_to_dict=model_to_dict, write_json=write_json,

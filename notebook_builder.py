@@ -258,6 +258,7 @@ SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
     warnings.extend(search_stage["warnings"])'''
 COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_competitor_selection_stage_core(
         target_brand, competitor_candidates, keywords,
+        locked_scope=company_stage["locked_scope"],
         continuing=continuing,
         output_directory=output_directory,
         raw_directory=raw_directory,
@@ -347,12 +348,14 @@ def fallback_profile(job, target_brand):
     return fallback_profile_core(
         job, target_brand, profile_factory=BrandProfile,
     )'''
-COMPETITOR_PROVIDER_ADAPTER_SOURCE = '''def select_competitors_stage(target_brand, candidates, keywords):
+COMPETITOR_PROVIDER_ADAPTER_SOURCE = '''def select_competitors_stage(
+    target_brand, candidates, keywords, locked_scope=None,
+):
     return select_competitors_with_provider(
         target_brand,
         candidates,
         keywords,
-        scope=require_locked_target_scope(target_brand),
+        scope=locked_scope or require_locked_target_scope(target_brand),
         client=bd_client,
         parse_ai_json=parse_ai_json,
         decision_ports=_competitor_decision_ports(),

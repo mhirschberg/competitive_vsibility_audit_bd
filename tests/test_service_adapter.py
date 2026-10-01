@@ -148,7 +148,7 @@ class ServiceAdapterTests(unittest.TestCase):
         }
         original_analyze = runtime['analyze_company_stage']
         def analyze_and_lock(settings):
-            runtime['LOCKED_TARGET_SCOPE'] = {
+            scope = {
                 'brand_name': 'Apple', 'domain': 'apple.com',
                 'official_url': 'https://apple.com/', 'country': 'US',
                 'category': 'premium smartphones', 'market_role': 'manufacturer',
@@ -156,7 +156,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 'primary_customers': ['smartphone buyers'],
                 'core_offerings': ['premium smartphones'], 'audit_focus': '',
             }
-            return original_analyze(settings)
+            result = original_analyze(settings)
+            result['locked_target_scope'] = scope
+            return result
         runtime['analyze_company_stage'] = analyze_and_lock
         return runtime
 
@@ -195,7 +197,9 @@ class ServiceAdapterTests(unittest.TestCase):
                     self.assertEqual(
                         kwargs['scope'], runtime['LOCKED_TARGET_SCOPE']
                     )
-                    return fixture_selector(target, candidates, keywords)
+                    return fixture_selector(
+                        target, candidates, keywords, kwargs['scope']
+                    )
                 with patch('tldextract.extract', offline_tldextract), patch(
                     'hosted.service_adapter.select_competitors_with_provider',
                     side_effect=select_with_shared_adapter,

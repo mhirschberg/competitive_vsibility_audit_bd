@@ -61,7 +61,14 @@ async def run_company_stage_core(
     target_brand.domain = settings["company_domain"]
     target_brand.official_url = settings["company_url"]
 
-    locked_scope = ports.get_locked_scope()
+    # Prefer an explicit result from the company analyzer. The callback is a
+    # compatibility path for older notebook analyzers that still publish the
+    # scope through their shared runtime namespace.
+    locked_scope = company_result.get("locked_target_scope")
+    if not locked_scope:
+        locked_scope = ports.get_locked_scope()
+    if isinstance(locked_scope, dict):
+        locked_scope = dict(locked_scope)
     if locked_scope:
         locked_scope["domain"] = target_brand.domain
         locked_scope["official_url"] = target_brand.official_url
@@ -69,7 +76,9 @@ async def run_company_stage_core(
         locked_scope = ports.restore_locked_scope(
             company_checkpoint, target_brand, settings
         )
-        # The notebook's scoped writer reads this state for the checkpoint.
+    # Notebook checkpoint writers and later report helpers still consume this
+    # callback; the service pipeline also returns and passes the value directly.
+    if locked_scope:
         ports.set_locked_scope(locked_scope)
 
     keyword_records = company_intake.buyer_intent_keywords

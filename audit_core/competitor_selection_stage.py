@@ -25,11 +25,12 @@ class CompetitorSelectionStagePorts:
 
 
 async def run_competitor_selection_stage_core(
-    target_brand, candidates, keywords, *, continuing, output_directory,
+    target_brand, candidates, keywords, *, locked_scope, continuing, output_directory,
     raw_directory, started_at, include_reddit_analysis, audit_focus, ports,
 ):
     selection = await asyncio.to_thread(
         ports.select_competitors, target_brand, candidates, keywords,
+        locked_scope,
     )
     selected = selection["selected"]
     warnings = []
