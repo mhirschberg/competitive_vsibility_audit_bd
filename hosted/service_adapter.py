@@ -153,26 +153,24 @@ def _service_report_generator(runtime, client):
             is_google_goto_url=runtime.get('is_google_goto_url'),
         )
 
-    def build_evidence(**kwargs):
-        settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
-            'AUDIT_SETTINGS', {}
-        )
-        return build_report_evidence_core(
-            **kwargs,
-            search_engine=runtime.get('ACTIVE_SEARCH_ENGINE', ''),
-            search_status=runtime.get('ACTIVE_SEARCH_STATUS', 'unavailable'),
-            country=settings.get('country') or getattr(client, 'country', ''),
-            locked_scope=runtime.get('LOCKED_TARGET_SCOPE'),
-            collect_sources=collect_sources,
-        )
-
     def generate_report(
         target_profile, competitor_profiles, keywords,
-        keyword_serp_results, visibility,
+        keyword_serp_results, visibility, locked_scope,
     ):
         settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
             'AUDIT_SETTINGS', {}
         )
+
+        def build_evidence(**kwargs):
+            return build_report_evidence_core(
+                **kwargs,
+                search_engine=runtime.get('ACTIVE_SEARCH_ENGINE', ''),
+                search_status=runtime.get('ACTIVE_SEARCH_STATUS', 'unavailable'),
+                country=settings.get('country') or getattr(client, 'country', ''),
+                locked_scope=locked_scope,
+                collect_sources=collect_sources,
+            )
+
         result = generate_report_stage_core(
             target_profile,
             competitor_profiles,

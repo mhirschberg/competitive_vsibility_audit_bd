@@ -442,6 +442,7 @@ SOCIAL_COMPLETION_STAGE_CALL_SOURCE = '''    social_stage = await run_social_com
 REPORT_RENDER_STAGE_CALL_SOURCE = '''    rendered_report = await run_report_render_stage_core(
         target_profile, competitor_profiles, keywords, keyword_serp_results,
         visibility_result, reddit_social_result,
+        locked_scope=company_stage["locked_scope"],
         site_resolution=site_resolution,
         country=settings["country"],
         run_timestamp=run_timestamp,
@@ -451,7 +452,7 @@ REPORT_RENDER_STAGE_CALL_SOURCE = '''    rendered_report = await run_report_rend
         started_at=stage_started_at,
         price_per_1000=BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD,
         ports=ReportRenderPorts(
-            generate_report=generate_report_stage,
+            generate_report=lambda *args: generate_report_stage(*args[:5]),
             finalize_report=finalize_report,
             insert_reddit_section=insert_reddit_report_section,
             refresh_usage=bd_client.refresh_usage_results,

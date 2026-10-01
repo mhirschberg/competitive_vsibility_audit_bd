@@ -223,6 +223,7 @@ class ReportCompletionTests(unittest.TestCase):
                 "stage_durations, warnings, run_id, include_reddit_analysis, "
                 "keyword_records, competitor_candidates, selected_competitors, "
                 "selection_result, audit_started_at):\n"
+                "    company_stage = {'locked_scope': {'market_role': 'manufacturer'}}\n"
                 + REPORT_RENDER_STAGE_CALL_SOURCE + "\n"
                 + AUDIT_FINALIZE_STAGE_CALL_SOURCE
                 + "\n    return audit_data\n"

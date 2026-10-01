@@ -29,13 +29,14 @@ class ReportRenderPorts:
 
 async def run_report_render_stage_core(
     target_profile, competitor_profiles, keywords, keyword_serp_results,
-    visibility_result, reddit_social_result, *, site_resolution, country,
+    visibility_result, reddit_social_result, *, locked_scope=None,
+    site_resolution, country,
     run_timestamp, export_prefix, output_directory, raw_directory,
     started_at, price_per_1000, ports,
 ):
     report_result = await asyncio.to_thread(
         ports.generate_report, target_profile, competitor_profiles, keywords,
-        keyword_serp_results, visibility_result,
+        keyword_serp_results, visibility_result, locked_scope,
     )
     finalized = ports.finalize_report(
         report=report_result["report"], visibility=visibility_result,
