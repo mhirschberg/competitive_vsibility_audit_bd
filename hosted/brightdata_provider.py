@@ -46,7 +46,7 @@ class BrightDataProviderClient(BrightDataUsageLedger):
 
     def __init__(
         self, token, serp_zone, country="US", debug=False, logger=None,
-        parse_bing_markdown=None,
+        parse_bing_markdown=None, remove_ai_boilerplate=None,
     ):
         super().__init__()
         self.token = str(token or "").strip()
@@ -55,6 +55,7 @@ class BrightDataProviderClient(BrightDataUsageLedger):
         self.debug = bool(debug)
         self._logger = logger or (lambda _message, _style="dim": None)
         self._parse_bing_markdown = parse_bing_markdown
+        self._remove_ai_boilerplate = remove_ai_boilerplate or (lambda text: text)
         self._serp_cache = {}
         self._search_state = {"engine": None, "status": "unavailable"}
         self.headers = {
@@ -137,6 +138,27 @@ class BrightDataProviderClient(BrightDataUsageLedger):
             strict=STRICT_AI_COUNTRY_VALIDATION,
         )
         return annotate_country_transport(result, engine, self.country)
+
+    def generate_chatgpt_report(self, prompt, timeout_seconds=600):
+        """Generate the final narrative through the same counted snapshot API."""
+        dataset_id, payload = self._engine_payload(
+            "chatgpt", prompt, request_index=1, web_search=False
+        )
+        snapshot_id = self.trigger_dataset(dataset_id, payload)
+        records = self.wait_for_snapshot(
+            snapshot_id, timeout_seconds=timeout_seconds
+        )
+        for record in records:
+            answer = self.answer_text(record)
+            if answer:
+                return {
+                    "snapshot_id": snapshot_id,
+                    "answer": self._remove_ai_boilerplate(answer),
+                    "record": record,
+                }
+        raise BrightDataAPIError(
+            "Final ChatGPT snapshot returned no report text."
+        )
 
     def normalize_serp_records(self, data, query, engine, debug=False):
         return normalize_parsed_serp_records(

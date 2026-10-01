@@ -160,20 +160,20 @@ class ServiceAdapterTests(unittest.TestCase):
     def test_service_boundary_installs_explicit_chatgpt_gemini_research_race(self):
         events = []
         runtime = self.runtime(events)
-        client = runtime['bd_client']
+        legacy_client = runtime['bd_client']
+        legacy_client.token = 'test-token'
+        legacy_client.serp_zone = 'test-zone'
+        legacy_client.country = 'DE'
+        legacy_client.debug = False
         measured_google = lambda *_args, **_kwargs: {
             'answer_text': 'measured Google AI Mode'
         }
-        client.google_ai_mode_measured = measured_google
+        legacy_client.google_ai_mode_measured = measured_google
         fixture_path = Path(__file__).parent / 'fixtures' / 'research_provider_responses.json'
         fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
         saved_by_snapshot = {}
         triggered = []
         saved_cache = {}
-        client._engine_payload = lambda engine, prompt, request_index, web_search: (
-            engine, {'prompt': prompt, 'request_index': request_index,
-                   'web_search': web_search},
-        )
 
         def trigger(dataset, payload):
             snapshot_id = f'snapshot-{dataset}'
@@ -181,12 +181,54 @@ class ServiceAdapterTests(unittest.TestCase):
             saved_by_snapshot[snapshot_id] = fixture['snapshots'][dataset]
             return snapshot_id
 
-        client.trigger_dataset = trigger
-        client.snapshot_status = lambda _snapshot: {'status': 'ready'}
-        client.download_snapshot = lambda snapshot: saved_by_snapshot[snapshot]
-        client.record_snapshot_results = lambda *_args: None
-        client.answer_text = lambda record: record.get('answer_text', '')
-        client.log = lambda *_args: None
+        class FakeStandaloneProvider:
+            def __init__(self, **options):
+                self.__dict__.update(options)
+                self.active_search_engine = None
+
+            def _engine_payload(self, engine, prompt, request_index, web_search):
+                return engine, {
+                    'prompt': prompt, 'request_index': request_index,
+                    'web_search': web_search,
+                }
+
+            def trigger_dataset(self, dataset, payload):
+                return trigger(dataset, payload)
+
+            def snapshot_status(self, _snapshot):
+                return {'status': 'ready'}
+
+            def download_snapshot(self, snapshot):
+                return saved_by_snapshot[snapshot]
+
+            def record_snapshot_results(self, *_args):
+                pass
+
+            @staticmethod
+            def answer_text(record):
+                return record.get('answer_text', '')
+
+            @staticmethod
+            def log(*_args):
+                pass
+
+            @staticmethod
+            def configure_usage_checkpoint(*_args, **_kwargs):
+                pass
+
+            @staticmethod
+            def refresh_usage_results():
+                pass
+
+            @staticmethod
+            def usage_summary():
+                return {}
+
+        runtime.update({
+            'BrightDataProviderClient': FakeStandaloneProvider,
+            'parse_bing_markdown': lambda **kwargs: kwargs,
+            'remove_ai_boilerplate': lambda text: text,
+        })
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda key: saved_cache.get(key, []),
@@ -209,6 +251,9 @@ class ServiceAdapterTests(unittest.TestCase):
         })
 
         build_runtime_ports(runtime)
+        client = runtime['bd_client']
+        self.assertIsInstance(client, FakeStandaloneProvider)
+        self.assertIsNot(client, legacy_client)
         runtime['_GOOGLE_AI_ONLY_REUSE'] = True
         with self.assertRaisesRegex(RuntimeError, 'No saved research snapshots'):
             client.google_ai_mode('research question', timeout_seconds=3)
@@ -224,7 +269,7 @@ class ServiceAdapterTests(unittest.TestCase):
             runtime['RESEARCH_PROVIDER_ADAPTER'].__class__.__name__,
             'ResearchProviderAdapter',
         )
-        self.assertIs(client.google_ai_mode_measured, measured_google)
+        self.assertTrue(callable(client.google_ai_mode_measured))
         self.assertEqual(
             client.google_ai_mode_measured()['answer_text'],
             'measured Google AI Mode',
