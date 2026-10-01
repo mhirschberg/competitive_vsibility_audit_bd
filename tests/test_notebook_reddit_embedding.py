@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from urllib.parse import urlparse
 
 from audit_core import competitor_decisions, competitor_pipeline, competitor_research
+from notebook_builder import _without_service_imports
 from audit_core.brightdata_usage import BrightDataUsageLedger
 
 
@@ -27,7 +28,9 @@ class NotebookEmbeddingTests(unittest.TestCase):
         self.assertEqual(runtime.count(START), 1)
         self.assertEqual(runtime.count(END), 1)
         embedded = runtime.split(START, 1)[1].split(END, 1)[0].strip("\n")
-        source = MODULE.read_text(encoding="utf-8").strip("\n")
+        source = _without_service_imports(
+            MODULE.read_text(encoding="utf-8")
+        ).strip("\n")
         self.assertEqual(embedded, source)
 
     def test_orchestration_hooks_are_present_once(self):

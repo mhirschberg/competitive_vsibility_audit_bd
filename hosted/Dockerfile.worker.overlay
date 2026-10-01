@@ -4,6 +4,7 @@
 FROM europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit/worker@sha256:2454437f01edfdb32b55eb6073443297b36c3d642e7f61a04e57587251a6af82
 
 COPY competitive_visibility_audit_bd.ipynb /app/competitive_visibility_audit_bd.ipynb
+COPY reddit_social.py /app/reddit_social.py
 COPY runner_builder.py /app/runner_builder.py
 COPY hosted/worker.py /app/hosted/worker.py
 COPY audit_core /app/audit_core

@@ -48,14 +48,34 @@ class RedditRuntimeContextTests(unittest.TestCase):
         client = object()
         utility_race = lambda **_kwargs: "bound race"
 
-        with social.bind_reddit_runtime(client, utility_race):
+        with social.bind_reddit_runtime(
+            client,
+            utility_race,
+            parse_json=json.loads,
+            is_google_goto_url=lambda value: value == "goto",
+            resolve_google_goto_url=lambda value: f"resolved:{value}",
+        ):
             self.assertIs(social._reddit_client(), client)
             self.assertIs(social._reddit_utility_race(), utility_race)
+            self.assertEqual(social._reddit_parse_json('{"ok": true}'), {"ok": True})
             with social.RedditExecutor(max_workers=1) as executor:
                 self.assertIs(executor.submit(social._reddit_client).result(), client)
                 self.assertIs(
                     executor.submit(social._reddit_utility_race).result(),
                     utility_race,
+                )
+                self.assertEqual(
+                    executor.submit(social._reddit_parse_json, '{"ok": true}').result(),
+                    {"ok": True},
+                )
+                self.assertTrue(
+                    executor.submit(social._reddit_is_google_goto_url, "goto").result()
+                )
+                self.assertEqual(
+                    executor.submit(
+                        social._reddit_resolve_google_goto_url, "goto"
+                    ).result(),
+                    "resolved:goto",
                 )
 
 

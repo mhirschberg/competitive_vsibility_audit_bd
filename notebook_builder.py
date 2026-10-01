@@ -1035,7 +1035,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         reddit_cell,
         REDDIT_START,
         REDDIT_END,
-        Path(reddit_source).read_text(encoding="utf-8"),
+        _without_service_imports(
+            Path(reddit_source).read_text(encoding="utf-8")
+        ),
     )
     utility_cell = _unique_cell(notebook, SCOPE_CELL_ID)
     utility_text = "".join(utility_cell["source"])

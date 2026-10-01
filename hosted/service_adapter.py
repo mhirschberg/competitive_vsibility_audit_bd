@@ -9,6 +9,7 @@ from pathlib import Path
 import threading
 from types import MethodType
 
+import reddit_social
 from audit_core.research_race import ResearchProviderAdapter
 from audit_core.audit_finalize_stage import AuditFinalizePorts
 from audit_core.audit_pipeline import (
@@ -331,23 +332,29 @@ def _service_utility_ai_race(runtime, client):
     return race
 
 
-def _service_reddit_runners(runtime, client, utility_race=None):
-    """Bind legacy-compatible Reddit collection to explicit audit providers."""
-    utility_race = utility_race or runtime['race_utility_ai']
+def _service_reddit_runners(
+    runtime, client, utility_race=None, reddit_module=reddit_social,
+):
+    """Run the shared Reddit module with explicit service providers."""
+    if utility_race is None:
+        raise ValueError('The service Reddit utility race must be explicit.')
 
     def reddit_context():
-        return runtime['bind_reddit_runtime'](
+        return reddit_module.bind_reddit_runtime(
             client,
             utility_race,
+            parse_json=runtime['parse_ai_json'],
+            is_google_goto_url=runtime.get('is_google_goto_url'),
+            resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
         )
 
     async def start_discovery(**kwargs):
         with reddit_context():
-            return await runtime['start_reddit_discovery_prefetch'](**kwargs)
+            return await reddit_module.start_reddit_discovery_prefetch(**kwargs)
 
     async def run_social_stage(**kwargs):
         with reddit_context():
-            return await runtime['run_reddit_social_stage'](**kwargs)
+            return await reddit_module.run_reddit_social_stage(**kwargs)
 
     return start_discovery, run_social_stage
 
@@ -437,12 +444,11 @@ def build_runtime_ports(runtime):
             'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
-            'start_reddit_discovery_prefetch', 'BrandProfile',
-            'bind_reddit_runtime',
+            'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'SnapshotTimeoutError',
             'serialize_profile_task',
-            'run_reddit_social_stage', 'serialize_engine_result',
+            'serialize_engine_result',
             'summarize_reddit_audit_warning',
             'finalize_report', 'insert_reddit_report_section',
             'build_bright_data_usage_section', 'write_text',
@@ -458,7 +464,10 @@ def build_runtime_ports(runtime):
     run_profiles = _service_profile_runner(runtime)
     run_visibility = _service_visibility_runner(runtime, client)
     start_reddit_discovery, run_reddit_social = _service_reddit_runners(
-        runtime, client, utility_race=_service_utility_ai_race(runtime, client),
+        runtime,
+        client,
+        utility_race=_service_utility_ai_race(runtime, client),
+        reddit_module=runtime.get('reddit_module', reddit_social),
     )
 
     return AuditPipelinePorts(
