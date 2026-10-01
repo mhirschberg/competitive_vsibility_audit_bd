@@ -623,6 +623,19 @@ Next: inspect the remaining bindings for other pure helpers with existing
 shared sources, while preserving deliberate provider, persistence, and UI
 boundaries.
 
+Fifty-first checkpoint: visible-URL extraction, public URL normalization,
+and hostname cleanup now live in `audit_core.domains` and are used directly
+by hosted profile preparation. The notebook builder removes only shadowed
+copies, preserving its generated shared functions across repeated builds; a
+regression test covers that idempotence. URL edge cases and the offline hosted
+pipeline pass. The JSON parser remains an explicit binding for now: inspection
+found two notebook implementations with different recovery behavior, so they
+need parity tests before consolidation. No provider requests, deployment, or
+memory claim was made.
+
+Next: characterize both JSON-parser variants against captured fixture cases,
+then decide whether one shared parser can safely replace the runtime callback.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

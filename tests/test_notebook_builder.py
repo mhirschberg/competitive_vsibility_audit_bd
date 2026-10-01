@@ -61,6 +61,20 @@ class NotebookBuilderTests(unittest.TestCase):
             self.assertEqual(definitions.count(name), 1)
         self.assertNotIn("format_duration", definitions)
 
+    def test_shared_domain_helpers_are_not_shadowed_by_legacy_copies(self):
+        notebook = json.loads(build_notebook())
+        cell = next(
+            cell for cell in notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "final-core"
+        )
+        tree = ast.parse("".join(cell["source"]))
+        definitions = [
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        for name in ("extract_visible_url", "normalize_public_url", "get_hostname"):
+            self.assertEqual(definitions.count(name), 1)
+
     def test_source_change_updates_only_owned_cell(self):
         original = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:

@@ -290,6 +290,7 @@ class ServiceAdapterTests(unittest.TestCase):
                     'find_latest_audit_to_continue', 'slugify',
                     'audit_export_prefix',
                     'get_root_domain',
+                    'normalize_public_url',
                 ):
                     runtime.pop(name)
                 fixture_selector = runtime.pop('select_competitors_stage')

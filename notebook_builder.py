@@ -690,6 +690,30 @@ def _remove_python_function_occurrences(cell, removals, *, before_marker=None):
     ]
 
 
+def _remove_shadowed_python_functions(cell, names):
+    """Keep the last definition of each named function in a generated cell."""
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
+    definitions = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            definitions.setdefault(node.name, []).append(node)
+
+    removed_lines = set()
+    for name in names:
+        matches = definitions.get(name, [])
+        for node in matches[:-1]:
+            start_line = min(
+                [node.lineno] + [item.lineno for item in node.decorator_list]
+            )
+            removed_lines.update(range(start_line - 1, node.end_lineno))
+
+    lines = source.splitlines(keepends=True)
+    cell["source"] = [
+        line for index, line in enumerate(lines) if index not in removed_lines
+    ]
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -1198,6 +1222,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
             "preferred_homepage_url": [0],
             "aggregate_competitor_domains": [0],
         },
+    )
+    _remove_shadowed_python_functions(
+        primitives_cell,
+        {"extract_visible_url", "normalize_public_url", "get_hostname"},
     )
     _remove_python_function_occurrences(
         analysis_cell,
