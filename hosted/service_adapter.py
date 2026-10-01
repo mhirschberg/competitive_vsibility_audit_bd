@@ -20,6 +20,10 @@ from audit_core.audit_preparation import (
 )
 from audit_core.artifact_writes import write_json_with_scope
 from audit_core.company_stage import CompanyStagePorts
+from audit_core.company_analysis import (
+    CompanyAnalysisPorts,
+    run_company_analysis_core,
+)
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.profile_research import (
@@ -379,6 +383,29 @@ def _service_reddit_runners(
     return start_discovery, run_social_stage
 
 
+def _service_company_analyzer(runtime, client):
+    """Run company research and structuring through the shared provider core."""
+    if callable(runtime.get('company_analysis_runner')):
+        return runtime['company_analysis_runner']
+
+    return lambda settings: run_company_analysis_core(
+        settings,
+        ports=CompanyAnalysisPorts(
+            client=client,
+            run_utility=runtime['run_chatgpt_without_web'],
+            parse_json=runtime['parse_ai_json'],
+            normalize_intake=runtime['normalize_company_intake'],
+            select_relevant_research=runtime[
+                'select_relevant_company_research'
+            ],
+            complete_keywords=runtime['complete_company_keywords'],
+            proofread_keywords=runtime['proofread_buyer_keywords'],
+            build_locked_scope=runtime['build_locked_target_scope'],
+            error_type=runtime['BrightDataAPIError'],
+        ),
+    )
+
+
 def build_runtime_ports(runtime):
     """Bind explicit providers and legacy stage/artifact functions."""
     def need(name):
@@ -396,6 +423,7 @@ def build_runtime_ports(runtime):
     success = need('print_stage_success')
     warning = need('print_stage_warning')
     format_duration = need('format_duration')
+    analyze_company = _service_company_analyzer(runtime, client)
     company_scope = {'value': None}
 
     def write_company_json(path, data):
@@ -459,7 +487,7 @@ def build_runtime_ports(runtime):
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
             'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
-            'BuyerIntentKeyword', 'analyze_company_stage', 'run_serp_stage',
+            'BuyerIntentKeyword', 'run_serp_stage',
             'CompetitorCandidate', '_competitor_decision_ports',
             'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
@@ -478,6 +506,13 @@ def build_runtime_ports(runtime):
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
             need(name)
+        if not callable(runtime.get('company_analysis_runner')):
+            for name in (
+                'run_chatgpt_without_web', 'normalize_company_intake',
+                'select_relevant_company_research', 'complete_company_keywords',
+                'proofread_buyer_keywords', 'build_locked_target_scope',
+            ):
+                need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
     preflight()
@@ -493,7 +528,7 @@ def build_runtime_ports(runtime):
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
-            analyze=need('analyze_company_stage'),
+            analyze=analyze_company,
             intake_factory=need('CompanyIntake'),
             brand_factory=need('BrandAnalysis'),
             keyword_factory=need('BuyerIntentKeyword'),

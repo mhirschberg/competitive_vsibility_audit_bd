@@ -504,6 +504,19 @@ Next: extract the remaining company-analysis provider boundary, then wire
 measured Google AI Mode through the standalone provider client rather than
 borrowing the notebook client's bound method.
 
+Forty-second checkpoint: company research and response-structuring now run
+through `audit_core.company_analysis` in both hosted and notebook orchestration.
+It owns the Google AI Mode research call, two-attempt ChatGPT/Gemini JSON
+structuring flow, eight-keyword completion gate, keyword proofreading, and
+explicit locked-scope result. Existing normalizers and keyword maintenance
+helpers remain narrow callbacks. The generated notebook embeds this same core;
+the hosted adapter no longer requires `analyze_company_stage`. Fixture tests
+cover retry, empty research, keyword completion, scope, and adapter wiring. No
+provider request, deployment, or memory reduction claim was made.
+
+Next: connect measured Google AI Mode directly to the standalone provider
+client, then continue shrinking the notebook-derived runtime callbacks.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
