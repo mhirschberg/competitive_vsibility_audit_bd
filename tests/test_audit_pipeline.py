@@ -13,6 +13,9 @@ from audit_core.audit_finalize_stage import (
 from audit_core.audit_pipeline import (
     AuditPipelinePorts, AuditRunContext, run_audit_pipeline,
 )
+from audit_core.audit_preparation import (
+    AuditPreparationPorts, prepare_audit_run_core,
+)
 from audit_core.company_stage import CompanyStagePorts, run_company_stage_core
 from audit_core.competitor_selection_stage import (
     CompetitorSelectionStagePorts, run_competitor_selection_stage_core,
@@ -392,6 +395,10 @@ class AuditPipelineTests(unittest.TestCase):
                     "get_root_domain": lambda host: host,
                     "slugify": lambda value: value.lower(),
                     "audit_export_prefix": lambda *args: "20260930-apple-us",
+                    "AuditPreparationPorts": AuditPreparationPorts,
+                    "prepare_audit_run_core": prepare_audit_run_core,
+                    "find_latest_audit_to_continue": lambda settings: None,
+                    "import_google_ai_snapshot_ids": lambda ids: 0,
                     "console": Model(print=lambda message: None),
                     "bd_client": client,
                     "write_json": fixture.company_stage.write_json,

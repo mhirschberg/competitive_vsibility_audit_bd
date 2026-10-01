@@ -287,9 +287,21 @@ function with the same provider answers, both with Reddit disabled and
 enabled. The normalized final record matches across the two paths for
 selected competitors, search results, AI visibility, Reddit status, Bright
 Data usage, warnings, and stage names; the service path also writes all
-expected artifacts. Real Bright Data/provider adapters, canonical-site and
-checkpoint preparation, and a hosted worker switch remain separate work.
+expected artifacts. Real Bright Data/provider adapters, run preparation, and
+a hosted worker switch remain separate work.
 No paid provider request or production deployment was made.
+
+Twenty-sixth checkpoint: `audit_core.audit_preparation` now handles the
+pre-stage setup through explicit ports: resolve a redirecting official site,
+select a fresh directory or the latest compatible checkpoint, preserve the
+original run timestamp on resume, create the raw directory, and configure
+usage and Google AI snapshot caches. Fresh runs save the canonical settings;
+resumed runs can import recovery snapshot IDs and still warn about legacy
+checkpoints. The generated notebook calls this module with `/content` as its
+output root, while a hosted adapter can supply its own root. Offline tests
+cover fresh redirects, resume, legacy warnings, cache flags, and failure
+before any run files are created. The hosted adapter and live parity check
+remain future work; no paid request or production deployment was made.
 
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
