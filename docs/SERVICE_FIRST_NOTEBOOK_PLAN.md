@@ -649,6 +649,19 @@ Next: inventory the remaining runtime dependencies and identify the next
 shared policy/normalization helpers that can be moved without crossing
 provider or UI boundaries.
 
+Fifty-third checkpoint: AI-interface cleanup and Markdown report unwrapping now
+live in `audit_core.text_cleaning`. Hosted research validation and report
+finalization call the shared implementation directly, so the service no longer
+depends on a notebook-defined cleaner. Notebook generation embeds the same
+source and removes shadowed copies. Focused parity checks and the full offline
+suite pass (424 tests, 4 skipped); the notebook build and no-provider-call dry
+run pass. No paid requests or deployment were made, and this extraction alone
+is not a memory-reduction claim.
+
+Next: continue the runtime-binding inventory, looking for another pure helper
+whose ownership can move without crossing provider, persistence, or UI
+boundaries.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
