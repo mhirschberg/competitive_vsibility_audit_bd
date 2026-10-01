@@ -1209,4 +1209,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         },
         before_marker=SEARCH_DISCOVERY_START,
     )
+    _remove_python_function_occurrences(
+        orchestration_cell,
+        {
+            "serialize_engine_result": [1],
+            "serialize_profile_task": [1],
+            "format_duration": [0],
+        },
+    )
     return (json.dumps(notebook, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

@@ -8,10 +8,37 @@ from audit_core.report_export import (
     build_audit_record,
     build_bright_data_usage_section,
     finalize_report_core,
+    serialize_engine_result,
+    serialize_profile_task,
 )
+from audit_core.primitives import format_duration
 
 
 class ReportExportTests(unittest.TestCase):
+    def test_result_serializers_remove_large_ui_fields(self):
+        engine = serialize_engine_result({
+            "engine_name": "Gemini",
+            "record": {"answer": "measured", "html": "<large>", "screenshot": "..."},
+        })
+        self.assertEqual(engine["engine_name"], "Gemini")
+        self.assertEqual(engine["record"], {"answer": "measured"})
+
+        profile = serialize_profile_task(
+            {
+                "status": "success", "job": "target",
+                "profile": SimpleNamespace(brand_name="Apple"),
+                "snapshot_id": "snap-1", "record": {"answer": "ok", "html": "..."},
+            },
+            model_to_dict=lambda value: vars(value),
+        )
+        self.assertEqual(profile["profile"], {"brand_name": "Apple"})
+        self.assertEqual(profile["record"], {"answer": "ok"})
+        self.assertFalse(profile["used_fallback"])
+
+    def test_shared_duration_format_matches_notebook_format(self):
+        self.assertEqual(format_duration(12.345), "12.3s")
+        self.assertEqual(format_duration(125.9), "2m 5s")
+
     def test_finalization_adds_measured_sources_once(self):
         observed = [{
             "engine": "ChatGPT",
