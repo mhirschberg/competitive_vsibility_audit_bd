@@ -492,6 +492,18 @@ Next: extract the remaining research prompt-localization and company-analysis
 provider boundary, then wire measured Google AI Mode through the standalone
 provider client rather than borrowing the notebook client's bound method.
 
+Forty-first checkpoint: the ChatGPT/Gemini research race now localizes its
+prompts through `audit_core.ai_localization` in both service and notebook
+paths. Hosted preflight no longer requires the notebook's
+`localize_google_ai_prompt` callback; the existing country details, wording,
+near-4,096-character handling, cache keys, and true provider labels are
+preserved. Fixture tests verify Germany-specific prompt text and notebook
+parity. No Bright Data request or deployment was made.
+
+Next: extract the remaining company-analysis provider boundary, then wire
+measured Google AI Mode through the standalone provider client rather than
+borrowing the notebook client's bound method.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

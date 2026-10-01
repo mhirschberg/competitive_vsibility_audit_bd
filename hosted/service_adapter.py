@@ -48,6 +48,10 @@ from audit_core.research_validation import (
     snapshot_is_materializing,
     validate_research_answer,
 )
+from audit_core.ai_localization import (
+    country_details,
+    localize_google_ai_prompt_core,
+)
 from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
     BrightDataAPIError,
@@ -56,7 +60,7 @@ from audit_core.brightdata_transport import (
 
 _RESEARCH_BINDINGS = (
     'RESEARCH_PROVIDERS', 'cached_google_ai_snapshot_ids',
-    'remember_google_ai_snapshot', 'localize_google_ai_prompt',
+    'remember_google_ai_snapshot',
     'FAILED_STATUSES',
     '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError', 'BrightDataAPIError',
 )
@@ -87,7 +91,14 @@ def _bind_research_provider_adapter(client, runtime):
         providers=runtime['RESEARCH_PROVIDERS'],
         cached_snapshot_ids=runtime['cached_google_ai_snapshot_ids'],
         remember_snapshot=runtime['remember_google_ai_snapshot'],
-        localize_prompt=runtime['localize_google_ai_prompt'],
+        localize_prompt=lambda prompt: localize_google_ai_prompt_core(
+            prompt,
+            country_details(
+                getattr(client, 'country', None)
+                or (runtime.get('SERVICE_AUDIT_SETTINGS')
+                    or runtime.get('AUDIT_SETTINGS', {})).get('country')
+            ),
+        ),
         identify_task=identify_research_task,
         validate_answer=lambda answer, prompt: validate_research_answer(
             answer,
