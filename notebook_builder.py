@@ -26,6 +26,8 @@ COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
 SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
 SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
 COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_stage.py"
+PROFILE_RESEARCH_SOURCE = ROOT / "audit_core" / "profile_research.py"
+PROFILE_STAGE_SOURCE = ROOT / "audit_core" / "profile_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -77,6 +79,12 @@ COMPETITOR_SELECTION_STAGE_START = "# AUDIT-COMPETITOR-SELECTION-STAGE: start"
 COMPETITOR_SELECTION_STAGE_END = "# AUDIT-COMPETITOR-SELECTION-STAGE: end"
 COMPETITOR_SELECTION_STAGE_CALL_START = "# AUDIT-COMPETITOR-SELECTION-STAGE-CALL: start"
 COMPETITOR_SELECTION_STAGE_CALL_END = "    # AUDIT-COMPETITOR-SELECTION-STAGE-CALL: end"
+PROFILE_RESEARCH_START = "# AUDIT-PROFILE-RESEARCH: start"
+PROFILE_RESEARCH_END = "# AUDIT-PROFILE-RESEARCH: end"
+PROFILE_STAGE_START = "# AUDIT-PROFILE-STAGE: start"
+PROFILE_STAGE_END = "# AUDIT-PROFILE-STAGE: end"
+PROFILE_STAGE_CALL_START = "# AUDIT-PROFILE-STAGE-CALL: start"
+PROFILE_STAGE_CALL_END = "    # AUDIT-PROFILE-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -210,6 +218,42 @@ COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_com
     stage_durations["competitor_selection"] = competitor_stage["duration_seconds"]
     warnings.extend(competitor_stage["warnings"])
     reddit_prefetch_task = competitor_stage["reddit_prefetch_task"]'''
+PROFILE_RESEARCH_ADAPTER_SOURCE = '''async def run_profile_stage(
+    target_brand, selected_competitors, audit_focus="",
+):
+    return await run_profile_research_core(
+        target_brand, selected_competitors, audit_focus,
+        ports=ProfileResearchPorts(
+            generate_profile=generate_profile_sync,
+            recover_profile=recover_profile_sync,
+            fallback_profile=fallback_profile,
+            root_domain=get_root_domain,
+            pending_notice=lambda count: console.print(
+                f"      Waiting for {count} late profile snapshot(s)..."
+            ),
+        ),
+    )'''
+PROFILE_STAGE_CALL_SOURCE = '''    profile_stage = await run_profile_stage_core(
+        target_brand, selected_competitors,
+        audit_focus=settings.get("audit_focus", ""),
+        company_domain=settings["company_domain"],
+        company_url=settings["company_url"],
+        output_directory=output_directory,
+        started_at=stage_started_at,
+        ports=ProfileStagePorts(
+            run_profiles=run_profile_stage,
+            model_to_dict=model_to_dict,
+            serialize_task=serialize_profile_task,
+            write_json=write_json,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+        ),
+    )
+    target_profile = profile_stage["target_profile"]
+    competitor_profiles = profile_stage["competitor_profiles"]
+    all_profiles = profile_stage["all_profiles"]
+    stage_durations["brand_profiles"] = profile_stage["duration_seconds"]
+    warnings.extend(profile_stage["warnings"])'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -260,6 +304,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    search_discovery_source=SEARCH_DISCOVERY_SOURCE,
                    search_stage_source=SEARCH_STAGE_SOURCE,
                    competitor_selection_stage_source=COMPETITOR_SELECTION_STAGE_SOURCE,
+                   profile_research_source=PROFILE_RESEARCH_SOURCE,
+                   profile_stage_source=PROFILE_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -426,6 +472,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SEARCH_DISCOVERY_END,
         Path(search_discovery_source).read_text(encoding="utf-8"),
     )
+    _replace_embedded_source(
+        analysis_cell,
+        PROFILE_RESEARCH_START,
+        PROFILE_RESEARCH_END,
+        Path(profile_research_source).read_text(encoding="utf-8")
+        + "\n\n" + PROFILE_RESEARCH_ADAPTER_SOURCE,
+    )
     orchestration_cell = _unique_cell(notebook, "final-orchestration")
     _replace_embedded_source(
         orchestration_cell,
@@ -514,6 +567,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPETITOR_SELECTION_STAGE_CALL_START,
         COMPETITOR_SELECTION_STAGE_CALL_END,
         COMPETITOR_SELECTION_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        PROFILE_STAGE_START,
+        PROFILE_STAGE_END,
+        Path(profile_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        PROFILE_STAGE_CALL_START,
+        PROFILE_STAGE_CALL_END,
+        PROFILE_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
