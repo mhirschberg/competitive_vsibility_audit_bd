@@ -1,5 +1,6 @@
 """Generated notebook cells must match the service-side Python sources."""
 
+import ast
 import json
 import tempfile
 import unittest
@@ -44,6 +45,21 @@ class NotebookBuilderTests(unittest.TestCase):
                     getattr(primitives, name)(*args),
                     (name, args),
                 )
+
+    def test_shared_serializers_are_not_shadowed_by_legacy_copies(self):
+        notebook = json.loads(build_notebook())
+        cell = next(
+            cell for cell in notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "final-orchestration"
+        )
+        tree = ast.parse("".join(cell["source"]))
+        definitions = [
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        for name in ("serialize_engine_result", "serialize_profile_task"):
+            self.assertEqual(definitions.count(name), 1)
+        self.assertNotIn("format_duration", definitions)
 
     def test_source_change_updates_only_owned_cell(self):
         original = json.loads(NOTEBOOK.read_text(encoding="utf-8"))

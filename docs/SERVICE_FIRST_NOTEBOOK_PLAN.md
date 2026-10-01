@@ -584,6 +584,20 @@ claim was made.
 Next: extract the remaining engine-result/profile-task serializers and reduce
 the progress-display callbacks that are still sourced from notebook runtime.
 
+Forty-eighth checkpoint: engine-result and profile-task serialization now
+live in shared `audit_core.report_export`; elapsed-time formatting lives in
+`audit_core.primitives`. Hosted orchestration no longer requires these three
+notebook callbacks, and an end-to-end offline adapter fixture runs with them
+removed. Serializer tests verify that large HTML/screenshot fields remain
+excluded while measured records and profile fields are preserved. The
+notebook's existing output formatting remains compatible. Console printing
+callbacks remain adapter-owned because they are presentation, not audit
+logic. No provider requests, deployment, or memory claim was made.
+
+Next: review the remaining notebook-derived callbacks as adapter boundaries;
+only move console output if a shared presentation interface preserves the
+notebook and hosted UI behavior without coupling the core to either UI.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

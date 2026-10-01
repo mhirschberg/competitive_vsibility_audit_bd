@@ -82,3 +82,14 @@ def slugify(value):
     )
 
     return value.strip("-") or "audit"
+
+
+def format_duration(seconds):
+    """Format elapsed seconds consistently in hosted and notebook progress."""
+    seconds = float(seconds or 0)
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remaining = int(seconds % 60)
+    return f"{minutes}m {remaining}s"

@@ -40,11 +40,14 @@ from audit_core.profile_provider import (
     normalize_brand_profile_core, recover_profile_sync_core,
 )
 from audit_core.profile_stage import ProfileStagePorts
-from audit_core.primitives import ensure_string_list, normalize_confidence
+from audit_core.primitives import (
+    ensure_string_list, format_duration, normalize_confidence,
+)
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_export import (
     build_audit_record, build_bright_data_usage_section,
-    clean_record_for_storage,
+    clean_record_for_storage, serialize_engine_result,
+    serialize_profile_task,
 )
 from audit_core.report_evidence import build_report_evidence_core
 from audit_core.report_render_stage import ReportRenderPorts
@@ -484,7 +487,7 @@ def build_runtime_ports(runtime):
     clean_record = clean_record_for_storage
     success = need('print_stage_success')
     warning = need('print_stage_warning')
-    format_duration = need('format_duration')
+    format_duration_fn = format_duration
     analyze_company = _service_company_analyzer(runtime, client)
     company_scope = {'value': None}
 
@@ -507,7 +510,7 @@ def build_runtime_ports(runtime):
         return AuditFinalizePorts(
             build_record=build_audit_record,
             model_to_dict=model_to_dict,
-            serialize_engine_result=need('serialize_engine_result'),
+            serialize_engine_result=serialize_engine_result,
             generator_name=utility.get('engine_name', 'Unknown'),
             report_filename=report_filename,
             write_json=write_json,
@@ -516,7 +519,7 @@ def build_runtime_ports(runtime):
             completion_notice=lambda message: console.print(
                 f'\n[bold green]{message}[/bold green]'
             ),
-            format_duration=format_duration,
+            format_duration=format_duration_fn,
         )
 
     def select_competitors(target_brand, candidates, keywords, scope):
@@ -558,8 +561,6 @@ def build_runtime_ports(runtime):
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'remove_ai_boilerplate',
             'SnapshotTimeoutError',
-            'serialize_profile_task',
-            'serialize_engine_result',
             'summarize_reddit_audit_warning',
             'finalize_report', 'insert_reddit_report_section',
             'create_styled_pdf_report',
@@ -608,7 +609,7 @@ def build_runtime_ports(runtime):
             candidate_factory=need('CompetitorCandidate'),
             model_to_dict=model_to_dict, write_json=write_json,
             stage_success=success, stage_warning=warning,
-            format_duration=format_duration,
+            format_duration=format_duration_fn,
         ),
         competitor_stage=CompetitorSelectionStagePorts(
             select_competitors=select_competitors,
@@ -627,19 +628,21 @@ def build_runtime_ports(runtime):
         profile_stage=ProfileStagePorts(
             run_profiles=run_profiles,
             model_to_dict=model_to_dict,
-            serialize_task=need('serialize_profile_task'),
+            serialize_task=lambda result: serialize_profile_task(
+                result, model_to_dict=model_to_dict,
+            ),
             write_json=write_json, stage_success=success, stage_warning=warning,
         ),
         visibility_stage=VisibilityCheckpointPorts(
             run_visibility=run_visibility,
             run_reddit_social=run_reddit_social,
-            serialize_engine_result=need('serialize_engine_result'),
+            serialize_engine_result=serialize_engine_result,
             write_json=write_json, stage_success=success,
-            stage_warning=warning, format_duration=format_duration,
+            stage_warning=warning, format_duration=format_duration_fn,
         ),
         social_stage=SocialCompletionPorts(
             print_stage=need('print_stage'), stage_success=success,
-            stage_warning=warning, format_duration=format_duration,
+            stage_warning=warning, format_duration=format_duration_fn,
             summarize_warning=need('summarize_reddit_audit_warning'),
             write_json=write_json,
         ),
@@ -654,7 +657,7 @@ def build_runtime_ports(runtime):
             report_filename=report_filename,
             create_pdf=need('create_styled_pdf_report'),
             clean_record=clean_record, stage_success=success,
-            stage_warning=warning, format_duration=format_duration,
+            stage_warning=warning, format_duration=format_duration_fn,
         ),
         finalize_stage_factory=finalize_ports,
         stage_banner=need('print_stage'),

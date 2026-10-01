@@ -186,6 +186,37 @@ def clean_record_for_storage(
     }
 
 
+def serialize_engine_result(result):
+    """Drop heavyweight presentation fields from a measured engine result."""
+    if not isinstance(result, dict):
+        return result
+
+    serialized = {
+        key: value for key, value in result.items() if key != "record"
+    }
+    if isinstance(result.get("record"), dict):
+        serialized["record"] = clean_record_for_storage(result["record"])
+    return serialized
+
+
+def serialize_profile_task(result, *, model_to_dict):
+    """Return the stable, storage-safe representation of a profile task."""
+    profile = result.get("profile")
+    record = result.get("record")
+    return {
+        "status": result.get("status"),
+        "job": result.get("job"),
+        "profile": model_to_dict(profile) if profile is not None else None,
+        "error": result.get("error"),
+        "snapshot_id": result.get("snapshot_id"),
+        "used_fallback": result.get("used_fallback", False),
+        "record": (
+            clean_record_for_storage(record)
+            if isinstance(record, dict) else None
+        ),
+    }
+
+
 def build_audit_record(
     *,
     run_id,
