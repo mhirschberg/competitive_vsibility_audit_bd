@@ -93,6 +93,14 @@ class ServiceAdapterTests(unittest.TestCase):
             'run_serp_stage': search.run_search,
             'CompetitorCandidate': search.candidate_factory,
             'select_competitors_stage': competitor.select_competitors,
+            '_competitor_decision_ports': lambda: object(),
+            'locked_scope_local_domain_bonus': lambda *_args: 0,
+            'LOCKED_SCOPE_VALIDATION_WORKERS': 3,
+            'LOCKED_SCOPE_VALIDATION_LIMIT': 12,
+            'cached_research_snapshot_ids': lambda _prompt: [],
+            'locked_scope_brand_family': lambda value: value,
+            'SelectedCompetitor': Model,
+            'BrightDataAPIError': RuntimeError,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
             'run_profile_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
@@ -138,6 +146,18 @@ class ServiceAdapterTests(unittest.TestCase):
             'import_google_ai_snapshot_ids': lambda ids: len(ids),
             'LAST_UTILITY_REPORT_RESULT': {'engine_name': 'ChatGPT'},
         }
+        original_analyze = runtime['analyze_company_stage']
+        def analyze_and_lock(settings):
+            runtime['LOCKED_TARGET_SCOPE'] = {
+                'brand_name': 'Apple', 'domain': 'apple.com',
+                'official_url': 'https://apple.com/', 'country': 'US',
+                'category': 'premium smartphones', 'market_role': 'manufacturer',
+                'business_model': 'hardware manufacturer',
+                'primary_customers': ['smartphone buyers'],
+                'core_offerings': ['premium smartphones'], 'audit_focus': '',
+            }
+            return original_analyze(settings)
+        runtime['analyze_company_stage'] = analyze_and_lock
         return runtime
 
     def test_adapter_runs_same_fixture_with_and_without_social(self):
@@ -145,6 +165,7 @@ class ServiceAdapterTests(unittest.TestCase):
             with self.subTest(reddit=reddit), tempfile.TemporaryDirectory() as root:
                 events = []
                 runtime = self.runtime(events)
+                fixture_selector = runtime.pop('select_competitors_stage')
                 runtime['generate_report_stage'] = lambda *_args, **_kwargs: (
                     (_ for _ in ()).throw(AssertionError(
                         'service report must not call notebook wrapper'
@@ -170,7 +191,15 @@ class ServiceAdapterTests(unittest.TestCase):
                 offline_tldextract = tldextract.TLDExtract(
                     cache_dir=None, suffix_list_urls=(),
                 )
-                with patch('tldextract.extract', offline_tldextract):
+                def select_with_shared_adapter(target, candidates, keywords, **kwargs):
+                    self.assertEqual(
+                        kwargs['scope'], runtime['LOCKED_TARGET_SCOPE']
+                    )
+                    return fixture_selector(target, candidates, keywords)
+                with patch('tldextract.extract', offline_tldextract), patch(
+                    'hosted.service_adapter.select_competitors_with_provider',
+                    side_effect=select_with_shared_adapter,
+                ):
                     result = asyncio.run(run_with_legacy_runtime(
                         settings, runtime, base_directory=Path(root),
                     ))

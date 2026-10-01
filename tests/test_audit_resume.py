@@ -274,7 +274,7 @@ class AuditResumeTests(unittest.TestCase):
         source = definition("select_competitors_stage", last=True)
         self.assertIn("only_reuse=_GOOGLE_AI_ONLY_REUSE", source)
         self.assertIn("cached_research_snapshot_ids", source)
-        self.assertIn("select_competitors_core", source)
+        self.assertIn("select_competitors_with_provider", source)
 
 
 if __name__ == "__main__":

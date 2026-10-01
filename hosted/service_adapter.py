@@ -19,6 +19,7 @@ from audit_core.audit_preparation import (
 )
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
+from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
@@ -56,7 +57,12 @@ def _bind_research_provider_adapter(client, runtime):
     rather than the notebook's monkey-patched ``google_ai_mode`` function.
     Measured Google AI Mode is intentionally untouched.
     """
-    present = [name for name in _RESEARCH_BINDINGS if name in runtime]
+    # BrightDataAPIError is also used by unrelated provider adapters, so it
+    # must not by itself opt a small runtime into the complete research race.
+    research_markers = tuple(
+        name for name in _RESEARCH_BINDINGS if name != 'BrightDataAPIError'
+    )
+    present = [name for name in research_markers if name in runtime]
     if not present:
         # Small stage-fixture runtimes may not model any research provider.
         return None
@@ -293,12 +299,42 @@ def build_runtime_ports(runtime):
             format_duration=format_duration,
         )
 
+    def select_competitors(target_brand, candidates, keywords):
+        scope = runtime.get('LOCKED_TARGET_SCOPE')
+        if not isinstance(scope, dict) or not scope:
+            raise need('BrightDataAPIError')(
+                'Target scope was not locked during Stage 1.'
+            )
+        return select_competitors_with_provider(
+            target_brand,
+            candidates,
+            keywords,
+            scope=scope,
+            client=client,
+            parse_ai_json=need('parse_ai_json'),
+            decision_ports=need('_competitor_decision_ports')(),
+            local_domain_bonus=need('locked_scope_local_domain_bonus'),
+            validation_workers=need('LOCKED_SCOPE_VALIDATION_WORKERS'),
+            validation_limit=need('LOCKED_SCOPE_VALIDATION_LIMIT'),
+            only_reuse=runtime.get('_GOOGLE_AI_ONLY_REUSE', False),
+            cached_snapshot_ids=need('cached_research_snapshot_ids'),
+            brand_family=need('locked_scope_brand_family'),
+            selected_factory=need('SelectedCompetitor'),
+            error_type=need('BrightDataAPIError'),
+            output_dir=runtime.get('CURRENT_AUDIT_OUTPUT_DIRECTORY'),
+            write_json=write_json,
+            clean_record=clean_record,
+        )
+
     def preflight():
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
             'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
             'BuyerIntentKeyword', 'analyze_company_stage', 'run_serp_stage',
-            'CompetitorCandidate', 'select_competitors_stage',
+            'CompetitorCandidate', '_competitor_decision_ports',
+            'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
+            'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
+            'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'start_reddit_discovery_prefetch', 'BrandProfile',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'SnapshotTimeoutError',
@@ -338,7 +374,7 @@ def build_runtime_ports(runtime):
             format_duration=format_duration,
         ),
         competitor_stage=CompetitorSelectionStagePorts(
-            select_competitors=need('select_competitors_stage'),
+            select_competitors=select_competitors,
             configure_race_cache=need('configure_google_ai_race_cache'),
             write_json=write_json, model_to_dict=model_to_dict,
             clean_record=clean_record, stage_warning=warning,
