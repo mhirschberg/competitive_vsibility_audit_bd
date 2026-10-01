@@ -22,7 +22,12 @@ from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
+from audit_core.profile_provider import (
+    fallback_profile_core, generate_profile_sync_core,
+    normalize_brand_profile_core, recover_profile_sync_core,
+)
 from audit_core.profile_stage import ProfileStagePorts
+from audit_core.primitives import ensure_string_list, normalize_confidence
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_evidence import build_report_evidence_core
 from audit_core.report_render_stage import ReportRenderPorts
@@ -187,8 +192,44 @@ def _service_report_generator(runtime, client):
     return generate_report
 
 
-def _service_profile_runner(runtime, client):
-    """Run shared profile orchestration with explicit provider callbacks."""
+def _service_profile_runner(runtime):
+    """Bind profile orchestration and provider calls through shared modules."""
+    def normalize_profile(data, job):
+        return normalize_brand_profile_core(
+            data,
+            job,
+            profile_factory=runtime['BrandProfile'],
+            normalize_public_url=runtime['normalize_public_url'],
+            get_root_domain=runtime['get_root_domain'],
+            ensure_string_list=ensure_string_list,
+            normalize_confidence=normalize_confidence,
+        )
+
+    def generate_profile(job, target_brand, audit_focus=''):
+        return generate_profile_sync_core(
+            job,
+            target_brand,
+            audit_focus,
+            client=runtime['bd_client'],
+            parse_ai_json=runtime['parse_ai_json'],
+            normalize_profile=normalize_profile,
+            snapshot_timeout_error=runtime['SnapshotTimeoutError'],
+        )
+
+    def recover_profile(task_result):
+        return recover_profile_sync_core(
+            task_result,
+            client=runtime['bd_client'],
+            parse_ai_json=runtime['parse_ai_json'],
+            normalize_profile=normalize_profile,
+            provider_error=RuntimeError,
+        )
+
+    def fallback_profile(job, target_brand):
+        return fallback_profile_core(
+            job, target_brand, profile_factory=runtime['BrandProfile'],
+        )
+
     def pending_notice(count):
         console = runtime.get('console')
         if console is not None:
@@ -200,11 +241,10 @@ def _service_profile_runner(runtime, client):
             selected_competitors,
             audit_focus,
             ports=ProfileResearchPorts(
-                generate_profile=runtime['generate_profile_sync'],
-                recover_profile=runtime['recover_profile_sync'],
-                fallback_profile=runtime['fallback_profile'],
-                root_domain=runtime.get('get_root_domain')
-                or getattr(client, 'get_root_domain', lambda domain: domain),
+                generate_profile=generate_profile,
+                recover_profile=recover_profile,
+                fallback_profile=fallback_profile,
+                root_domain=runtime['get_root_domain'],
                 pending_notice=pending_notice,
             ),
         )
@@ -259,8 +299,9 @@ def build_runtime_ports(runtime):
             'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
             'BuyerIntentKeyword', 'analyze_company_stage', 'run_serp_stage',
             'CompetitorCandidate', 'select_competitors_stage',
-            'start_reddit_discovery_prefetch', 'generate_profile_sync',
-            'recover_profile_sync', 'fallback_profile',
+            'start_reddit_discovery_prefetch', 'BrandProfile',
+            'parse_ai_json', 'normalize_public_url', 'get_root_domain',
+            'SnapshotTimeoutError',
             'serialize_profile_task', 'run_visibility_stage',
             'run_reddit_social_stage', 'serialize_engine_result',
             'summarize_reddit_audit_warning',
@@ -275,7 +316,7 @@ def build_runtime_ports(runtime):
             getattr(client, name)
     preflight()
     generate_report = _service_report_generator(runtime, client)
-    run_profiles = _service_profile_runner(runtime, client)
+    run_profiles = _service_profile_runner(runtime)
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(

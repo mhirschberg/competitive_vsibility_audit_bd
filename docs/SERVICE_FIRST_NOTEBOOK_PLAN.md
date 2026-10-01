@@ -407,6 +407,16 @@ notebook distribution is unchanged. Those lower-level profile provider
 callbacks still come from its initialized runtime, so this removes the stage
 adapter dependency but does not yet make profile research standalone.
 
+Thirty-fifth checkpoint: profile prompts, response normalization, snapshot
+generation/recovery, and fallback construction now live in
+`audit_core.profile_provider`. The service binds those functions to the
+standalone Bright Data client and explicit model/URL helpers; the generated
+notebook embeds the same module and keeps compatibility function names. Offline
+tests cover focus-aware prompts, bounded/normalized fields, successful and
+pending snapshots, recovery, fallback, and embedding parity. This removes the
+profile-provider function dependency on notebook globals; model schemas and
+shared runtime helpers are still injected, and no live provider call was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

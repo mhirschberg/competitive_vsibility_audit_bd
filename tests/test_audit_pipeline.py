@@ -56,6 +56,10 @@ class AuditPipelineTests(unittest.TestCase):
                     brand=Model(
                         brand_name="Apple", domain="apple.com",
                         official_url="https://apple.com/",
+                        category="premium smartphones",
+                        positioning="premium devices",
+                        target_customers=[], products=[], key_features=[],
+                        differentiators=[], confidence=0.0, evidence=[],
                     ),
                     buyer_intent_keywords=[Model(keyword="premium smartphone")],
                 ),

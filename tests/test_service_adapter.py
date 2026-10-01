@@ -15,6 +15,12 @@ from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
 
+class SnapshotTimeoutError(TimeoutError):
+    def __init__(self, snapshot_id):
+        super().__init__(f'pending {snapshot_id}')
+        self.snapshot_id = snapshot_id
+
+
 class ServiceAdapterTests(unittest.TestCase):
     def test_opt_in_runner_calls_shared_coordinator_once(self):
         source = _build_service_runner_script(
@@ -39,42 +45,31 @@ class ServiceAdapterTests(unittest.TestCase):
         report = fixture.report_stage
         final = fixture.finalize_stage_factory()
 
-        def generate_profile(job, _target, _focus):
-            is_target = job['role'] == 'target'
-            return {
-                'status': 'success', 'job': job, 'record': {},
-                'profile': Model(
-                    brand_name=job['brand_name'], domain=job['domain'],
-                    official_url=job['official_url'],
-                    direct_competitor=not is_target,
-                    category='premium smartphones',
-                    positioning=(
-                        'premium devices' if is_target else 'Android devices'
-                    ),
-                    differentiators=['ecosystem' if is_target else 'choice'],
-                    relevant_products=['iPhone' if is_target else 'Galaxy'],
-                    target_customers=['smartphone buyers'], key_features=[],
-                    pricing_model='premium',
-                    competitor_reason=(
-                        'Target company' if is_target else job['reason']
-                    ),
-                    confidence=0.9, evidence=['fixture evidence'],
-                ),
-            }
-
-        def fallback_profile(job, _target):
-            return Model(
-                brand_name=job['brand_name'], domain=job['domain'],
-                official_url=job['official_url'],
-                direct_competitor=job['role'] == 'competitor',
-                category='', positioning='', differentiators=[],
-                relevant_products=[], target_customers=[], key_features=[],
-                pricing_model='unknown', competitor_reason=job.get('reason', ''),
-                confidence=0, evidence=[],
+        def profile_record(prompt, timeout_seconds):
+            self.assertEqual(timeout_seconds, 600)
+            fields = dict(
+                line.split(': ', 1) for line in prompt.splitlines()
+                if line.startswith(('Name: ', 'Website: ', 'Domain: '))
             )
+            is_target = fields['Name'] == 'Apple'
+            return {'answer_text': json.dumps({
+                'brand_name': fields['Name'],
+                'official_url': fields['Website'], 'domain': fields['Domain'],
+                'category': 'premium smartphones',
+                'positioning': 'premium devices' if is_target else 'Android devices',
+                'differentiators': ['ecosystem' if is_target else 'choice'],
+                'relevant_products': ['iPhone' if is_target else 'Galaxy'],
+                'target_customers': ['smartphone buyers'], 'key_features': [],
+                'pricing_model': 'premium',
+                'competitor_reason': 'Target company' if is_target else 'Phones',
+                'confidence': 0.9, 'evidence': ['fixture evidence'],
+            })}
 
         client = Model(
             active_search_engine=None,
+            google_ai_mode=profile_record,
+            answer_text=lambda record: record['answer_text'],
+            wait_for_snapshot=lambda *_args, **_kwargs: [],
             configure_usage_checkpoint=lambda path, restore: events.append(
                 ('usage', restore)
             ),
@@ -104,9 +99,11 @@ class ServiceAdapterTests(unittest.TestCase):
                     'service profile must not call notebook wrapper'
                 ))
             ),
-            'generate_profile_sync': generate_profile,
-            'recover_profile_sync': lambda result: result,
-            'fallback_profile': fallback_profile,
+            'BrandProfile': Model,
+            'parse_ai_json': json.loads,
+            'normalize_public_url': lambda value: value,
+            'get_root_domain': lambda value: value.split('/', 1)[0],
+            'SnapshotTimeoutError': SnapshotTimeoutError,
             'serialize_profile_task': lambda item: {
                 key: value for key, value in item.items()
                 if key not in ('profile', 'record')
