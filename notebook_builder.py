@@ -14,6 +14,7 @@ NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
 REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 RESEARCH_RACE_SOURCE = ROOT / "audit_core" / "research_race.py"
+RESEARCH_VALIDATION_SOURCE = ROOT / "audit_core" / "research_validation.py"
 PRIMITIVES_SOURCE = ROOT / "audit_core" / "primitives.py"
 DOMAINS_SOURCE = ROOT / "audit_core" / "domains.py"
 SERP_METRICS_SOURCE = ROOT / "audit_core" / "serp_metrics.py"
@@ -183,6 +184,8 @@ SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
 RESEARCH_CELL_ID = "research-provider-race"
+RESEARCH_VALIDATION_START = "# RESEARCH-VALIDATION: start"
+RESEARCH_VALIDATION_END = "# RESEARCH-VALIDATION: end"
 RESEARCH_RACE_START = "# AUDIT-RESEARCH-RACE: start"
 RESEARCH_RACE_END = "# AUDIT-RESEARCH-RACE: end"
 REDDIT_START = "# REDDIT-SOCIAL-PATCH: start"
@@ -660,6 +663,7 @@ def _without_service_imports(source):
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    research_race_source=RESEARCH_RACE_SOURCE,
+                   research_validation_source=RESEARCH_VALIDATION_SOURCE,
                    primitives_source=PRIMITIVES_SOURCE,
                    domains_source=DOMAINS_SOURCE,
                    serp_metrics_source=SERP_METRICS_SOURCE,
@@ -1062,6 +1066,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     research_cell = _unique_cell(notebook, RESEARCH_CELL_ID)
     research_cell["source"] = (
         RESEARCH_HEADER
+        + RESEARCH_VALIDATION_START + "\n"
+        + RESEARCH_VALIDATION_END + "\n\n"
         + RESEARCH_RACE_START + "\n"
         + Path(research_race_source).read_text(encoding="utf-8")
         + RESEARCH_RACE_END + "\n\n"
@@ -1069,4 +1075,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
             Path(research_source).read_text(encoding="utf-8")
         )
     ).splitlines(keepends=True)
+    _replace_embedded_source(
+        research_cell,
+        RESEARCH_VALIDATION_START,
+        RESEARCH_VALIDATION_END,
+        _without_service_imports(
+            Path(research_validation_source).read_text(encoding="utf-8")
+        ),
+    )
     return (json.dumps(notebook, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

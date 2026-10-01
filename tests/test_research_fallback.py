@@ -7,6 +7,8 @@ import unittest
 from audit_core.research_race import ResearchProviderAdapter
 from notebook_builder import (
     RESEARCH_RACE_END, RESEARCH_RACE_SOURCE, RESEARCH_RACE_START,
+    RESEARCH_VALIDATION_END, RESEARCH_VALIDATION_SOURCE,
+    RESEARCH_VALIDATION_START,
     _without_service_imports,
 )
 
@@ -44,7 +46,9 @@ class FakeClient:
     def download_snapshot(self, snapshot_id):
         if snapshot_id.endswith("chatgpt"):
             return [{"answer_text": "invalid"}]
-        return [{"answer_text": "usable research"}]
+        return [{
+            "answer_text": "A substantive market research answer with useful details. " * 4
+        }]
 
     def record_snapshot_results(self, snapshot_id, count):
         self.counted.append((snapshot_id, count))
@@ -67,13 +71,9 @@ def load_runtime(*, cache=None, only_reuse=False):
         "remember_google_ai_snapshot": lambda prompt, sid: cache.setdefault(prompt, []).append(sid),
         "_GOOGLE_AI_ONLY_REUSE": only_reuse,
         "FAILED_STATUSES": {"failed", "canceled"},
-        "identify_google_ai_research_task": lambda _prompt: "company_research",
-        "validate_google_ai_research_answer": lambda answer, _prompt: {
-            "valid": answer == "usable research",
-            "reason": "invalid answer",
-        },
-        "google_ai_snapshot_is_materializing": lambda _records: False,
         "localize_google_ai_prompt": lambda prompt: "DE: " + prompt,
+        "parse_ai_json": json.loads,
+        "remove_ai_boilerplate": lambda value: value,
     }
     exec(SOURCE.read_text(encoding="utf-8"), namespace)
     return namespace
@@ -86,7 +86,7 @@ class ResearchFallbackTests(unittest.TestCase):
         result = client.google_ai_mode("research", timeout_seconds=3)
         self.assertEqual(set(client.triggers), {"chatgpt", "gemini"})
         self.assertEqual(result["_research_race"]["provider"], "gemini")
-        self.assertEqual(result["answer_text"], "usable research")
+        self.assertIn("substantive market research", result["answer_text"].lower())
 
     def test_continuation_reuses_saved_provider_snapshot(self):
         cache = {"research-provider-v1:gemini:DE: research": ["snapshot-gemini"]}
@@ -137,6 +137,13 @@ class ResearchFallbackTests(unittest.TestCase):
         )[0].strip()
         self.assertEqual(embedded, RESEARCH_RACE_SOURCE.read_text().strip())
         self.assertTrue(source.endswith(_without_service_imports(SOURCE.read_text())))
+        validation = source.split(RESEARCH_VALIDATION_START, 1)[1].split(
+            RESEARCH_VALIDATION_END, 1
+        )[0].strip()
+        self.assertEqual(
+            validation,
+            _without_service_imports(RESEARCH_VALIDATION_SOURCE.read_text()).strip(),
+        )
 
 
 if __name__ == "__main__":

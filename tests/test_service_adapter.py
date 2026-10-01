@@ -185,6 +185,7 @@ class ServiceAdapterTests(unittest.TestCase):
             ),
             'BrandProfile': Model,
             'parse_ai_json': json.loads,
+            'remove_ai_boilerplate': lambda value: value,
             'normalize_public_url': lambda value: value,
             'get_root_domain': lambda value: value.split('/', 1)[0],
             'SnapshotTimeoutError': SnapshotTimeoutError,
@@ -433,7 +434,14 @@ class ServiceAdapterTests(unittest.TestCase):
                 return {'status': 'ready'}
 
             def download_snapshot(self, snapshot):
-                return saved_by_snapshot[snapshot]
+                if snapshot.endswith('chatgpt'):
+                    return [{'answer_text': 'short'}]
+                return [{
+                    'answer_text': (
+                        'A substantive market research answer with useful details. '
+                        * 4
+                    )
+                }]
 
             def record_snapshot_results(self, *_args):
                 pass
@@ -469,12 +477,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 key, []
             ).append(sid),
             'localize_google_ai_prompt': lambda prompt: f'DE: {prompt}',
-            'identify_google_ai_research_task': lambda _prompt: 'company_research',
-            'validate_google_ai_research_answer': lambda answer, _prompt: {
-                'valid': answer == 'usable research',
-                'reason': 'no usable answer',
-            },
-            'google_ai_snapshot_is_materializing': lambda _records: False,
             'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             '_RESEARCH_RACE_SEMAPHORE': threading.BoundedSemaphore(3),
@@ -497,7 +499,7 @@ class ServiceAdapterTests(unittest.TestCase):
 
         self.assertCountEqual(triggered, ['chatgpt', 'gemini'])
         self.assertEqual(result['_research_race']['provider'], 'gemini')
-        self.assertEqual(result['answer_text'], 'usable research')
+        self.assertIn('substantive market research', result['answer_text'].lower())
         self.assertEqual(
             runtime['RESEARCH_PROVIDER_ADAPTER'].__class__.__name__,
             'ResearchProviderAdapter',
@@ -507,6 +509,25 @@ class ServiceAdapterTests(unittest.TestCase):
             client.google_ai_mode_measured()['answer_text'],
             'measured Google AI Mode',
         )
+
+    def test_research_provider_preflight_no_longer_requires_notebook_policy_helpers(self):
+        events = []
+        runtime = self.runtime(events)
+        runtime.update({
+            'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
+            'cached_google_ai_snapshot_ids': lambda _key: [],
+            'remember_google_ai_snapshot': lambda *_args: None,
+            'localize_google_ai_prompt': lambda prompt: prompt,
+            'FAILED_STATUSES': {'failed', 'canceled'},
+            '_GOOGLE_AI_ONLY_REUSE': False,
+            'ResearchRaceTimeoutError': TimeoutError,
+            'BrightDataAPIError': RuntimeError,
+        })
+        ports = build_runtime_ports(runtime)
+        self.assertTrue(callable(ports.search_stage.run_search))
+        self.assertNotIn('identify_google_ai_research_task', runtime)
+        self.assertNotIn('validate_google_ai_research_answer', runtime)
+        self.assertNotIn('google_ai_snapshot_is_materializing', runtime)
 
 
 if __name__ == '__main__':
