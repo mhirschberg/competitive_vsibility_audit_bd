@@ -264,6 +264,20 @@ plus the notebook adapter. Final report orchestration and the top-level
 scheduler remain notebook-driven. No paid provider request or production
 deployment was made.
 
+Twenty-fourth checkpoint: `audit_core.report_render_stage` now owns the final
+report narrative, Reddit and Bright Data usage sections, domain-correction
+note, Markdown/PDF export, and raw research record. A PDF failure remains a
+warning rather than discarding Markdown or usage data.
+`audit_core.audit_finalize_stage` assembles the structured audit JSON and ZIP
+file manifest through explicit ports. While wiring this final stage, an
+integration gap from the Stage 3 extraction was found and fixed: the full
+competitor selection result is again passed to `build_audit_record`, not only
+the selected competitors. Synthetic tests now cover that handoff, successful
+and failed PDF rendering, result-based cost data, and JSON/ZIP paths. The
+individual stages are importable, but the top-level scheduler and hosted job
+switch still need migration and end-to-end parity checks. No paid provider
+request or production deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

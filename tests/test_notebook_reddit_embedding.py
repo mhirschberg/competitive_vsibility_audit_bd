@@ -38,7 +38,7 @@ class NotebookEmbeddingTests(unittest.TestCase):
             "discovery_prefetch_task=reddit_prefetch_task",
             'output_directory / "05_reddit_social.json"',
             'output_directory / "05_reddit_snapshot_manifest.json"',
-            "insert_reddit_report_section(",
+            "insert_reddit_section=insert_reddit_report_section",
             '"reddit_social": reddit_social_result',
         ):
             self.assertEqual(orchestration.count(hook), 1, hook)

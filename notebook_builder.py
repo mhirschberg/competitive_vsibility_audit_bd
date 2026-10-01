@@ -30,6 +30,8 @@ PROFILE_RESEARCH_SOURCE = ROOT / "audit_core" / "profile_research.py"
 PROFILE_STAGE_SOURCE = ROOT / "audit_core" / "profile_stage.py"
 VISIBILITY_CHECKPOINT_STAGE_SOURCE = ROOT / "audit_core" / "visibility_checkpoint_stage.py"
 SOCIAL_COMPLETION_STAGE_SOURCE = ROOT / "audit_core" / "social_completion_stage.py"
+REPORT_RENDER_STAGE_SOURCE = ROOT / "audit_core" / "report_render_stage.py"
+AUDIT_FINALIZE_STAGE_SOURCE = ROOT / "audit_core" / "audit_finalize_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -95,6 +97,14 @@ SOCIAL_COMPLETION_STAGE_START = "# AUDIT-SOCIAL-COMPLETION-STAGE: start"
 SOCIAL_COMPLETION_STAGE_END = "# AUDIT-SOCIAL-COMPLETION-STAGE: end"
 SOCIAL_COMPLETION_STAGE_CALL_START = "# AUDIT-SOCIAL-COMPLETION-STAGE-CALL: start"
 SOCIAL_COMPLETION_STAGE_CALL_END = "    # AUDIT-SOCIAL-COMPLETION-STAGE-CALL: end"
+REPORT_RENDER_STAGE_START = "# AUDIT-REPORT-RENDER-STAGE: start"
+REPORT_RENDER_STAGE_END = "# AUDIT-REPORT-RENDER-STAGE: end"
+REPORT_RENDER_STAGE_CALL_START = "# AUDIT-REPORT-RENDER-STAGE-CALL: start"
+REPORT_RENDER_STAGE_CALL_END = "    # AUDIT-REPORT-RENDER-STAGE-CALL: end"
+AUDIT_FINALIZE_STAGE_START = "# AUDIT-FINALIZE-STAGE: start"
+AUDIT_FINALIZE_STAGE_END = "# AUDIT-FINALIZE-STAGE: end"
+AUDIT_FINALIZE_STAGE_CALL_START = "# AUDIT-FINALIZE-STAGE-CALL: start"
+AUDIT_FINALIZE_STAGE_CALL_END = "    # AUDIT-FINALIZE-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -225,6 +235,7 @@ COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_com
         ),
     )
     selected_competitors = competitor_stage["selected_competitors"]
+    selection_result = competitor_stage["selection_result"]
     stage_durations["competitor_selection"] = competitor_stage["duration_seconds"]
     warnings.extend(competitor_stage["warnings"])
     reddit_prefetch_task = competitor_stage["reddit_prefetch_task"]'''
@@ -311,6 +322,87 @@ SOCIAL_COMPLETION_STAGE_CALL_SOURCE = '''    social_stage = await run_social_com
     reddit_social_result = social_stage["reddit_social_result"]
     stage_durations["reddit_social"] = social_stage["duration_seconds"]
     warnings.extend(social_stage["warnings"])'''
+REPORT_RENDER_STAGE_CALL_SOURCE = '''    rendered_report = await run_report_render_stage_core(
+        target_profile, competitor_profiles, keywords, keyword_serp_results,
+        visibility_result, reddit_social_result,
+        site_resolution=site_resolution,
+        country=settings["country"],
+        run_timestamp=run_timestamp,
+        export_prefix=export_prefix,
+        output_directory=output_directory,
+        raw_directory=raw_directory,
+        started_at=stage_started_at,
+        price_per_1000=BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD,
+        ports=ReportRenderPorts(
+            generate_report=generate_report_stage,
+            finalize_report=finalize_report,
+            insert_reddit_section=insert_reddit_report_section,
+            refresh_usage=bd_client.refresh_usage_results,
+            usage_summary=bd_client.usage_summary,
+            build_usage_section=build_bright_data_usage_section,
+            write_json=write_json,
+            write_text=write_text,
+            report_filename=report_filename,
+            create_pdf=create_styled_pdf_report,
+            clean_record=clean_record_for_storage,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+        ),
+    )
+    report_result = rendered_report["report_result"]
+    final_report = rendered_report["final_report"]
+    final_sources = rendered_report["final_sources"]
+    bright_data_usage = rendered_report["bright_data_usage"]
+    report_markdown_path = rendered_report["markdown_path"]
+    report_pdf_path = rendered_report["pdf_path"]
+    stage_durations["final_report"] = rendered_report["duration_seconds"]
+    warnings.extend(rendered_report["warnings"])'''
+AUDIT_FINALIZE_STAGE_CALL_SOURCE = '''    audit_data = run_audit_finalize_stage_core(
+        {
+            "run_id": run_id,
+            "run_timestamp": run_timestamp,
+            "settings": settings,
+            "include_reddit_analysis": include_reddit_analysis,
+            "target_profile": target_profile,
+            "competitor_profiles": competitor_profiles,
+            "keyword_records": keyword_records,
+            "keyword_serp_results": keyword_serp_results,
+            "competitor_candidates": competitor_candidates,
+            "selected_competitors": selected_competitors,
+            "selection_result": selection_result,
+            "visibility_result": visibility_result,
+            "reddit_social_result": reddit_social_result,
+            "bright_data_usage": bright_data_usage,
+            "report_result": report_result,
+            "final_report": final_report,
+            "final_sources": final_sources,
+            "warnings": warnings,
+            "stage_durations": stage_durations,
+        },
+        audit_started_at=audit_started_at,
+        site_resolution=site_resolution,
+        output_directory=output_directory,
+        export_prefix=export_prefix,
+        markdown_path=report_markdown_path,
+        pdf_path=report_pdf_path,
+        ports=AuditFinalizePorts(
+            build_record=build_audit_record,
+            model_to_dict=model_to_dict,
+            serialize_engine_result=serialize_engine_result,
+            generator_name=globals().get(
+                "LAST_UTILITY_REPORT_RESULT", {}
+            ).get("engine_name", "Unknown"),
+            report_filename=report_filename,
+            write_json=write_json,
+            create_zip=create_audit_zip,
+            stage_success=print_stage_success,
+            completion_notice=lambda message: console.print(
+                f"\\n[bold green]{message}[/bold green]"
+            ),
+            format_duration=format_duration,
+        ),
+    )'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -365,6 +457,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    profile_stage_source=PROFILE_STAGE_SOURCE,
                    visibility_checkpoint_stage_source=VISIBILITY_CHECKPOINT_STAGE_SOURCE,
                    social_completion_stage_source=SOCIAL_COMPLETION_STAGE_SOURCE,
+                   report_render_stage_source=REPORT_RENDER_STAGE_SOURCE,
+                   audit_finalize_stage_source=AUDIT_FINALIZE_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -662,6 +756,30 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SOCIAL_COMPLETION_STAGE_CALL_START,
         SOCIAL_COMPLETION_STAGE_CALL_END,
         SOCIAL_COMPLETION_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        REPORT_RENDER_STAGE_START,
+        REPORT_RENDER_STAGE_END,
+        Path(report_render_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        REPORT_RENDER_STAGE_CALL_START,
+        REPORT_RENDER_STAGE_CALL_END,
+        REPORT_RENDER_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        AUDIT_FINALIZE_STAGE_START,
+        AUDIT_FINALIZE_STAGE_END,
+        Path(audit_finalize_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        AUDIT_FINALIZE_STAGE_CALL_START,
+        AUDIT_FINALIZE_STAGE_CALL_END,
+        AUDIT_FINALIZE_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
