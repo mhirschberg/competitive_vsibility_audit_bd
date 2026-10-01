@@ -43,6 +43,22 @@ class RedditCommentBudgetTests(unittest.TestCase):
         ])
 
 
+class RedditRuntimeContextTests(unittest.TestCase):
+    def test_bound_client_and_utility_race_reach_executor_threads(self):
+        client = object()
+        utility_race = lambda **_kwargs: "bound race"
+
+        with social.bind_reddit_runtime(client, utility_race):
+            self.assertIs(social._reddit_client(), client)
+            self.assertIs(social._reddit_utility_race(), utility_race)
+            with social.RedditExecutor(max_workers=1) as executor:
+                self.assertIs(executor.submit(social._reddit_client).result(), client)
+                self.assertIs(
+                    executor.submit(social._reddit_utility_race).result(),
+                    utility_race,
+                )
+
+
 class RedditUrlTests(unittest.TestCase):
     def test_classification_prompt_requires_audited_offering(self):
         prompt = social._reddit_analysis_prompt(

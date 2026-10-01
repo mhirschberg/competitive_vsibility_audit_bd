@@ -428,6 +428,17 @@ and discovery handoff while guarding against the legacy wrapper. Reddit
 collection remains on the existing adapter, and no live provider calls or
 deployment were made.
 
+Thirty-seventh checkpoint: `reddit_social.py` now supports explicit per-audit
+provider context for the Bright Data client and validated utility-AI race.
+Context is propagated into its nested thread pools, so Reddit discovery can
+start immediately after competitor selection and continue alongside Stage 5
+without sharing or overwriting process-global provider state. The hosted
+adapter binds both prefetch and final social collection through that context;
+the notebook keeps its historical global fallback and behavior. Offline tests
+cover thread propagation, adapter binding, existing Reddit fixtures, and
+notebook embedding. The utility-AI race implementation itself still comes
+from the existing runner binding; no live calls or deployment were made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
