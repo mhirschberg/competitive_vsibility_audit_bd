@@ -417,6 +417,17 @@ pending snapshots, recovery, fallback, and embedding parity. This removes the
 profile-provider function dependency on notebook globals; model schemas and
 shared runtime helpers are still injected, and no live provider call was made.
 
+Thirty-sixth checkpoint: the opt-in hosted service runner now binds Stage 5
+measured AI visibility directly to `audit_core.visibility_stage` and its
+standalone Bright Data client. It constructs the neutral prompt through the
+shared `audit_core.visibility_prompt` helper and passes the saved Stage 2
+Google AI Mode discovery result explicitly. The service no longer requires or
+calls the notebook's `run_visibility_stage` wrapper; the notebook adapter and
+defaults remain unchanged. Offline fixtures verify provider, options, prompt,
+and discovery handoff while guarding against the legacy wrapper. Reddit
+collection remains on the existing adapter, and no live provider calls or
+deployment were made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

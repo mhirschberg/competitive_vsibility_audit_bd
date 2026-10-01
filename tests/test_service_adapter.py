@@ -176,12 +176,47 @@ class ServiceAdapterTests(unittest.TestCase):
                     ))
                 )
                 original_visibility = runtime['run_visibility_stage']
-                async def checked_visibility(**kwargs):
+                async def forbidden_notebook_visibility(**_kwargs):
+                    raise AssertionError(
+                        'service visibility must not call notebook wrapper'
+                    )
+
+                async def checked_visibility_core(
+                    target_profile, all_profiles, keywords, **kwargs
+                ):
                     self.assertEqual(runtime['ACTIVE_SEARCH_ENGINE'], 'google')
                     self.assertEqual(runtime['ACTIVE_SEARCH_STATUS'], 'available')
                     self.assertEqual(runtime['bd_client'].active_search_engine, 'google')
-                    return await original_visibility(**kwargs)
-                runtime['run_visibility_stage'] = checked_visibility
+                    self.assertIs(kwargs['bd_client'], runtime['bd_client'])
+                    self.assertFalse(kwargs['include_google_ai_mode'])
+                    self.assertTrue(kwargs['include_chatgpt'])
+                    self.assertEqual(
+                        kwargs['ai_mode_discovery'],
+                        runtime['LAST_AI_MODE_DISCOVERY'],
+                    )
+                    self.assertIn(
+                        'premium smartphone',
+                        kwargs['prompt_builder'](
+                            target_profile, keywords
+                        ),
+                    )
+                    return await original_visibility(
+                        target_profile=target_profile,
+                        all_profiles=all_profiles,
+                        keywords=keywords,
+                        **{
+                            name: kwargs[name]
+                            for name in (
+                                'include_copilot', 'include_google_ai_mode',
+                                'include_chatgpt', 'include_gemini',
+                                'wait_longer_for_chatgpt',
+                                'wait_longer_for_gemini',
+                                'wait_longer_for_copilot',
+                            )
+                        },
+                    )
+
+                runtime['run_visibility_stage'] = forbidden_notebook_visibility
                 settings = {
                     'company_name': 'Apple', 'company_domain': 'apple.com',
                     'company_url': 'https://apple.com/', 'country': 'US',
@@ -205,6 +240,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 with patch('tldextract.extract', offline_tldextract), patch(
                     'hosted.service_adapter.select_competitors_with_provider',
                     side_effect=select_with_shared_adapter,
+                ), patch(
+                    'hosted.service_adapter.run_visibility_stage_core',
+                    side_effect=checked_visibility_core,
                 ):
                     result = asyncio.run(run_with_legacy_runtime(
                         settings, runtime, base_directory=Path(root),
