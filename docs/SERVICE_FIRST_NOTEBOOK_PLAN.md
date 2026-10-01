@@ -303,6 +303,18 @@ cover fresh redirects, resume, legacy warnings, cache flags, and failure
 before any run files are created. The hosted adapter and live parity check
 remain future work; no paid request or production deployment was made.
 
+Twenty-seventh checkpoint: `hosted.service_adapter` binds the existing
+Bright Data, search, social, report, and artifact functions to the importable
+preparation and pipeline modules. It passes the measured search status and
+Google AI discovery result into later stages and resolves the report generator
+only at finalization. The Cloud Run worker can select this path with
+`AUDIT_ENGINE_MODE=service_adapter`; the default remains `notebook`, so no
+deployed behavior changes. Offline fixtures compare both paths with Reddit
+on and off and verify that missing bindings fail before any provider work.
+This adapter still loads the legacy notebook definitions and therefore is a
+compatibility bridge, not yet the expected memory reduction. A live canary,
+memory measurement, and removal of those definitions remain future work.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

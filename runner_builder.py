@@ -242,3 +242,25 @@ def _build_runner_script(
             chunks.append("\n")
 
     return "".join(chunks)
+
+
+def _build_service_runner_script(*args, **kwargs):
+    """Use the shared coordinator with legacy providers, without changing defaults."""
+    source = _build_runner_script(*args, **kwargs)
+    old_call = (
+        "AUDIT_RESULT = asyncio.run("
+        "run_competitive_visibility_audit(AUDIT_SETTINGS))"
+    )
+    new_call = (
+        "AUDIT_RESULT = asyncio.run("
+        "run_with_legacy_runtime(AUDIT_SETTINGS, globals(), "
+        "base_directory=Path.cwd()))"
+    )
+    if source.count(old_call) != 1:
+        raise ValueError("Expected one notebook audit invocation")
+    bootstrap = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(APP_ROOT)!r})\n"
+        "from hosted.service_adapter import run_with_legacy_runtime\n"
+    )
+    return bootstrap + source.replace(old_call, new_call)

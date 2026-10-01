@@ -97,6 +97,33 @@ class HostedWorkerTests(unittest.TestCase):
     def setUp(self):
         self.gateway = FakeWorkerGateway()
 
+    def test_service_adapter_mode_is_opt_in(self):
+        with patch('runner_builder._build_runner_script', return_value=SUCCESS_RUNNER) as old:
+            with patch('runner_builder._build_service_runner_script', return_value=SUCCESS_RUNNER) as new:
+                result = run_worker(
+                    self.gateway, AUDIT_ID, engine_mode='service_adapter',
+                    heartbeat_interval=3600,
+                )
+        self.assertEqual(result, 0)
+        old.assert_not_called()
+        new.assert_called_once()
+
+    def test_default_mode_still_uses_notebook_runner(self):
+        with patch('runner_builder._build_runner_script', return_value=SUCCESS_RUNNER) as old:
+            with patch('runner_builder._build_service_runner_script', return_value=SUCCESS_RUNNER) as new:
+                result = run_worker(
+                    self.gateway, AUDIT_ID, heartbeat_interval=3600,
+                )
+        self.assertEqual(result, 0)
+        old.assert_called_once()
+        new.assert_not_called()
+
+    def test_invalid_engine_mode_fails_before_claim(self):
+        with patch.object(self.gateway, 'claim_audit') as claim:
+            with self.assertRaisesRegex(ValueError, 'Unsupported audit engine'):
+                run_worker(self.gateway, AUDIT_ID, engine_mode='unknown')
+        claim.assert_not_called()
+
     def test_supporting_downloads_share_report_prefix(self):
         report = Path(
             "2026-09-30_103512123456_rayner_rayone-galaxy_GB_"

@@ -158,8 +158,11 @@ def run_worker(
     python_executable=sys.executable,
     heartbeat_interval=30,
     platform_execution_id=None,
+    engine_mode="notebook",
 ) -> int:
     """Return 0 on success/already-claimed, 1 on a recorded audit failure."""
+    if engine_mode not in {"notebook", "service_adapter"}:
+        raise ValueError(f"Unsupported audit engine mode: {engine_mode}")
     claim = gateway.claim_audit(audit_id, platform_execution_id)
     if claim is None:
         print("Audit already claimed or finished; no paid work started")
@@ -170,9 +173,13 @@ def run_worker(
         options = audit.get("input_options") or {}
 
         if runner_source_factory is None:
-            from runner_builder import _build_runner_script
-
-            runner_source_factory = _build_runner_script
+            from runner_builder import (
+                _build_runner_script, _build_service_runner_script,
+            )
+            runner_source_factory = (
+                _build_service_runner_script
+                if engine_mode == "service_adapter" else _build_runner_script
+            )
 
         with tempfile.TemporaryDirectory(prefix="competitive-audit-worker-") as name:
             run_dir = Path(name)
@@ -336,6 +343,7 @@ def main():
         gateway,
         audit_id,
         platform_execution_id=os.getenv("CLOUD_RUN_EXECUTION"),
+        engine_mode=os.getenv("AUDIT_ENGINE_MODE", "notebook"),
     )
 
 
