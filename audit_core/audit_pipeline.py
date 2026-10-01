@@ -27,6 +27,7 @@ class AuditRunContext:
     raw_directory: Path
     site_resolution: dict
     continuing: bool = False
+    audit_started_at: float | None = None
 
 
 @dataclass
@@ -41,6 +42,7 @@ class AuditPipelinePorts:
     finalize_stage_factory: object
     stage_banner: object
     price_per_1000: float = 1.5
+    after_search: object = None
 
 
 async def run_audit_pipeline(settings, context, *, ports):
@@ -50,7 +52,10 @@ async def run_audit_pipeline(settings, context, *, ports):
     context.raw_directory.mkdir(parents=True, exist_ok=True)
     include_reddit = bool(settings.get("include_reddit_analysis", False))
     total_stages = 7 if include_reddit else 6
-    audit_started_at = time.monotonic()
+    audit_started_at = (
+        context.audit_started_at
+        if context.audit_started_at is not None else time.monotonic()
+    )
     stage_durations = {}
     warnings = []
 
@@ -81,6 +86,8 @@ async def run_audit_pipeline(settings, context, *, ports):
     )
     keyword_serp_results = search["keyword_results"]
     competitor_candidates = search["candidates"]
+    if ports.after_search is not None:
+        ports.after_search(search)
     stage_durations["serp_discovery"] = search["duration_seconds"]
     warnings.extend(search["warnings"])
 
