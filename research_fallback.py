@@ -4,12 +4,10 @@ This source is embedded into the notebook by scripts/embed_research_fallback.py.
 The measured Google AI Mode answers deliberately keep their own scraper path.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-import time
 
 # SERVICE-ONLY-IMPORTS: start
-from audit_core.research_race import ResearchRacePorts, race_research_providers_core
+from audit_core.research_race import ResearchProviderAdapter
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -34,40 +32,22 @@ def _research_cache_prompt(provider, prompt):
 
 
 def cached_research_snapshot_ids(prompt):
-    """Find both new provider snapshots and old Google-only checkpoints."""
-    prompt = localize_google_ai_prompt(prompt)
-    found = {
-        provider: cached_google_ai_snapshot_ids(
-            _research_cache_prompt(provider, prompt)
-        )
-        for provider in RESEARCH_PROVIDERS
-    }
-    old_google_ids = cached_google_ai_snapshot_ids(prompt)
-    if old_google_ids:
-        found["google_ai_mode"] = old_google_ids
-    return {provider: ids for provider, ids in found.items() if ids}
+    """Compatibility wrapper for the notebook's resume UI and diagnostics."""
+    return _research_provider_adapter().cached_snapshots(prompt)
 
 
 def _trigger_research_snapshot(client, provider, prompt):
-    dataset_id, payload = client._engine_payload(
-        engine=provider,
-        prompt=prompt,
-        request_index=1,
-        web_search=True,
-    )
-    snapshot_id = client.trigger_dataset(dataset_id, payload)
-    remember_google_ai_snapshot(
-        _research_cache_prompt(provider, prompt), snapshot_id
-    )
-    return provider, snapshot_id
+    """Compatibility wrapper for callers that trigger one research provider."""
+    return _research_provider_adapter()._trigger_snapshot(client, provider, prompt)
 
 
-def race_research_providers(self, prompt, timeout_seconds=720):
-    """Use the shared race while preserving the notebook's snapshot cache."""
-    ports = ResearchRacePorts(
+def _research_provider_adapter():
+    return ResearchProviderAdapter(
         providers=RESEARCH_PROVIDERS,
-        cached_snapshot_ids=cached_research_snapshot_ids,
-        trigger_snapshot=_trigger_research_snapshot,
+        cached_snapshot_ids=cached_google_ai_snapshot_ids,
+        remember_snapshot=lambda cache_key, snapshot_id: (
+            remember_google_ai_snapshot(cache_key, snapshot_id)
+        ),
         localize_prompt=localize_google_ai_prompt,
         identify_task=identify_google_ai_research_task,
         validate_answer=validate_google_ai_research_answer,
@@ -78,8 +58,13 @@ def race_research_providers(self, prompt, timeout_seconds=720):
         poll_seconds=RESEARCH_POLL_SECONDS,
         error_type=BrightDataAPIError,
         timeout_type=ResearchRaceTimeoutError,
+        legacy_snapshot_ids=cached_google_ai_snapshot_ids,
     )
-    return race_research_providers_core(self, prompt, timeout_seconds, ports)
+
+
+def race_research_providers(self, prompt, timeout_seconds=720):
+    """Use the shared race while preserving the notebook's snapshot cache."""
+    return _research_provider_adapter().race(self, prompt, timeout_seconds)
 
 
 # The visibility stage explicitly calls google_ai_mode_measured; every other

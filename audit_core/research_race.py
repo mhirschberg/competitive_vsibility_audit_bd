@@ -26,6 +26,89 @@ class ResearchRacePorts:
         self.timeout_type = timeout_type
 
 
+class ResearchProviderAdapter:
+    """Bind an explicit snapshot client and cache to the provider-neutral race.
+
+    This adapter owns the ChatGPT/Gemini-specific snapshot/cache conventions,
+    while prompt interpretation, answer validation, throttling, and error
+    types are injected by the caller. It has no notebook-global dependencies.
+    """
+
+    def __init__(
+        self, *, providers, cached_snapshot_ids, remember_snapshot,
+        localize_prompt, identify_task, validate_answer, is_materializing,
+        failed_statuses, only_reuse, semaphore, poll_seconds,
+        error_type, timeout_type, cache_key_prefix="research-provider-v1",
+        legacy_snapshot_ids=None,
+    ):
+        self.providers = tuple(providers)
+        self._cached_snapshot_ids = cached_snapshot_ids
+        self._remember_snapshot = remember_snapshot
+        self._localize_prompt = localize_prompt
+        self._identify_task = identify_task
+        self._validate_answer = validate_answer
+        self._is_materializing = is_materializing
+        self._failed_statuses = failed_statuses
+        self._only_reuse = only_reuse
+        self._semaphore = semaphore
+        self._poll_seconds = poll_seconds
+        self._error_type = error_type
+        self._timeout_type = timeout_type
+        self._cache_key_prefix = cache_key_prefix
+        self._legacy_snapshot_ids = legacy_snapshot_ids
+
+    def _cache_key(self, provider, localized_prompt):
+        return f"{self._cache_key_prefix}:{provider}:{localized_prompt}"
+
+    def cached_snapshots(self, prompt):
+        """Load provider-specific checkpoints plus optional legacy checkpoints."""
+        localized_prompt = self._localize_prompt(prompt)
+        found = {
+            provider: self._cached_snapshot_ids(
+                self._cache_key(provider, localized_prompt)
+            )
+            for provider in self.providers
+        }
+        if self._legacy_snapshot_ids is not None:
+            legacy = self._legacy_snapshot_ids(localized_prompt)
+            if legacy:
+                found["google_ai_mode"] = legacy
+        return {provider: ids for provider, ids in found.items() if ids}
+
+    def _trigger_snapshot(self, client, provider, localized_prompt):
+        dataset_id, payload = client._engine_payload(
+            engine=provider,
+            prompt=localized_prompt,
+            request_index=1,
+            web_search=True,
+        )
+        snapshot_id = client.trigger_dataset(dataset_id, payload)
+        self._remember_snapshot(
+            self._cache_key(provider, localized_prompt), snapshot_id
+        )
+        return provider, snapshot_id
+
+    def race(self, client, prompt, timeout_seconds):
+        ports = ResearchRacePorts(
+            providers=self.providers,
+            cached_snapshot_ids=self.cached_snapshots,
+            trigger_snapshot=self._trigger_snapshot,
+            localize_prompt=self._localize_prompt,
+            identify_task=self._identify_task,
+            validate_answer=self._validate_answer,
+            is_materializing=self._is_materializing,
+            failed_statuses=self._failed_statuses,
+            only_reuse=self._only_reuse,
+            semaphore=self._semaphore,
+            poll_seconds=self._poll_seconds,
+            error_type=self._error_type,
+            timeout_type=self._timeout_type,
+        )
+        return race_research_providers_core(
+            client, prompt, timeout_seconds, ports
+        )
+
+
 def race_research_providers_core(client, prompt, timeout_seconds, ports):
     """Return the first task-valid answer, retaining the actual provider label."""
     original_prompt = str(prompt or "").strip()
