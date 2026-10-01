@@ -4,6 +4,7 @@ Only tagged cells are generated for now. Other notebook cells remain untouched
 until their logic has been extracted into service modules.
 """
 
+import ast
 import json
 from pathlib import Path
 
@@ -52,6 +53,7 @@ REPORT_CONTENT_SOURCE = ROOT / "audit_core" / "report_content.py"
 REPORT_STAGE_SOURCE = ROOT / "audit_core" / "report_stage.py"
 REPORT_EXPORT_SOURCE = ROOT / "audit_core" / "report_export.py"
 ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
+UTILITY_AI_RACE_SOURCE = ROOT / "audit_core" / "utility_ai_race.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -153,6 +155,30 @@ REPORT_EXPORT_START = "# AUDIT-REPORT-EXPORT: start"
 REPORT_EXPORT_END = "# AUDIT-REPORT-EXPORT: end"
 ARTIFACT_NAMES_START = "# AUDIT-ARTIFACT-NAMES: start"
 ARTIFACT_NAMES_END = "# AUDIT-ARTIFACT-NAMES: end"
+UTILITY_AI_RACE_START = "# AUDIT-UTILITY-AI-RACE: start"
+UTILITY_AI_RACE_END = "# AUDIT-UTILITY-AI-RACE: end"
+UTILITY_AI_RACE_ADAPTER_SOURCE = '''def race_utility_ai(
+    prompt, validator=None, timeout_seconds=UTILITY_RACE_TIMEOUT_SECONDS,
+    task_name="utility task",
+):
+    global LAST_UTILITY_AI_RESULT
+    result = race_utility_ai_core(
+        bd_client,
+        prompt,
+        validator=validator or validate_utility_json_answer,
+        timeout_seconds=timeout_seconds,
+        task_name=task_name,
+        dataset_ids={
+            "chatgpt": CHATGPT_DATASET_ID,
+            "gemini": GEMINI_DATASET_ID,
+        },
+        failed_statuses=FAILED_STATUSES,
+        error_type=BrightDataAPIError,
+        poll_seconds=UTILITY_RACE_POLL_SECONDS,
+    )
+    LAST_UTILITY_AI_RESULT = result
+    return result
+'''
 SERVICE_IMPORTS_START = "# SERVICE-ONLY-IMPORTS: start"
 SERVICE_IMPORTS_END = "# SERVICE-ONLY-IMPORTS: end"
 REDDIT_CELL_ID = "runtime-utilities-merged"
@@ -546,6 +572,31 @@ def _replace_embedded_source(cell, start, end, source):
     ).splitlines(keepends=True)
 
 
+def _replace_python_function_before_marker(cell, name, marker, replacement):
+    """Replace the legacy function that precedes a generated source marker."""
+    source = "".join(cell["source"])
+    marker_line = source[:source.index(marker)].count("\n") + 1
+    tree = ast.parse(source)
+    candidates = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name and node.lineno < marker_line
+    ]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"Expected one legacy {name} definition before {marker!r}"
+        )
+    node = candidates[0]
+    start_line = min(
+        [node.lineno] + [item.lineno for item in node.decorator_list]
+    )
+    lines = source.splitlines(keepends=True)
+    lines[start_line - 1:node.end_lineno] = [
+        replacement.rstrip("\n") + "\n"
+    ]
+    cell["source"] = lines
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -647,7 +698,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    report_content_source=REPORT_CONTENT_SOURCE,
                    report_stage_source=REPORT_STAGE_SOURCE,
                    report_export_source=REPORT_EXPORT_SOURCE,
-                   artifact_names_source=ARTIFACT_NAMES_SOURCE):
+                   artifact_names_source=ARTIFACT_NAMES_SOURCE,
+                   utility_ai_race_source=UTILITY_AI_RACE_SOURCE):
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
@@ -984,6 +1036,26 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         REDDIT_START,
         REDDIT_END,
         Path(reddit_source).read_text(encoding="utf-8"),
+    )
+    utility_cell = _unique_cell(notebook, SCOPE_CELL_ID)
+    utility_text = "".join(utility_cell["source"])
+    if UTILITY_AI_RACE_START not in utility_text and UTILITY_AI_RACE_END not in utility_text:
+        utility_cell["source"] = (
+            utility_text.rstrip("\n") + "\n\n"
+            + UTILITY_AI_RACE_START + "\n"
+            + UTILITY_AI_RACE_END + "\n"
+        ).splitlines(keepends=True)
+    _replace_embedded_source(
+        utility_cell,
+        UTILITY_AI_RACE_START,
+        UTILITY_AI_RACE_END,
+        Path(utility_ai_race_source).read_text(encoding="utf-8"),
+    )
+    _replace_python_function_before_marker(
+        utility_cell,
+        "race_utility_ai",
+        UTILITY_AI_RACE_START,
+        UTILITY_AI_RACE_ADAPTER_SOURCE,
     )
     research_cell = _unique_cell(notebook, RESEARCH_CELL_ID)
     research_cell["source"] = (

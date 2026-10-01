@@ -12,8 +12,10 @@ import tldextract
 import reddit_social
 
 from hosted.service_adapter import (
-    _service_reddit_runners, build_runtime_ports, run_with_legacy_runtime,
+    _service_reddit_runners, _service_utility_ai_race,
+    build_runtime_ports, run_with_legacy_runtime,
 )
+from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -50,6 +52,46 @@ class ServiceAdapterTests(unittest.TestCase):
             asyncio.run(run_social(brand='Acme')),
             {'brand': 'Acme'},
         )
+
+    def test_service_utility_race_uses_shared_core_and_country_free_payloads(self):
+        class Client:
+            def __init__(self):
+                self.triggers = []
+
+            def log(self, *_args):
+                pass
+
+            def trigger_dataset(self, dataset_id, payload):
+                self.triggers.append((dataset_id, payload))
+                return f'snapshot-{dataset_id}'
+
+            def snapshot_status(self, _snapshot_id):
+                return {'status': 'ready'}
+
+            def download_snapshot(self, _snapshot_id):
+                return [{'answer_text': '{"ok": true}'}]
+
+            def record_snapshot_results(self, *_args):
+                pass
+
+            @staticmethod
+            def answer_text(record):
+                return record['answer_text']
+
+        client = Client()
+        runtime = {'parse_ai_json': json.loads}
+        race = _service_utility_ai_race(runtime, client)
+        result = race('Return JSON')
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(runtime['LAST_UTILITY_AI_RESULT'], result)
+        self.assertCountEqual(
+            [dataset for dataset, _ in client.triggers],
+            [CHATGPT_DATASET_ID, GEMINI_DATASET_ID],
+        )
+        self.assertTrue(all(
+            'country' not in str(payload).lower()
+            for _, payload in client.triggers
+        ))
 
     def test_opt_in_runner_calls_shared_coordinator_once(self):
         source = _build_service_runner_script(
@@ -132,7 +174,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'BrightDataAPIError': RuntimeError,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
             'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
-            'race_utility_ai': lambda **_kwargs: None,
             'run_profile_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
                     'service profile must not call notebook wrapper'
