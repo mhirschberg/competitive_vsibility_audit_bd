@@ -207,6 +207,18 @@ new provider call on resume; the generated standalone runner compiles. Later
 stages and the top-level scheduler still execute through notebook code. No
 paid provider request or production deployment was made.
 
+Nineteenth checkpoint: `audit_core.search_discovery` now owns the effective
+Stage 2 search and Google AI Mode discovery flow, including partial search
+coverage and whole-set Google-to-Bing fallback without mixed rankings.
+`audit_core.search_stage` owns the Stage 2 checkpoint and progress handling.
+The checkpoint now retains measured AI Mode discovery and restores it on
+resume, instead of losing those results; older checkpoints without that field
+remain resumable. The notebook embeds both modules and keeps a thin provider
+adapter. Synthetic tests cover fallback, partial results, fresh checkpoints,
+and resume without new provider calls. Later stages and the top-level
+scheduler remain notebook-driven. No paid provider request or production
+deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact

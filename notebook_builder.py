@@ -23,6 +23,8 @@ VISIBILITY_SOURCES_SOURCE = ROOT / "audit_core" / "visibility_sources.py"
 ARTIFACT_WRITES_SOURCE = ROOT / "audit_core" / "artifact_writes.py"
 ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
 COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
+SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
+SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -64,6 +66,12 @@ COMPANY_STAGE_START = "# AUDIT-COMPANY-STAGE: start"
 COMPANY_STAGE_END = "# AUDIT-COMPANY-STAGE: end"
 COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
 COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
+SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
+SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
+SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
+SEARCH_STAGE_END = "# AUDIT-SEARCH-STAGE: end"
+SEARCH_STAGE_CALL_START = "# AUDIT-SEARCH-STAGE-CALL: start"
+SEARCH_STAGE_CALL_END = "    # AUDIT-SEARCH-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -145,6 +153,29 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
     keyword_records = company_stage["keyword_records"]
     keywords = company_stage["keywords"]
     stage_durations["company_analysis"] = company_stage["duration_seconds"]'''
+SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
+        keywords, target_brand.domain,
+        continuing=continuing,
+        output_directory=output_directory,
+        started_at=stage_started_at,
+        ports=SearchStagePorts(
+            run_search=run_serp_stage,
+            candidate_factory=CompetitorCandidate,
+            model_to_dict=model_to_dict,
+            write_json=write_json,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+        ),
+    )
+    keyword_serp_results = search_stage["keyword_results"]
+    competitor_candidates = search_stage["candidates"]
+    stage_durations["serp_discovery"] = search_stage["duration_seconds"]
+    ACTIVE_SEARCH_ENGINE = search_stage["search_engine"]
+    ACTIVE_SEARCH_STATUS = search_stage["search_status"]
+    LAST_AI_MODE_DISCOVERY = search_stage["ai_mode_discovery"]
+    bd_client.active_search_engine = ACTIVE_SEARCH_ENGINE
+    warnings.extend(search_stage["warnings"])'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -192,6 +223,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    artifact_writes_source=ARTIFACT_WRITES_SOURCE,
                    artifact_resume_source=ARTIFACT_RESUME_SOURCE,
                    company_stage_source=COMPANY_STAGE_SOURCE,
+                   search_discovery_source=SEARCH_DISCOVERY_SOURCE,
+                   search_stage_source=SEARCH_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -351,6 +384,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
             Path(report_stage_source).read_text(encoding="utf-8")
         ),
     )
+    analysis_cell = _unique_cell(notebook, "final-analysis")
+    _replace_embedded_source(
+        analysis_cell,
+        SEARCH_DISCOVERY_START,
+        SEARCH_DISCOVERY_END,
+        Path(search_discovery_source).read_text(encoding="utf-8"),
+    )
     orchestration_cell = _unique_cell(notebook, "final-orchestration")
     _replace_embedded_source(
         orchestration_cell,
@@ -415,6 +455,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPANY_STAGE_CALL_START,
         COMPANY_STAGE_CALL_END,
         COMPANY_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        SEARCH_STAGE_START,
+        SEARCH_STAGE_END,
+        Path(search_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        SEARCH_STAGE_CALL_START,
+        SEARCH_STAGE_CALL_END,
+        SEARCH_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,

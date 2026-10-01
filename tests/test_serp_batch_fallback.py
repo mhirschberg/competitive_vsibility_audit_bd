@@ -6,6 +6,8 @@ import json
 import unittest
 from pathlib import Path
 
+from audit_core.search_discovery import run_search_discovery_core
+
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
@@ -85,6 +87,7 @@ class SerpBatchFallbackTests(unittest.TestCase):
             "build_ai_mode_source_candidates": lambda **kwargs: [],
             "merge_discovery_candidates": lambda **kwargs: [],
             "model_to_dict": lambda item: item,
+            "run_search_discovery_core": run_search_discovery_core,
         }
         exec(self.stage_source, namespace)
         result = asyncio.run(namespace["run_serp_stage"](
