@@ -21,7 +21,8 @@ from audit_core.artifact_writes import write_json_with_scope
 from audit_core.artifact_writes import (
     create_audit_zip, write_json, write_text,
 )
-from audit_core.artifact_names import report_filename
+from audit_core.artifact_names import audit_export_prefix, report_filename
+from audit_core.artifact_resume import find_latest_audit_to_continue
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
@@ -29,9 +30,11 @@ from audit_core.company_analysis import (
 )
 from audit_core.competitor_scope import (
     build_locked_target_scope as build_locked_target_scope_core,
+    restore_locked_target_scope,
 )
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
+from audit_core.domains import get_root_domain
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
 )
@@ -41,7 +44,7 @@ from audit_core.profile_provider import (
 )
 from audit_core.profile_stage import ProfileStagePorts
 from audit_core.primitives import (
-    ensure_string_list, format_duration, normalize_confidence,
+    ensure_string_list, format_duration, normalize_confidence, slugify,
 )
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_export import (
@@ -265,7 +268,7 @@ def _service_profile_runner(runtime):
             job,
             profile_factory=runtime['BrandProfile'],
             normalize_public_url=runtime['normalize_public_url'],
-            get_root_domain=runtime['get_root_domain'],
+            get_root_domain=get_root_domain,
             ensure_string_list=ensure_string_list,
             normalize_confidence=normalize_confidence,
         )
@@ -309,7 +312,7 @@ def _service_profile_runner(runtime):
                 generate_profile=generate_profile,
                 recover_profile=recover_profile,
                 fallback_profile=fallback_profile,
-                root_domain=runtime['get_root_domain'],
+                root_domain=get_root_domain,
                 pending_notice=pending_notice,
             ),
         )
@@ -378,7 +381,7 @@ def _service_search_runner(runtime, client):
                 max_attempts=max_attempts,
                 is_google_goto_url=runtime['is_google_goto_url'],
                 resolve_google_goto_url=runtime['resolve_google_goto_url'],
-                get_root_domain=runtime['get_root_domain'],
+                get_root_domain=get_root_domain,
                 country_details_fn=country_details,
                 market_language_fn=market_language,
                 acknowledge_market_fn=answer_acknowledges_target_market,
@@ -570,14 +573,14 @@ def build_runtime_ports(runtime):
     def preflight():
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
-            'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
+            'CompanyIntake', 'BrandAnalysis',
             'BuyerIntentKeyword',
             'CompetitorCandidate', '_competitor_decision_ports',
             'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
-            'parse_ai_json', 'normalize_public_url', 'get_root_domain',
+            'parse_ai_json', 'normalize_public_url',
             'remove_ai_boilerplate',
             'SnapshotTimeoutError',
             'create_styled_pdf_report',
@@ -617,7 +620,7 @@ def build_runtime_ports(runtime):
             set_locked_scope=lambda scope: company_scope.__setitem__(
                 'value', dict(scope) if isinstance(scope, dict) else scope
             ),
-            restore_locked_scope=need('restore_locked_target_scope'),
+            restore_locked_scope=restore_locked_target_scope,
             model_to_dict=model_to_dict, write_json=write_company_json,
             clean_record=clean_record, stage_success=success,
         ),
@@ -683,17 +686,19 @@ def build_runtime_ports(runtime):
     )
 
 
-def build_preparation_ports(runtime):
+def build_preparation_ports(runtime, *, base_directory="/content"):
     """Bind official-site and checkpoint operations from the same runtime."""
     def need(name):
         return runtime[name]
 
     return AuditPreparationPorts(
         resolve_official_site=need('resolve_official_site'),
-        get_root_domain=need('get_root_domain'),
-        find_latest_audit_to_continue=need('find_latest_audit_to_continue'),
-        slugify=need('slugify'),
-        audit_export_prefix=need('audit_export_prefix'),
+        get_root_domain=get_root_domain,
+        find_latest_audit_to_continue=lambda settings: find_latest_audit_to_continue(
+            settings, base_directory=base_directory,
+        ),
+        slugify=slugify,
+        audit_export_prefix=audit_export_prefix,
         configure_usage_checkpoint=need('bd_client').configure_usage_checkpoint,
         write_json=write_json,
         configure_google_ai_race_cache=need('configure_google_ai_race_cache'),
@@ -708,7 +713,9 @@ def build_preparation_ports(runtime):
 async def run_with_legacy_runtime(settings, runtime, *, base_directory):
     """Run the shared coordinator with existing, already-loaded providers."""
     pipeline_ports = build_runtime_ports(runtime)
-    preparation_ports = build_preparation_ports(runtime)
+    preparation_ports = build_preparation_ports(
+        runtime, base_directory=base_directory,
+    )
     runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY'] = None
     prepared = await prepare_audit_run_core(
         settings, base_directory=Path(base_directory), ports=preparation_ports,

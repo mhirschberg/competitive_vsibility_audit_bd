@@ -286,6 +286,10 @@ class ServiceAdapterTests(unittest.TestCase):
                     'serialize_engine_result',
                     'summarize_reddit_audit_warning', 'finalize_report',
                     'insert_reddit_report_section',
+                    'restore_locked_target_scope',
+                    'find_latest_audit_to_continue', 'slugify',
+                    'audit_export_prefix',
+                    'get_root_domain',
                 ):
                     runtime.pop(name)
                 fixture_selector = runtime.pop('select_competitors_stage')
@@ -386,9 +390,10 @@ class ServiceAdapterTests(unittest.TestCase):
                 self.assertEqual(events[0], 'resolve')
                 output = runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY']
                 self.assertTrue((output / '00_run_settings.json').is_file())
-                self.assertTrue((output / (
-                    '20260930-apple-us_competitive_visibility_audit.json'
-                )).is_file())
+                self.assertTrue(Path(result['files']['json_report']).is_file())
+                self.assertTrue(Path(result['files']['json_report']).name.endswith(
+                    '_competitive_visibility_audit.json'
+                ))
                 self.assertTrue(Path(result['files']['zip_archive']).is_file())
                 company_checkpoint = json.loads(
                     (output / '01_company_analysis.json').read_text()

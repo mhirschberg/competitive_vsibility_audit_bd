@@ -610,6 +610,19 @@ deployment, or memory claim was made.
 Next: inventory the remaining runtime callbacks and separate genuine provider
 or UI ports from duplicated engine logic before removing any more bindings.
 
+Fiftieth checkpoint: URL-domain normalization, locked-scope restoration,
+resume-directory discovery, audit slugs, and export-prefix generation are now
+bound from shared core modules instead of the notebook runtime. Resume lookup
+is explicitly scoped to the runner's base directory. Official-site HTTP
+verification remains an explicit port because it performs external network
+I/O; provider credentials, model constructors, and UI callbacks also remain
+ports. Offline end-to-end tests pass with the removed helpers absent. No
+provider requests, deployment, or memory claim was made.
+
+Next: inspect the remaining bindings for other pure helpers with existing
+shared sources, while preserving deliberate provider, persistence, and UI
+boundaries.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
