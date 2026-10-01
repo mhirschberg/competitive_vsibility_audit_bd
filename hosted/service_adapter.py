@@ -41,6 +41,11 @@ from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
 from audit_core.visibility_prompt import build_visibility_prompt_core
 from audit_core.visibility_stage import run_visibility_stage_core
 from audit_core.visibility_sources import collect_visibility_sources_service
+from audit_core.utility_ai_race import race_utility_ai_core
+from audit_core.brightdata_transport import (
+    CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
+    BrightDataAPIError,
+)
 
 
 _RESEARCH_BINDINGS = (
@@ -295,12 +300,45 @@ def _service_visibility_runner(runtime, client):
     return run_visibility
 
 
-def _service_reddit_runners(runtime, client):
+def _service_utility_ai_race(runtime, client):
+    """Build Reddit's utility race from shared code and explicit providers."""
+    def validate_json_object(answer):
+        try:
+            parsed = runtime['parse_ai_json'](answer)
+            if not isinstance(parsed, dict):
+                return {'valid': False, 'reason': 'Parsed result was not a JSON object.'}
+            return {'valid': True, 'reason': 'Parseable JSON object', 'parsed': parsed}
+        except Exception as exc:
+            return {'valid': False, 'reason': f'{type(exc).__name__}: {exc}'}
+
+    def race(prompt, validator=None, timeout_seconds=900, task_name='utility task'):
+        result = race_utility_ai_core(
+            client,
+            prompt,
+            validator=validator or validate_json_object,
+            timeout_seconds=timeout_seconds,
+            task_name=task_name,
+            dataset_ids={
+                'chatgpt': CHATGPT_DATASET_ID,
+                'gemini': GEMINI_DATASET_ID,
+            },
+            failed_statuses=FAILED_STATUSES,
+            error_type=BrightDataAPIError,
+        )
+        runtime['LAST_UTILITY_AI_RESULT'] = result
+        return result
+
+    return race
+
+
+def _service_reddit_runners(runtime, client, utility_race=None):
     """Bind legacy-compatible Reddit collection to explicit audit providers."""
+    utility_race = utility_race or runtime['race_utility_ai']
+
     def reddit_context():
         return runtime['bind_reddit_runtime'](
             client,
-            runtime['race_utility_ai'],
+            utility_race,
         )
 
     async def start_discovery(**kwargs):
@@ -400,7 +438,7 @@ def build_runtime_ports(runtime):
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
             'start_reddit_discovery_prefetch', 'BrandProfile',
-            'bind_reddit_runtime', 'race_utility_ai',
+            'bind_reddit_runtime',
             'parse_ai_json', 'normalize_public_url', 'get_root_domain',
             'SnapshotTimeoutError',
             'serialize_profile_task',
@@ -420,7 +458,7 @@ def build_runtime_ports(runtime):
     run_profiles = _service_profile_runner(runtime)
     run_visibility = _service_visibility_runner(runtime, client)
     start_reddit_discovery, run_reddit_social = _service_reddit_runners(
-        runtime, client,
+        runtime, client, utility_race=_service_utility_ai_race(runtime, client),
     )
 
     return AuditPipelinePorts(
