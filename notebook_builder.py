@@ -29,6 +29,7 @@ COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_
 PROFILE_RESEARCH_SOURCE = ROOT / "audit_core" / "profile_research.py"
 PROFILE_STAGE_SOURCE = ROOT / "audit_core" / "profile_stage.py"
 VISIBILITY_CHECKPOINT_STAGE_SOURCE = ROOT / "audit_core" / "visibility_checkpoint_stage.py"
+SOCIAL_COMPLETION_STAGE_SOURCE = ROOT / "audit_core" / "social_completion_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -90,6 +91,10 @@ VISIBILITY_CHECKPOINT_STAGE_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: start"
 VISIBILITY_CHECKPOINT_STAGE_END = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: end"
 VISIBILITY_CHECKPOINT_STAGE_CALL_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: start"
 VISIBILITY_CHECKPOINT_STAGE_CALL_END = "    # AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: end"
+SOCIAL_COMPLETION_STAGE_START = "# AUDIT-SOCIAL-COMPLETION-STAGE: start"
+SOCIAL_COMPLETION_STAGE_END = "# AUDIT-SOCIAL-COMPLETION-STAGE: end"
+SOCIAL_COMPLETION_STAGE_CALL_START = "# AUDIT-SOCIAL-COMPLETION-STAGE-CALL: start"
+SOCIAL_COMPLETION_STAGE_CALL_END = "    # AUDIT-SOCIAL-COMPLETION-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -289,6 +294,23 @@ VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE = '''    visibility_stage = await run_vi
     reddit_social_result = visibility_stage["reddit_social_result"]
     stage_durations["ai_visibility"] = visibility_stage["duration_seconds"]
     warnings.extend(visibility_stage["warnings"])'''
+SOCIAL_COMPLETION_STAGE_CALL_SOURCE = '''    social_stage = await run_social_completion_stage_core(
+        reddit_task, reddit_social_result,
+        include_reddit_analysis=include_reddit_analysis,
+        total_stages=total_stages,
+        output_directory=output_directory,
+        ports=SocialCompletionPorts(
+            print_stage=print_stage,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+            summarize_warning=summarize_reddit_audit_warning,
+            write_json=write_json,
+        ),
+    )
+    reddit_social_result = social_stage["reddit_social_result"]
+    stage_durations["reddit_social"] = social_stage["duration_seconds"]
+    warnings.extend(social_stage["warnings"])'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -342,6 +364,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    profile_research_source=PROFILE_RESEARCH_SOURCE,
                    profile_stage_source=PROFILE_STAGE_SOURCE,
                    visibility_checkpoint_stage_source=VISIBILITY_CHECKPOINT_STAGE_SOURCE,
+                   social_completion_stage_source=SOCIAL_COMPLETION_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -627,6 +650,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         VISIBILITY_CHECKPOINT_STAGE_CALL_START,
         VISIBILITY_CHECKPOINT_STAGE_CALL_END,
         VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        SOCIAL_COMPLETION_STAGE_START,
+        SOCIAL_COMPLETION_STAGE_END,
+        Path(social_completion_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        SOCIAL_COMPLETION_STAGE_CALL_START,
+        SOCIAL_COMPLETION_STAGE_CALL_END,
+        SOCIAL_COMPLETION_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
