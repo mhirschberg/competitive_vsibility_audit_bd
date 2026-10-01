@@ -3,6 +3,8 @@
 import ast
 import json
 from pathlib import Path
+import tempfile
+from types import SimpleNamespace
 import unittest
 
 from audit_core import competitor_decisions, competitor_pipeline
@@ -203,6 +205,99 @@ class CompetitorSelectionReliabilityTests(unittest.TestCase):
         results = [{"candidate_record": candidate} for candidate in candidates]
         pipeline.mark_uncorroborated(candidates, results, {})
         self.assertNotIn("selection_ineligible_reason", results[1])
+
+    def test_shared_provider_adapter_uses_locked_scope_and_persists_results(self):
+        scope = {
+            "brand_name": "Apple", "domain": "apple.com",
+            "official_url": "https://apple.com/", "country": "US",
+            "category": "premium smartphones", "market_role": "manufacturer",
+            "business_model": "hardware manufacturer",
+            "primary_customers": ["smartphone buyers"],
+            "core_offerings": ["premium smartphones"],
+            "substitute_definition": "premium smartphones",
+            "audit_focus": "premium smartphone",
+        }
+        discovered = [
+            {
+                "rank_by_directness": rank, "brand_name": name,
+                "domain": domain, "official_url": f"https://{domain}/",
+                "candidate_role": "manufacturer", "confidence": 0.95,
+                "market_prominence": 0.9,
+            }
+            for rank, name, domain in (
+                (1, "Samsung", "samsung.com"),
+                (2, "Google", "google.com"),
+            )
+        ]
+
+        class FakeClient:
+            def __init__(self):
+                self.prompts = []
+
+            def google_ai_mode(self, prompt, timeout_seconds):
+                self.prompts.append(prompt)
+                return {"answer_text": "unused"}
+
+            @staticmethod
+            def answer_text(record):
+                prompt = client.prompts[-1]
+                if prompt.startswith("Identify the strongest active"):
+                    answer = {"competitors": discovered}
+                else:
+                    candidate = next(item for item in discovered if item["brand_name"] in prompt)
+                    answer = {
+                        "candidate_name": candidate["brand_name"],
+                        "candidate_domain": candidate["domain"],
+                        "official_url": candidate["official_url"],
+                        "candidate_role": "manufacturer",
+                        "candidate_business_model": "hardware manufacturer",
+                        "active_in_target_country": True,
+                        "same_category": True,
+                        "same_market_role": True,
+                        "same_business_model": True,
+                        "same_primary_customers": True,
+                        "same_core_transaction": True,
+                        "offering_is_substitute": True,
+                        "is_direct_competitor": True,
+                        "market_prominence": 0.9,
+                        "reason": "Comparable premium smartphone maker.",
+                        "evidence": ["Current smartphone product range."],
+                        "confidence": 0.95,
+                    }
+                return json.dumps(answer)
+
+        client = FakeClient()
+        decision_ports = competitor_decisions.CompetitorDecisionPorts(
+            lambda code: {"code": code, "name": "United States"},
+            lambda value: value.split("//")[-1].split("/")[0],
+            lambda value: value,
+            lambda domain: domain,
+            lambda _domain, _country: 0,
+        )
+        persisted = []
+        with tempfile.TemporaryDirectory() as output:
+            result = competitor_pipeline.select_competitors_with_provider(
+                SimpleNamespace(brand_name="Apple"), [], ["premium smartphone"],
+                scope=scope, client=client, parse_ai_json=json.loads,
+                decision_ports=decision_ports,
+                local_domain_bonus=lambda *_args: 0,
+                validation_workers=2, validation_limit=12,
+                only_reuse=False, cached_snapshot_ids=lambda _prompt: [],
+                brand_family=lambda domain: domain,
+                selected_factory=lambda **values: SimpleNamespace(**values),
+                error_type=RuntimeError, output_dir=output,
+                write_json=lambda path, payload: persisted.append((path, payload)),
+                clean_record=lambda record: record,
+            )
+
+        self.assertEqual(result["locked_target_scope"], scope)
+        self.assertEqual(
+            [item.brand_name for item in result["selected"]],
+            ["Samsung", "Google"],
+        )
+        self.assertEqual(len(client.prompts), 3)
+        self.assertEqual(len(persisted), 1)
+        self.assertTrue(str(persisted[0][0]).endswith("03_candidate_validation_records.json"))
 
 
 if __name__ == "__main__":

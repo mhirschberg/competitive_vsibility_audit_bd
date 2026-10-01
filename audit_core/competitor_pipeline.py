@@ -15,6 +15,7 @@ from .competitor_decisions import (
     core_discovery_supports_consistency_retry,
     core_normalize_locked_scope_validation,
 )
+from .competitor_stage import CompetitorStagePorts, select_competitors_core
 from .competitor_research import (
     run_scope_discovery,
     run_scope_validation,
@@ -27,6 +28,66 @@ def query_google_ai_json(client, parse_ai_json, prompt, timeout_seconds=720):
     """Return both the original provider record and its parsed answer."""
     record = client.google_ai_mode(prompt, timeout_seconds=timeout_seconds)
     return record, parse_ai_json(client.answer_text(record))
+
+
+def select_competitors_with_provider(
+    target_brand,
+    candidates,
+    keywords,
+    *,
+    scope,
+    client,
+    parse_ai_json,
+    decision_ports,
+    local_domain_bonus,
+    validation_workers,
+    validation_limit,
+    only_reuse,
+    cached_snapshot_ids,
+    brand_family,
+    selected_factory,
+    error_type,
+    output_dir=None,
+    write_json=None,
+    clean_record=None,
+):
+    """Run locked-scope competitor selection with explicit provider ports.
+
+    ``scope`` is supplied by the caller and is never rebuilt or broadened
+    here. Keeping the Bright Data calls and checkpoint wiring in this shared
+    adapter lets the hosted service and generated notebook use the same
+    provider contract.
+    """
+    del target_brand  # Kept in the adapter contract for notebook compatibility.
+    pipeline = CompetitorPipeline(
+        query_json=lambda prompt: query_google_ai_json(
+            client, parse_ai_json, prompt
+        ),
+        decision_ports=decision_ports,
+        local_domain_bonus=local_domain_bonus,
+        validation_workers=validation_workers,
+    )
+    ports = CompetitorStagePorts(
+        discover=pipeline.discover,
+        build_universe=pipeline.build_universe,
+        validate_batch=pipeline.validate_batch,
+        mark_uncorroborated=pipeline.mark_uncorroborated,
+        brand_family=brand_family,
+        serialize_validation=serialize_scope_validation,
+        selected_factory=selected_factory,
+        error_type=error_type,
+        validation_limit=validation_limit,
+        only_reuse=only_reuse,
+        cached_snapshot_ids=cached_snapshot_ids,
+        validation_prompt=pipeline.validation_prompt,
+        persist_validation_records=(
+            lambda payload: persist_validation_checkpoint(
+                output_dir, write_json, payload
+            )
+        ),
+        clean_record=clean_record,
+    )
+    return select_competitors_core(scope, candidates, keywords, ports)
 
 
 def persist_validation_checkpoint(output_dir, write_json, payload):

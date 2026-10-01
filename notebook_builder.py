@@ -93,6 +93,8 @@ PROFILE_RESEARCH_START = "# AUDIT-PROFILE-RESEARCH: start"
 PROFILE_RESEARCH_END = "# AUDIT-PROFILE-RESEARCH: end"
 PROFILE_PROVIDER_START = "# AUDIT-PROFILE-PROVIDER: start"
 PROFILE_PROVIDER_END = "# AUDIT-PROFILE-PROVIDER: end"
+COMPETITOR_PROVIDER_START = "# AUDIT-COMPETITOR-PROVIDER: start"
+COMPETITOR_PROVIDER_END = "# AUDIT-COMPETITOR-PROVIDER: end"
 PROFILE_STAGE_START = "# AUDIT-PROFILE-STAGE: start"
 PROFILE_STAGE_END = "# AUDIT-PROFILE-STAGE: end"
 PROFILE_STAGE_CALL_START = "# AUDIT-PROFILE-STAGE-CALL: start"
@@ -345,6 +347,27 @@ def fallback_profile(job, target_brand):
     return fallback_profile_core(
         job, target_brand, profile_factory=BrandProfile,
     )'''
+COMPETITOR_PROVIDER_ADAPTER_SOURCE = '''def select_competitors_stage(target_brand, candidates, keywords):
+    return select_competitors_with_provider(
+        target_brand,
+        candidates,
+        keywords,
+        scope=require_locked_target_scope(target_brand),
+        client=bd_client,
+        parse_ai_json=parse_ai_json,
+        decision_ports=_competitor_decision_ports(),
+        local_domain_bonus=locked_scope_local_domain_bonus,
+        validation_workers=LOCKED_SCOPE_VALIDATION_WORKERS,
+        validation_limit=LOCKED_SCOPE_VALIDATION_LIMIT,
+        only_reuse=_GOOGLE_AI_ONLY_REUSE,
+        cached_snapshot_ids=cached_research_snapshot_ids,
+        brand_family=locked_scope_brand_family,
+        selected_factory=SelectedCompetitor,
+        error_type=BrightDataAPIError,
+        output_dir=globals().get("CURRENT_AUDIT_OUTPUT_DIRECTORY"),
+        write_json=write_json,
+        clean_record=clean_record_for_storage,
+    )'''
 PROFILE_STAGE_CALL_SOURCE = '''    profile_stage = await run_profile_stage_core(
         target_brand, selected_competitors,
         audit_focus=settings.get("audit_focus", ""),
@@ -550,6 +573,26 @@ def _replace_profile_provider_source(cell, source):
     _replace_source_region(cell, start, PROFILE_RESEARCH_START, wrapped)
 
 
+def _replace_competitor_provider_source(cell, source):
+    wrapped = (
+        COMPETITOR_PROVIDER_START + "\n" + source.rstrip("\n")
+        + "\n" + COMPETITOR_PROVIDER_END
+    )
+    text = "".join(cell["source"])
+    if COMPETITOR_PROVIDER_START in text or COMPETITOR_PROVIDER_END in text:
+        _replace_embedded_source(
+            cell, COMPETITOR_PROVIDER_START, COMPETITOR_PROVIDER_END, source,
+        )
+        return
+
+    legacy_start = "def select_competitors_stage(target_brand, candidates, keywords):"
+    if legacy_start not in text:
+        raise ValueError("Could not find legacy competitor provider adapter")
+    _replace_source_region(
+        cell, legacy_start, "# Add locked scope to report evidence", wrapped,
+    )
+
+
 def _without_service_imports(source):
     if (source.count(SERVICE_IMPORTS_START) != 1
             or source.count(SERVICE_IMPORTS_END) != 1):
@@ -727,6 +770,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         _without_service_imports(
             Path(competitor_stage_source).read_text(encoding="utf-8")
         ),
+    )
+    _replace_competitor_provider_source(
+        scope_cell, COMPETITOR_PROVIDER_ADAPTER_SOURCE,
     )
     _replace_embedded_source(
         scope_cell,
