@@ -74,7 +74,10 @@ class NotebookBuilderTests(unittest.TestCase):
             node.name for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         ]
-        for name in ("extract_visible_url", "normalize_public_url", "get_hostname"):
+        for name in (
+            "extract_visible_url", "normalize_public_url", "get_hostname",
+            "is_google_goto_url",
+        ):
             self.assertEqual(definitions.count(name), 1)
 
     def test_shared_json_parser_is_not_shadowed_by_legacy_copies(self):

@@ -85,3 +85,13 @@ def canonical_source_url(value):
         ))
     except Exception:
         return value
+
+
+def is_google_goto_url(value):
+    """Return whether a URL is an opaque Google citation redirect."""
+    try:
+        parsed = urlparse(str(value or ""))
+        hostname = (parsed.hostname or "").lower().removeprefix("www.")
+        return hostname == "google.com" and parsed.path.startswith("/goto")
+    except Exception:
+        return False

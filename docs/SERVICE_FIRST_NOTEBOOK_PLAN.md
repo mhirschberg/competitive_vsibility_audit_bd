@@ -662,6 +662,19 @@ Next: continue the runtime-binding inventory, looking for another pure helper
 whose ownership can move without crossing provider, persistence, or UI
 boundaries.
 
+Fifty-fourth checkpoint: opaque Google `/goto` URL recognition now lives in
+`audit_core.domains` and is bound directly by the service. The redirect resolver
+remains a caller-supplied network operation. Notebook generation embeds the
+shared predicate and removes the old duplicate. Service preflight no longer
+requires the notebook-defined URL predicate or the already-shared AI text
+cleaner. All 425 tests pass (4 skipped); the notebook is current and the dry
+run made no Bright Data requests. No deployment or memory-reduction claim was
+made.
+
+Next: continue auditing the remaining notebook-supplied policy and domain
+callbacks; keep network resolution, report rendering, persistence, and UI
+callbacks at their existing adapter boundaries.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

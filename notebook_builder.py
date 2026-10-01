@@ -1267,10 +1267,15 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
             "aggregate_competitor_domains": [0],
         },
     )
+    _remove_python_function_occurrences(
+        primitives_cell,
+        {"is_google_goto_url": [1]},
+    )
     _remove_shadowed_python_functions(
         primitives_cell,
         {
             "extract_visible_url", "normalize_public_url", "get_hostname",
+            "is_google_goto_url",
             "clean_ai_json_text", "parse_ai_json",
             "remove_ai_boilerplate",
         },

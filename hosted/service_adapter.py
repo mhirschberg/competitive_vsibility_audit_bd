@@ -34,7 +34,9 @@ from audit_core.competitor_scope import (
 )
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
-from audit_core.domains import get_root_domain, normalize_public_url
+from audit_core.domains import (
+    get_root_domain, is_google_goto_url, normalize_public_url,
+)
 from audit_core.json_parsing import parse_ai_json
 from audit_core.text_cleaning import remove_ai_boilerplate
 from audit_core.profile_research import (
@@ -244,7 +246,7 @@ def _collect_visibility_sources(runtime, visibility, max_per_engine=10):
         visibility,
         max_per_engine,
         resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
-        is_google_goto_url=runtime.get('is_google_goto_url'),
+        is_google_goto_url=is_google_goto_url,
     )
 
 
@@ -381,7 +383,7 @@ def _service_search_runner(runtime, client):
                 country_code=settings.get('country') or client.country,
                 timeout_seconds=timeout_seconds,
                 max_attempts=max_attempts,
-                is_google_goto_url=runtime['is_google_goto_url'],
+                is_google_goto_url=is_google_goto_url,
                 resolve_google_goto_url=runtime['resolve_google_goto_url'],
                 get_root_domain=get_root_domain,
                 country_details_fn=country_details,
@@ -458,7 +460,7 @@ def _service_reddit_runners(
             client,
             utility_race,
             parse_json=parse_ai_json,
-            is_google_goto_url=runtime.get('is_google_goto_url'),
+            is_google_goto_url=is_google_goto_url,
             resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
         )
 
@@ -581,8 +583,7 @@ def build_runtime_ports(runtime):
             'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
-            'BrandProfile', 'is_google_goto_url', 'resolve_google_goto_url',
-            'remove_ai_boilerplate',
+            'BrandProfile', 'resolve_google_goto_url',
             'SnapshotTimeoutError',
             'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
