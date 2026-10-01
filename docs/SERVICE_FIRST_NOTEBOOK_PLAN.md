@@ -530,6 +530,18 @@ Next: continue shrinking notebook-derived runtime callbacks and remove the
 notebook expansion from the worker only after the remaining provider and stage
 boundaries have parity coverage.
 
+Forty-fourth checkpoint: the hosted company-analysis adapter now obtains the
+locked target scope directly from `audit_core.competitor_scope`, rather than
+requiring the initialized notebook runtime to provide that callback. The
+existing service/notebook parity fixtures continue to cover role
+classification and scope construction; the adapter test confirms the shared
+core is bound and that the notebook callback is no longer required. No provider
+request, generated-notebook change, deployment, or memory claim was made.
+
+Next: keep removing correctness-sensitive runtime dependencies where an
+existing shared core already has parity coverage, then evaluate the remaining
+provider and Stage 2 boundaries before changing worker startup.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

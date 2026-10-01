@@ -23,6 +23,9 @@ from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     run_company_analysis_core,
 )
+from audit_core.competitor_scope import (
+    build_locked_target_scope as build_locked_target_scope_core,
+)
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.profile_research import (
@@ -390,7 +393,7 @@ def _service_company_analyzer(runtime, client):
             ],
             complete_keywords=runtime['complete_company_keywords'],
             proofread_keywords=runtime['proofread_buyer_keywords'],
-            build_locked_scope=runtime['build_locked_target_scope'],
+            build_locked_scope=build_locked_target_scope_core,
             error_type=runtime['BrightDataAPIError'],
         ),
     )
@@ -498,9 +501,9 @@ def build_runtime_ports(runtime):
             need(name)
         if not callable(runtime.get('company_analysis_runner')):
             for name in (
-                'run_chatgpt_without_web', 'normalize_company_intake',
-                'select_relevant_company_research', 'complete_company_keywords',
-                'proofread_buyer_keywords', 'build_locked_target_scope',
+            'run_chatgpt_without_web', 'normalize_company_intake',
+            'select_relevant_company_research', 'complete_company_keywords',
+            'proofread_buyer_keywords',
             ):
                 need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
