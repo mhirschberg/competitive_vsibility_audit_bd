@@ -157,7 +157,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 'core_offerings': ['premium smartphones'], 'audit_focus': '',
             }
             result = original_analyze(settings)
-            result['locked_target_scope'] = scope
+            # Model the legacy notebook analyzer: it writes scope into the
+            # flat namespace instead of returning it as part of its result.
+            runtime['LOCKED_TARGET_SCOPE'] = scope
             return result
         runtime['analyze_company_stage'] = analyze_and_lock
         return runtime
@@ -195,7 +197,7 @@ class ServiceAdapterTests(unittest.TestCase):
                 )
                 def select_with_shared_adapter(target, candidates, keywords, **kwargs):
                     self.assertEqual(
-                        kwargs['scope'], runtime['LOCKED_TARGET_SCOPE']
+                        kwargs['scope']['market_role'], 'manufacturer'
                     )
                     return fixture_selector(
                         target, candidates, keywords, kwargs['scope']
@@ -223,11 +225,19 @@ class ServiceAdapterTests(unittest.TestCase):
                 self.assertEqual(runtime['ACTIVE_SEARCH_ENGINE'], 'google')
                 self.assertEqual(runtime['ACTIVE_SEARCH_STATUS'], 'available')
                 self.assertIsNone(runtime['LAST_AI_MODE_DISCOVERY'])
+                self.assertNotIn('LOCKED_TARGET_SCOPE', runtime)
                 self.assertEqual(runtime['bd_client'].active_search_engine, 'google')
                 self.assertEqual(events[0], 'resolve')
                 output = runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY']
                 self.assertTrue((output / '00_run_settings.json').is_file())
                 self.assertTrue((output / '20260930-apple-us.json').is_file())
+                company_checkpoint = json.loads(
+                    (output / '01_company_analysis.json').read_text()
+                )
+                self.assertEqual(
+                    company_checkpoint['locked_target_scope']['market_role'],
+                    'manufacturer',
+                )
                 saved = json.loads((output / '00_run_settings.json').read_text())
                 self.assertEqual(saved['company_domain'], 'apple.com')
 

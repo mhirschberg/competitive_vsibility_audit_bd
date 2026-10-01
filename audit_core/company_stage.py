@@ -76,8 +76,8 @@ async def run_company_stage_core(
         locked_scope = ports.restore_locked_scope(
             company_checkpoint, target_brand, settings
         )
-    # Notebook checkpoint writers and later report helpers still consume this
-    # callback; the service pipeline also returns and passes the value directly.
+    # Notebook checkpoint writers consume this callback. Hosted adapters keep
+    # their own local scope store and pass the returned value to later stages.
     if locked_scope:
         ports.set_locked_scope(locked_scope)
 
