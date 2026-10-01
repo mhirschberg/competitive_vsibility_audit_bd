@@ -20,6 +20,8 @@ BRAND_MENTIONS_SOURCE = ROOT / "audit_core" / "brand_mentions.py"
 VISIBILITY_STAGE_SOURCE = ROOT / "audit_core" / "visibility_stage.py"
 VISIBILITY_PROMPT_SOURCE = ROOT / "audit_core" / "visibility_prompt.py"
 VISIBILITY_SOURCES_SOURCE = ROOT / "audit_core" / "visibility_sources.py"
+ARTIFACT_WRITES_SOURCE = ROOT / "audit_core" / "artifact_writes.py"
+ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -53,6 +55,10 @@ VISIBILITY_PROMPT_START = "# AUDIT-VISIBILITY-PROMPT: start"
 VISIBILITY_PROMPT_END = "# AUDIT-VISIBILITY-PROMPT: end"
 VISIBILITY_SOURCES_START = "# AUDIT-VISIBILITY-SOURCES: start"
 VISIBILITY_SOURCES_END = "# AUDIT-VISIBILITY-SOURCES: end"
+ARTIFACT_WRITES_START = "# AUDIT-ARTIFACT-WRITES: start"
+ARTIFACT_WRITES_END = "# AUDIT-ARTIFACT-WRITES: end"
+ARTIFACT_RESUME_START = "# AUDIT-ARTIFACT-RESUME: start"
+ARTIFACT_RESUME_END = "# AUDIT-ARTIFACT-RESUME: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -148,6 +154,8 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    visibility_stage_source=VISIBILITY_STAGE_SOURCE,
                    visibility_prompt_source=VISIBILITY_PROMPT_SOURCE,
                    visibility_sources_source=VISIBILITY_SOURCES_SOURCE,
+                   artifact_writes_source=ARTIFACT_WRITES_SOURCE,
+                   artifact_resume_source=ARTIFACT_RESUME_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -345,6 +353,20 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         _without_service_imports(
             Path(visibility_sources_source).read_text(encoding="utf-8")
         ),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        ARTIFACT_WRITES_START,
+        ARTIFACT_WRITES_END,
+        _without_service_imports(
+            Path(artifact_writes_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        ARTIFACT_RESUME_START,
+        ARTIFACT_RESUME_END,
+        Path(artifact_resume_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         orchestration_cell,
