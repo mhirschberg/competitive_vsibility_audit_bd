@@ -323,8 +323,6 @@ def _service_search_runner(runtime, client):
     """Bind shared Stage 2 discovery to the active provider and settings."""
     discovery_bindings = (
         'run_ai_mode_question',
-        'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
-        'merge_discovery_candidates',
     )
     if not all(name in runtime for name in discovery_bindings):
         # Retain the old port only for minimal transition/test runtimes. The
@@ -358,16 +356,8 @@ def _service_search_runner(runtime, client):
             ),
             run_ai_mode_question=runtime['run_ai_mode_question'],
             run_keyword_serp_task=client.run_keyword_serp_task,
-            aggregate_competitor_domains=runtime[
-                'aggregate_competitor_domains'
-            ],
-            build_ai_mode_source_candidates=runtime[
-                'build_ai_mode_source_candidates'
-            ],
-            merge_discovery_candidates=runtime[
-                'merge_discovery_candidates'
-            ],
             model_to_dict=runtime['model_to_dict'],
+            candidate_factory=runtime['CompetitorCandidate'],
         )
 
     return run_search
@@ -563,8 +553,6 @@ def build_runtime_ports(runtime):
                 need(name)
         search_bindings = (
             'run_ai_mode_question',
-            'aggregate_competitor_domains', 'build_ai_mode_source_candidates',
-            'merge_discovery_candidates',
         )
         if not all(name in runtime for name in search_bindings):
             need('run_serp_stage')

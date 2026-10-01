@@ -878,7 +878,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         analysis_cell,
         SEARCH_DISCOVERY_START,
         SEARCH_DISCOVERY_END,
-        Path(search_discovery_source).read_text(encoding="utf-8"),
+        _without_service_imports(
+            Path(search_discovery_source).read_text(encoding="utf-8")
+        ),
     )
     _replace_embedded_source(
         analysis_cell,
