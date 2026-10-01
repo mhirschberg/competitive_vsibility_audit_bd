@@ -336,6 +336,19 @@ ports. The service runner can become genuinely notebook-free only after all
 required bindings have parity fixtures; a fresh live canary and memory
 comparison come after that, before any worker-default or deployment decision.
 
+Twenty-ninth checkpoint: `hosted.brightdata_provider.BrightDataProviderClient`
+is the first standalone service provider adapter. It composes the existing
+Bright Data transport and usage-ledger modules for snapshot trigger/status/
+download/polling/scrape, Google/Bing SERP transport, and measured ChatGPT,
+Gemini, and Copilot races. Country-compatible payload construction and strict
+answer-market validation are retained. Bing Markdown parsing is an explicit
+injected dependency; no notebook globals are read. Fake-provider tests cover
+usage accounting, race labels, market targeting, and search-health caching.
+The full offline suite passes with 363 tests (4 optional integration tests
+skipped). This client is not yet wired into `hosted.service_adapter`, and
+Google AI Mode research, Reddit, and profile/report provider wrappers are still outstanding.
+The legacy notebook runner remains the only end-to-end path for now.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
