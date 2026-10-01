@@ -154,7 +154,7 @@ class CompetitorDecisionTests(unittest.TestCase):
             orchestration,
         )
         self.assertIn(
-            "LOCKED_TARGET_SCOPE = restore_locked_target_scope(",
+            "restore_locked_scope=restore_locked_target_scope",
             orchestration,
         )
         self.assertLess(

@@ -196,6 +196,17 @@ metadata, which the old exact-name condition silently missed. PDF rendering,
 social insertion, the remaining provider adapters, and top-level orchestration
 are still notebook-owned. No live request or production deployment was made.
 
+Eighteenth checkpoint: the first top-level audit stage now lives in
+`audit_core.company_stage`. It handles a fresh company/keyword analysis or
+restores Stage 1 from an existing checkpoint, normalizes the official target
+domain, keeps locked scope synchronized for scoped JSON writes, and persists
+the company and raw-response records. The notebook's main function now calls
+this importable stage through explicit provider, model, scope, writer, and
+progress ports. Synthetic tests cover fresh and resumed runs, including no
+new provider call on resume; the generated standalone runner compiles. Later
+stages and the top-level scheduler still execute through notebook code. No
+paid provider request or production deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
