@@ -8,7 +8,9 @@ from .brightdata_transport import BrightDataAPIError
 # SERVICE-ONLY-IMPORTS: end
 
 
-ENGINE_NAMES = {"chatgpt": "ChatGPT", "gemini": "Gemini", "copilot": "Copilot"}
+AI_VISIBILITY_RACE_ENGINE_NAMES = {
+    "chatgpt": "ChatGPT", "gemini": "Gemini", "copilot": "Copilot",
+}
 
 
 def race_ai_visibility_core(
@@ -20,7 +22,7 @@ def race_ai_visibility_core(
     The client's payload builder owns country compatibility; this core owns
     trigger redundancy, snapshot polling, citations, and result accounting.
     """
-    engine_name = ENGINE_NAMES[engine]
+    engine_name = AI_VISIBILITY_RACE_ENGINE_NAMES[engine]
     started_at = time.monotonic()
 
     def trigger_one(index):

@@ -2,10 +2,14 @@
 """Run the audit notebook headlessly with local, uncommitted credentials."""
 
 import argparse
+import json
 import os
 import re
+import resource
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,6 +90,14 @@ def build_parser():
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument(
+        "--engine-mode", choices=("notebook", "service_adapter"),
+        default="notebook", help="Audit coordinator (default: notebook)",
+    )
+    parser.add_argument(
+        "--measure-memory", action="store_true",
+        help="Sample peak RSS of this runner and its child processes",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Build and compile the runner without making Bright Data calls",
@@ -131,6 +143,34 @@ def collect_artifacts(run_directory):
     return sorted(dict.fromkeys(artifacts))
 
 
+def process_tree_rss_kib(root_pid):
+    """Read resident memory for a process and all of its descendants."""
+    rows = subprocess.run(
+        ["ps", "-A", "-o", "pid=,ppid=,rss="],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    processes = {}
+    for line in rows.splitlines():
+        parts = line.split()
+        if len(parts) != 3:
+            continue
+        try:
+            pid, ppid, rss = map(int, parts)
+        except ValueError:
+            continue
+        processes[pid] = (ppid, rss)
+    descendants = {root_pid}
+    while True:
+        newly_found = {
+            pid for pid, (ppid, _) in processes.items()
+            if ppid in descendants
+        }
+        if newly_found <= descendants:
+            break
+        descendants.update(newly_found)
+    return sum(processes[pid][1] for pid in descendants if pid in processes)
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
     load_env_file(args.env_file)
@@ -138,9 +178,13 @@ def main(argv=None):
 
     # Keep the CLI on the lightweight builder path, without loading the web UI.
     sys.path.insert(0, str(ROOT))
-    from runner_builder import _build_runner_script
+    from runner_builder import _build_runner_script, _build_service_runner_script
 
-    runner_source = _build_runner_script(
+    builder = (
+        _build_service_runner_script
+        if args.engine_mode == "service_adapter" else _build_runner_script
+    )
+    runner_source = builder(
         args.company,
         args.domain,
         args.focus,
@@ -183,6 +227,25 @@ def main(argv=None):
         bufsize=1,
     )
 
+    started_at = time.monotonic()
+    stop_sampling = threading.Event()
+    peak_rss_kib = [0]
+
+    def sample_memory():
+        while not stop_sampling.is_set():
+            try:
+                peak_rss_kib[0] = max(
+                    peak_rss_kib[0], process_tree_rss_kib(os.getpid())
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
+            stop_sampling.wait(1)
+
+    sampler = None
+    if args.measure_memory:
+        sampler = threading.Thread(target=sample_memory, daemon=True)
+        sampler.start()
+
     try:
         assert process.stdout is not None
         with log_path.open("w", encoding="utf-8") as log_file:
@@ -196,6 +259,33 @@ def main(argv=None):
         process.wait(timeout=15)
         print("\nAudit interrupted.", file=sys.stderr)
         return 130
+    finally:
+        stop_sampling.set()
+        if sampler is not None:
+            sampler.join(timeout=5)
+
+    if args.measure_memory:
+        child_peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+        child_peak_mib = (
+            child_peak / (1024 * 1024)
+            if sys.platform == 'darwin' else child_peak / 1024
+        )
+        metrics = {
+            "engine_mode": args.engine_mode,
+            "elapsed_seconds": round(time.monotonic() - started_at, 2),
+            "peak_process_tree_rss_mib": (
+                round(peak_rss_kib[0] / 1024, 1) if peak_rss_kib[0] else None
+            ),
+            "peak_child_rss_mib": round(child_peak_mib, 1),
+            "exit_code": return_code,
+        }
+        (run_directory / "run_metrics.json").write_text(
+            json.dumps(metrics, indent=2) + "\n", encoding="utf-8",
+        )
+        if metrics['peak_process_tree_rss_mib'] is not None:
+            print(f"Peak process-tree memory: {metrics['peak_process_tree_rss_mib']} MiB")
+        else:
+            print(f"Peak runner memory: {metrics['peak_child_rss_mib']} MiB (process-tree sampling unavailable)")
 
     artifacts = collect_artifacts(run_directory)
     print()

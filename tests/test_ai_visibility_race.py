@@ -10,7 +10,8 @@ from audit_core.ai_visibility_race import race_ai_visibility_core
 from audit_core.brightdata_transport import BrightDataAPIError
 from notebook_builder import (
     AI_VISIBILITY_RACE_END, AI_VISIBILITY_RACE_SOURCE,
-    AI_VISIBILITY_RACE_START, _without_service_imports,
+    AI_VISIBILITY_RACE_START, VISIBILITY_SOURCES_SOURCE,
+    _without_service_imports,
 )
 
 
@@ -126,6 +127,24 @@ class VisibilityRaceTests(unittest.TestCase):
             "gemini", "question", redundancy=1, timeout_seconds=10,
         )
         self.assertEqual(result["engine"], "gemini")
+
+    def test_flat_notebook_namespace_does_not_overwrite_race_engine_names(self):
+        namespace = {'BrightDataAPIError': BrightDataAPIError}
+        exec(_without_service_imports(
+            AI_VISIBILITY_RACE_SOURCE.read_text(encoding='utf-8')
+        ), namespace)
+        exec(_without_service_imports(
+            VISIBILITY_SOURCES_SOURCE.read_text(encoding='utf-8')
+        ), namespace)
+        result = namespace['race_ai_visibility_core'](
+            FakeClient({'answer_text': 'Measured answer'}),
+            'chatgpt', 'neutral buyer question', redundancy=1,
+            timeout_seconds=10, failed_statuses={'failed'},
+            canonical_source_url=lambda url: url,
+        )
+        self.assertEqual(result['engine_name'], 'ChatGPT')
+        self.assertIsInstance(namespace['AI_VISIBILITY_RACE_ENGINE_NAMES'], dict)
+        self.assertIsInstance(namespace['VISIBILITY_SOURCE_ENGINE_NAMES'], tuple)
 
 
 if __name__ == "__main__":
