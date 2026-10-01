@@ -398,6 +398,15 @@ fixtures now include realistic profile fields and guard against calling the
 legacy report function. No provider request or deployment was made; this
 reduces one more wrapper dependency but is not yet a notebook-free runner.
 
+Thirty-fourth checkpoint: the service runner now calls
+`audit_core.profile_research.run_profile_research_core` directly instead of
+the generated notebook's `run_profile_stage` adapter. Profile generation,
+snapshot recovery, fallback construction, and root-domain normalization are
+explicit ports; the service fixture traps any call to the old wrapper. The
+notebook distribution is unchanged. Those lower-level profile provider
+callbacks still come from its initialized runtime, so this removes the stage
+adapter dependency but does not yet make profile research standalone.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
