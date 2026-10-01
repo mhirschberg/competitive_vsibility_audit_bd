@@ -1,10 +1,16 @@
 """Shared Stage 2 candidate aggregation behavior."""
 
+import ast
+import json
+from pathlib import Path
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from audit_core import search_discovery
+
+
+NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
 
 
 def candidate(**values):
@@ -134,6 +140,29 @@ class SearchDiscoveryCandidateTests(unittest.TestCase):
         self.assertEqual(merged[0].serp_urls, [
             "https://rival.example/a", "https://rival.example/b",
         ])
+
+    def test_notebook_has_no_shadowed_stage_two_implementations(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        counts = {}
+        for cell in notebook["cells"]:
+            if cell["cell_type"] != "code":
+                continue
+            try:
+                tree = ast.parse("".join(cell["source"]))
+            except SyntaxError:
+                continue
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    counts[node.name] = counts.get(node.name, 0) + 1
+
+        for name in (
+            "is_non_competitor_domain", "looks_like_irrelevant_result",
+            "preferred_homepage_url", "aggregate_competitor_domains",
+            "build_ai_mode_source_candidates", "merge_discovery_candidates",
+            "run_serp_stage",
+        ):
+            self.assertEqual(counts.get(name), 1, name)
+        self.assertEqual(counts.get("normalize_citation", 0), 0)
 
 
 if __name__ == "__main__":

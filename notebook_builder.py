@@ -659,6 +659,37 @@ def _replace_last_python_function(cell, name, replacement):
     cell["source"] = lines
 
 
+def _remove_python_function_occurrences(cell, removals, *, before_marker=None):
+    """Remove selected zero-based definitions, optionally before a marker."""
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
+    marker_line = (
+        source[:source.index(before_marker)].count("\n") + 1
+        if before_marker else None
+    )
+    definitions = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if marker_line and node.lineno >= marker_line:
+                continue
+            definitions.setdefault(node.name, []).append(node)
+    removed_lines = set()
+    for name, indexes in removals.items():
+        matches = definitions.get(name, [])
+        for index in indexes:
+            if index >= len(matches):
+                continue
+            node = matches[index]
+            start_line = min(
+                [node.lineno] + [item.lineno for item in node.decorator_list]
+            )
+            removed_lines.update(range(start_line - 1, node.end_lineno))
+    lines = source.splitlines(keepends=True)
+    cell["source"] = [
+        line for index, line in enumerate(lines) if index not in removed_lines
+    ]
+
+
 def _replace_source_region(cell, start, end, source):
     text = "".join(cell["source"])
     if text.count(start) != 1 or text.count(end) != 1:
@@ -1158,5 +1189,24 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         _without_service_imports(
             Path(research_validation_source).read_text(encoding="utf-8")
         ),
+    )
+    _remove_python_function_occurrences(
+        primitives_cell,
+        {
+            "is_non_competitor_domain": [0],
+            "looks_like_irrelevant_result": [0],
+            "preferred_homepage_url": [0],
+            "aggregate_competitor_domains": [0],
+        },
+    )
+    _remove_python_function_occurrences(
+        analysis_cell,
+        {
+            "normalize_citation": [0],
+            "build_ai_mode_source_candidates": [0],
+            "merge_discovery_candidates": [0],
+            "run_serp_stage": [0],
+        },
+        before_marker=SEARCH_DISCOVERY_START,
     )
     return (json.dumps(notebook, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
