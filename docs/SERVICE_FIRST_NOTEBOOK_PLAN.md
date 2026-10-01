@@ -254,6 +254,16 @@ adapter wiring. Reddit completion/reporting and final report orchestration
 remain notebook-driven. No paid provider request or production deployment was
 made.
 
+Twenty-third checkpoint: `audit_core.social_completion_stage` now owns the
+optional Stage 6 Reddit completion, concise progress/warning messages, and
+both social-result and snapshot-manifest artifacts. The disabled path still
+writes explicit empty social artifacts without a Reddit stage banner. The
+notebook embeds this module and retains only provider/progress adapters.
+Synthetic tests cover disabled, competitive partial, and legacy sample paths,
+plus the notebook adapter. Final report orchestration and the top-level
+scheduler remain notebook-driven. No paid provider request or production
+deployment was made.
+
 Export naming: user-facing PDF, Markdown, JSON, and ZIP files now start with
 the original UTC run timestamp, company, optional focus, and country. The
 notebook embeds the shared `audit_core.artifact_names` source; hosted artifact
