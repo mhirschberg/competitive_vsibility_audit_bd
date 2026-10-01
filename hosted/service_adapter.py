@@ -20,10 +20,15 @@ from audit_core.audit_preparation import (
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.profile_stage import ProfileStagePorts
+from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
+from audit_core.report_evidence import build_report_evidence_core
 from audit_core.report_render_stage import ReportRenderPorts
+from audit_core.report_stage import generate_report_stage_core
+from audit_core.serp_metrics import calculate_all_serp_metrics
 from audit_core.search_stage import SearchStagePorts
 from audit_core.social_completion_stage import SocialCompletionPorts
 from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
+from audit_core.visibility_sources import collect_visibility_sources_service
 
 
 _RESEARCH_BINDINGS = (
@@ -87,9 +92,8 @@ def _standalone_brightdata_client(runtime):
         # Lightweight coordinator fixtures can continue to inject a fake port.
         return legacy
 
-    for name in ('parse_bing_markdown', 'remove_ai_boilerplate'):
-        if not callable(runtime.get(name)):
-            raise KeyError(f'Missing standalone Bright Data binding: {name}')
+    if not callable(runtime.get('parse_bing_markdown')):
+        raise KeyError('Missing standalone Bright Data binding: parse_bing_markdown')
 
     factory = runtime.get('BrightDataProviderClient')
     if factory is None:
@@ -110,7 +114,6 @@ def _standalone_brightdata_client(runtime):
         debug=getattr(legacy, 'debug', False),
         logger=logger,
         parse_bing_markdown=runtime.get('parse_bing_markdown'),
-        remove_ai_boilerplate=runtime.get('remove_ai_boilerplate'),
     )
 
     measured_google = getattr(legacy, 'google_ai_mode_measured', None)
@@ -124,6 +127,61 @@ def _standalone_brightdata_client(runtime):
 
     runtime['bd_client'] = client
     return client
+
+
+def _service_report_generator(runtime, client):
+    """Generate the report through shared deterministic modules and explicit ports."""
+    def collect_sources(visibility, max_per_engine=10):
+        return collect_visibility_sources_service(
+            visibility,
+            max_per_engine,
+            resolve_google_goto_url=runtime.get('resolve_google_goto_url'),
+            is_google_goto_url=runtime.get('is_google_goto_url'),
+        )
+
+    def build_evidence(**kwargs):
+        settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
+            'AUDIT_SETTINGS', {}
+        )
+        return build_report_evidence_core(
+            **kwargs,
+            search_engine=runtime.get('ACTIVE_SEARCH_ENGINE', ''),
+            search_status=runtime.get('ACTIVE_SEARCH_STATUS', 'unavailable'),
+            country=settings.get('country') or getattr(client, 'country', ''),
+            locked_scope=runtime.get('LOCKED_TARGET_SCOPE'),
+            collect_sources=collect_sources,
+        )
+
+    def generate_report(
+        target_profile, competitor_profiles, keywords,
+        keyword_serp_results, visibility,
+    ):
+        settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
+            'AUDIT_SETTINGS', {}
+        )
+        result = generate_report_stage_core(
+            target_profile,
+            competitor_profiles,
+            keywords,
+            keyword_serp_results,
+            visibility,
+            country=settings.get('country') or getattr(client, 'country', ''),
+            search_engine=runtime.get('ACTIVE_SEARCH_ENGINE', ''),
+            search_status=runtime.get('ACTIVE_SEARCH_STATUS', 'unavailable'),
+            calculate_serp_metrics=calculate_all_serp_metrics,
+            collect_sources=collect_sources,
+            build_evidence=build_evidence,
+        )
+        runtime['LAST_UTILITY_REPORT_RESULT'] = {
+            'engine': 'deterministic',
+            'engine_name': DETERMINISTIC_REPORT_GENERATOR,
+            'snapshot_id': None,
+            'answer': result['report'],
+            'record': result['record'],
+        }
+        return result
+
+    return generate_report
 
 
 def build_runtime_ports(runtime):
@@ -176,7 +234,7 @@ def build_runtime_ports(runtime):
             'start_reddit_discovery_prefetch', 'run_profile_stage',
             'serialize_profile_task', 'run_visibility_stage',
             'run_reddit_social_stage', 'serialize_engine_result',
-            'summarize_reddit_audit_warning', 'generate_report_stage',
+            'summarize_reddit_audit_warning',
             'finalize_report', 'insert_reddit_report_section',
             'build_bright_data_usage_section', 'write_text',
             'report_filename', 'create_styled_pdf_report',
@@ -187,6 +245,7 @@ def build_runtime_ports(runtime):
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
     preflight()
+    generate_report = _service_report_generator(runtime, client)
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
@@ -241,7 +300,7 @@ def build_runtime_ports(runtime):
             write_json=write_json,
         ),
         report_stage=ReportRenderPorts(
-            generate_report=need('generate_report_stage'),
+            generate_report=generate_report,
             finalize_report=need('finalize_report'),
             insert_reddit_section=need('insert_reddit_report_section'),
             refresh_usage=client.refresh_usage_results,
@@ -291,6 +350,7 @@ async def run_with_legacy_runtime(settings, runtime, *, base_directory):
     prepared = await prepare_audit_run_core(
         settings, base_directory=Path(base_directory), ports=preparation_ports,
     )
+    runtime['SERVICE_AUDIT_SETTINGS'] = prepared['settings']
     context = AuditRunContext(
         run_id=prepared['run_id'],
         run_timestamp=prepared['run_timestamp'],

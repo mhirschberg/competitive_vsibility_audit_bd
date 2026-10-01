@@ -103,27 +103,6 @@ class BrightDataProviderTests(unittest.TestCase):
         self.assertEqual(dataset, "gd_mbz66arm2mf9cu856y")
         self.assertNotIn("country", payload["input"][0])
 
-    def test_final_report_uses_counted_non_web_chatgpt_snapshot(self):
-        client = BrightDataProviderClient(
-            "test-token", "test-zone", "US",
-            remove_ai_boilerplate=lambda answer: answer.replace("boilerplate ", ""),
-        )
-        def trigger(_dataset, payload):
-            self.assertFalse(payload[0]["web_search"])
-            return "snapshot-report"
-
-        client.trigger_dataset = trigger
-        client.wait_for_snapshot = lambda snapshot, timeout_seconds: [
-            {"answer_text": "boilerplate A useful final report."}
-        ]
-
-        result = client.generate_chatgpt_report("write report", timeout_seconds=7)
-
-        self.assertEqual(result["snapshot_id"], "snapshot-report")
-        self.assertEqual(result["answer"], "A useful final report.")
-        self.assertEqual(result["record"]["answer_text"],
-                         "boilerplate A useful final report.")
-
     def test_google_search_engine_selection_caches_health_check_result(self):
         client = BrightDataProviderClient("test-token", "test-zone", "US")
         calls = []

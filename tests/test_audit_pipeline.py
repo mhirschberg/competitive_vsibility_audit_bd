@@ -96,10 +96,14 @@ class AuditPipelineTests(unittest.TestCase):
             target = Model(
                 brand_name="Apple", domain="apple.com",
                 official_url="https://apple.com/", direct_competitor=False,
+                category="premium smartphones", positioning="premium devices",
+                differentiators=["ecosystem"], relevant_products=["iPhone"],
             )
             competitor = Model(
                 brand_name="Samsung", domain="samsung.com",
                 official_url="https://samsung.com/", direct_competitor=True,
+                category="premium smartphones", positioning="Android devices",
+                differentiators=["choice"], relevant_products=["Galaxy"],
             )
             return {
                 "target_profile": target,
