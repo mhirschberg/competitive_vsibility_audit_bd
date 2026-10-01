@@ -429,9 +429,6 @@ class ServiceAdapterTests(unittest.TestCase):
 
         client.search_serp = search_serp
 
-        async def unexpected_ai_question(**_kwargs):
-            raise AssertionError('Google AI Mode is disabled in this test')
-
         runtime = {
             'SERVICE_AUDIT_SETTINGS': {
                 'search_engine': 'auto',
@@ -439,7 +436,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 'wait_longer_for_google_ai_mode': True,
             },
             '_GOOGLE_AI_ONLY_REUSE': True,
-            'run_ai_mode_question': unexpected_ai_question,
             'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
             'model_to_dict': lambda item: item,
             'run_serp_stage': lambda *_args, **_kwargs: (
@@ -463,12 +459,57 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertEqual(len(search_calls), 2)
         self.assertTrue(all(call[1] == 'google' for call in search_calls))
 
+    def test_service_search_runner_uses_shared_google_ai_question_core(self):
+        client = BrightDataProviderClient('token', 'zone', 'DE')
+        client.choose_search_engine = lambda _query, _requested: 'google'
+        measured_prompts = []
+
+        def measured_google(prompt, timeout_seconds=720):
+            measured_prompts.append((prompt, timeout_seconds))
+            return {
+                'answer_text': 'For the Germany market, buyers compare several options.',
+                'citations': [],
+            }
+
+        async def keyword_task(**kwargs):
+            return {
+                'keyword': kwargs['keyword'], 'success': True, 'results': [],
+            }
+
+        client.google_ai_mode_measured = measured_google
+        client.run_keyword_serp_task = keyword_task
+        runtime = {
+            'SERVICE_AUDIT_SETTINGS': {
+                'country': 'DE', 'search_engine': 'google',
+                'include_google_ai_mode': True,
+                'wait_longer_for_google_ai_mode': False,
+            },
+            'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
+            'model_to_dict': lambda item: item,
+            'SnapshotTimeoutError': SnapshotTimeoutError,
+            'is_google_goto_url': lambda _url: False,
+            'resolve_google_goto_url': lambda url: url,
+            'get_root_domain': lambda url: str(url).split('/')[0],
+        }
+
+        with patch(
+            'audit_core.search_discovery.get_root_domain',
+            side_effect=lambda domain: str(domain).removeprefix('www.'),
+        ):
+            result = asyncio.run(_service_search_runner(runtime, client)(
+                ['query one', 'query two', 'query three'], 'target.example',
+            ))
+
+        self.assertEqual(len(measured_prompts), 3)
+        self.assertTrue(all('Germany' in prompt for prompt, _ in measured_prompts))
+        self.assertTrue(all(timeout == 120 for _, timeout in measured_prompts[:1]))
+        self.assertEqual(result['ai_mode_successful'], 3)
+        self.assertEqual(result['ai_mode_failed'], 0)
+
     def test_runtime_ports_do_not_require_notebook_search_stage_wrapper(self):
         runtime = self.runtime([])
         runtime.pop('run_serp_stage')
-        runtime.update({
-            'run_ai_mode_question': lambda **_kwargs: None,
-        })
+        runtime['bd_client'].run_keyword_serp_task = lambda **_kwargs: None
 
         ports = build_runtime_ports(runtime)
 

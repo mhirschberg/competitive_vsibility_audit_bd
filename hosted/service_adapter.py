@@ -43,7 +43,9 @@ from audit_core.report_render_stage import ReportRenderPorts
 from audit_core.report_stage import generate_report_stage_core
 from audit_core.serp_metrics import calculate_all_serp_metrics
 from audit_core.search_stage import SearchStagePorts
-from audit_core.search_discovery import run_search_discovery_core
+from audit_core.search_discovery import (
+    run_google_ai_mode_question_core, run_search_discovery_core,
+)
 from audit_core.social_completion_stage import SocialCompletionPorts
 from audit_core.visibility_checkpoint_stage import VisibilityCheckpointPorts
 from audit_core.visibility_prompt import build_visibility_prompt_core
@@ -56,8 +58,10 @@ from audit_core.research_validation import (
     validate_research_answer,
 )
 from audit_core.ai_localization import (
+    answer_acknowledges_target_market,
     country_details,
     localize_google_ai_prompt_core,
+    market_language,
 )
 from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
@@ -320,24 +324,37 @@ def _service_visibility_runner(runtime, client):
 
 
 def _service_search_runner(runtime, client):
-    """Bind shared Stage 2 discovery to the active provider and settings."""
-    discovery_bindings = (
-        'run_ai_mode_question',
-    )
-    if not all(name in runtime for name in discovery_bindings):
-        # Retain the old port only for minimal transition/test runtimes. The
-        # generated hosted runner provides the granular ports and takes the
-        # shared-core path below.
+    """Bind shared Stage 2 discovery and market-aware AI Mode to the provider."""
+    if not callable(getattr(client, 'run_keyword_serp_task', None)):
         legacy_runner = runtime.get('run_serp_stage')
         if callable(legacy_runner):
             return legacy_runner
-        missing = [name for name in discovery_bindings if name not in runtime]
-        raise KeyError(f'Missing Stage 2 discovery bindings: {missing}')
+        raise KeyError('Missing Stage 2 provider method: run_keyword_serp_task')
 
     async def run_search(keywords, target_domain):
         settings = runtime.get('SERVICE_AUDIT_SETTINGS') or runtime.get(
             'AUDIT_SETTINGS', {}
         )
+
+        async def run_ai_mode_question(
+            question, question_index, timeout_seconds=720, max_attempts=None,
+        ):
+            return await run_google_ai_mode_question_core(
+                question,
+                question_index,
+                client=client,
+                country_code=settings.get('country') or client.country,
+                timeout_seconds=timeout_seconds,
+                max_attempts=max_attempts,
+                is_google_goto_url=runtime['is_google_goto_url'],
+                resolve_google_goto_url=runtime['resolve_google_goto_url'],
+                get_root_domain=runtime['get_root_domain'],
+                country_details_fn=country_details,
+                market_language_fn=market_language,
+                acknowledge_market_fn=answer_acknowledges_target_market,
+                timeout_error_type=runtime['SnapshotTimeoutError'],
+            )
+
         return await run_search_discovery_core(
             keywords,
             target_domain,
@@ -354,7 +371,7 @@ def _service_search_runner(runtime, client):
             only_reuse_google_ai=bool(
                 runtime.get('_GOOGLE_AI_ONLY_REUSE', False)
             ),
-            run_ai_mode_question=runtime['run_ai_mode_question'],
+            run_ai_mode_question=run_ai_mode_question,
             run_keyword_serp_task=client.run_keyword_serp_task,
             model_to_dict=runtime['model_to_dict'],
             candidate_factory=runtime['CompetitorCandidate'],
@@ -551,13 +568,10 @@ def build_runtime_ports(runtime):
             'proofread_buyer_keywords',
             ):
                 need(name)
-        search_bindings = (
-            'run_ai_mode_question',
-        )
-        if not all(name in runtime for name in search_bindings):
-            need('run_serp_stage')
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
+        if not callable(getattr(client, 'run_keyword_serp_task', None)):
+            need('run_serp_stage')
     preflight()
     generate_report = _service_report_generator(runtime, client)
     run_search = _service_search_runner(runtime, client)

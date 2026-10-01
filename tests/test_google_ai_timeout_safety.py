@@ -10,6 +10,13 @@ import threading
 import unittest
 
 from audit_core.visibility_stage import run_visibility_stage_core
+from audit_core.brightdata_transport import SnapshotTimeoutError
+from audit_core.search_discovery import run_google_ai_mode_question_core
+from audit_core.ai_localization import (
+    answer_acknowledges_target_market,
+    country_details,
+    market_language,
+)
 
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
@@ -113,7 +120,14 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
         self.assertEqual(caught.exception.snapshot_ids, ["snap-1", "snap-2", "snap-3"])
 
     def test_market_retry_stops_after_pending_race(self):
-        namespace = self.make_namespace()
+        class GoogleAIRaceTimeoutError(SnapshotTimeoutError):
+            def __init__(self, snapshot_ids, timeout_seconds):
+                self.snapshot_ids = list(snapshot_ids)
+                super().__init__(self.snapshot_ids[0], timeout_seconds)
+                self.args = (
+                    "Google AI Mode snapshots did not finish; IDs: "
+                    + ", ".join(self.snapshot_ids),
+                )
 
         class Client:
             def __init__(self):
@@ -121,24 +135,101 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
 
             def google_ai_mode_measured(self, *_args):
                 self.calls += 1
-                raise namespace["GoogleAIRaceTimeoutError"](["snap-1", "snap-2"], 720)
+                raise GoogleAIRaceTimeoutError(["snap-1", "snap-2"], 720)
+
+            def log(self, *_args):
+                pass
 
         client = Client()
-        namespace.update({
-            "asyncio": asyncio,
-            "time": __import__("time"),
-            "json": json,
-            "bd_client": client,
-            "AUDIT_SETTINGS": {"country": "DE"},
-            "get_ai_country_details": lambda _country: {"name": "Germany", "code": "DE"},
-            "get_market_language": lambda _country: "German",
-            "GOOGLE_AI_MARKET_ATTEMPTS": 3,
-        })
-        exec(definition("run_ai_mode_question", last=True), namespace)
-        result = asyncio.run(namespace["run_ai_mode_question"]("test query", 1))
+        result = asyncio.run(run_google_ai_mode_question_core(
+            "test query", 1,
+            client=client,
+            country_code="DE",
+            timeout_seconds=720,
+            max_attempts=3,
+            is_google_goto_url=lambda _url: False,
+            resolve_google_goto_url=lambda url: url,
+            get_root_domain=lambda url: url,
+            country_details_fn=country_details,
+            market_language_fn=market_language,
+            acknowledge_market_fn=answer_acknowledges_target_market,
+            timeout_error_type=SnapshotTimeoutError,
+        ))
         self.assertFalse(result["success"])
         self.assertEqual(client.calls, 1)
         self.assertIn("snap-1", result["error"])
+
+    def test_notebook_market_runner_is_only_a_shared_core_adapter(self):
+        source = definition("run_ai_mode_question", last=True)
+        self.assertIn("run_google_ai_mode_question_core", source)
+        self.assertNotIn("google_ai_mode_measured", source)
+
+    def test_market_runner_retries_localization_and_normalizes_citations(self):
+        class Client:
+            def __init__(self):
+                self.calls = []
+                self.records = [
+                    {"answer_text": "Leading premium smartphone options."},
+                    {
+                        "answer_text": "For the Germany market, buyers compare these options.",
+                        "citations": [
+                            {
+                                "url": "https://google.com/url?opaque=1",
+                                "title": "Publisher",
+                            },
+                            {
+                                "url": "https://google.com/url?opaque=2",
+                                "title": "Unresolved",
+                            },
+                            {
+                                "url": "https://publisher.de/guide",
+                                "title": "Direct source",
+                            },
+                        ],
+                    },
+                ]
+
+            def google_ai_mode_measured(self, prompt, timeout_seconds):
+                self.calls.append((prompt, timeout_seconds))
+                return self.records.pop(0)
+
+            @staticmethod
+            def answer_text(record):
+                return record.get("answer_text", "")
+
+            def log(self, *_args):
+                pass
+
+        client = Client()
+        result = asyncio.run(run_google_ai_mode_question_core(
+            "premium smartphone", 2,
+            client=client,
+            country_code="DE",
+            timeout_seconds=1800,
+            is_google_goto_url=lambda url: url.startswith("https://google.com/url"),
+            resolve_google_goto_url=lambda url: (
+                "https://publisher.de/article" if "opaque=1" in url
+                else url if "opaque=2" in url else url
+            ),
+            get_root_domain=lambda url: "publisher.de" if "publisher.de" in url else "google.com",
+            country_details_fn=country_details,
+            market_language_fn=market_language,
+            acknowledge_market_fn=answer_acknowledges_target_market,
+            timeout_error_type=SnapshotTimeoutError,
+        ))
+
+        self.assertEqual(len(client.calls), 2)
+        self.assertTrue(all(timeout == 1800 for _, timeout in client.calls))
+        self.assertIn("Germany", client.calls[0][0])
+        self.assertIn("German", client.calls[0][0])
+        self.assertTrue(result["success"])
+        self.assertEqual(result["market_attempt"], 2)
+        self.assertEqual(result["requested_country"], "DE")
+        self.assertEqual([item["url"] for item in result["citations"]], [
+            "https://publisher.de/article", "https://publisher.de/guide",
+        ])
+        self.assertEqual(result["citations"][0]["position"], 1)
+        self.assertEqual(client.records, [])
 
     def test_partial_google_sample_is_not_labeled_success(self):
         source = inspect.getsource(run_visibility_stage_core)
