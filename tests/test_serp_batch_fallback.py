@@ -5,6 +5,7 @@ import asyncio
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from audit_core.search_discovery import run_search_discovery_core
 
@@ -69,6 +70,7 @@ class SerpBatchFallbackTests(unittest.TestCase):
         async def ai_question(question, question_index, **_kwargs):
             client.ai_questions.append(question_index)
             return {
+                "question": question,
                 "success": not google_ai_fails,
                 "citations": [],
                 "answer": "ok" if not google_ai_fails else "",
@@ -83,16 +85,18 @@ class SerpBatchFallbackTests(unittest.TestCase):
             "ACTIVE_SEARCH_ENGINE": "google",
             "run_keyword_serp_task": keyword_task,
             "run_ai_mode_question": ai_question,
-            "aggregate_competitor_domains": lambda **kwargs: [],
-            "build_ai_mode_source_candidates": lambda **kwargs: [],
-            "merge_discovery_candidates": lambda **kwargs: [],
+            "CompetitorCandidate": lambda **kwargs: kwargs,
             "model_to_dict": lambda item: item,
             "run_search_discovery_core": run_search_discovery_core,
         }
         exec(self.stage_source, namespace)
-        result = asyncio.run(namespace["run_serp_stage"](
-            keywords, "example.com"
-        ))
+        with patch(
+            "audit_core.search_discovery.get_root_domain",
+            side_effect=lambda domain: str(domain).removeprefix("www."),
+        ):
+            result = asyncio.run(namespace["run_serp_stage"](
+                keywords, "example.com"
+            ))
         return result, calls, client
 
     def test_one_google_failure_preserves_seven_of_eight_without_bing_spend(self):

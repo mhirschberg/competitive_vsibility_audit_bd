@@ -440,9 +440,7 @@ class ServiceAdapterTests(unittest.TestCase):
             },
             '_GOOGLE_AI_ONLY_REUSE': True,
             'run_ai_mode_question': unexpected_ai_question,
-            'aggregate_competitor_domains': lambda **_kwargs: [],
-            'build_ai_mode_source_candidates': lambda **_kwargs: [],
-            'merge_discovery_candidates': lambda **kwargs: kwargs['serp_candidates'],
+            'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
             'model_to_dict': lambda item: item,
             'run_serp_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
@@ -451,9 +449,13 @@ class ServiceAdapterTests(unittest.TestCase):
             ),
         }
 
-        result = asyncio.run(_service_search_runner(runtime, client)(
-            ['first keyword', 'second keyword'], 'example.com',
-        ))
+        with patch(
+            'audit_core.search_discovery.get_root_domain',
+            side_effect=lambda domain: str(domain).removeprefix('www.'),
+        ):
+            result = asyncio.run(_service_search_runner(runtime, client)(
+                ['first keyword', 'second keyword'], 'example.com',
+            ))
 
         self.assertEqual(client.requested_engine, 'auto')
         self.assertEqual(result['search_status'], 'available')
@@ -466,9 +468,6 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime.pop('run_serp_stage')
         runtime.update({
             'run_ai_mode_question': lambda **_kwargs: None,
-            'aggregate_competitor_domains': lambda **_kwargs: [],
-            'build_ai_mode_source_candidates': lambda **_kwargs: [],
-            'merge_discovery_candidates': lambda **kwargs: kwargs['serp_candidates'],
         })
 
         ports = build_runtime_ports(runtime)
