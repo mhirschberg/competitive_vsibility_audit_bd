@@ -5,6 +5,7 @@ from pathlib import Path
 import unittest
 
 from audit_core.research_race import ResearchProviderAdapter
+from audit_core.ai_localization import country_details, localize_google_ai_prompt_core
 from notebook_builder import (
     RESEARCH_RACE_END, RESEARCH_RACE_SOURCE, RESEARCH_RACE_START,
     RESEARCH_VALIDATION_END, RESEARCH_VALIDATION_SOURCE,
@@ -25,6 +26,8 @@ class SnapshotTimeoutError(TimeoutError):
 
 
 class FakeClient:
+    country = "DE"
+
     def __init__(self):
         self.triggers = []
         self.counted = []
@@ -65,13 +68,15 @@ def load_runtime(*, cache=None, only_reuse=False):
         "SnapshotTimeoutError": SnapshotTimeoutError,
         "BrightDataAPIError": RuntimeError,
         "BrightDataClient": FakeClient,
+        "bd_client": FakeClient(),
         "race_google_ai_mode": lambda *_args: {"answer_text": "Google measured"},
         "google_ai_mode_market_consistent": lambda *_args: {"answer_text": "Google measured"},
         "cached_google_ai_snapshot_ids": lambda prompt: cache.get(prompt, []),
         "remember_google_ai_snapshot": lambda prompt, sid: cache.setdefault(prompt, []).append(sid),
         "_GOOGLE_AI_ONLY_REUSE": only_reuse,
         "FAILED_STATUSES": {"failed", "canceled"},
-        "localize_google_ai_prompt": lambda prompt: "DE: " + prompt,
+        "country_details": country_details,
+        "localize_google_ai_prompt_core": localize_google_ai_prompt_core,
         "parse_ai_json": json.loads,
         "remove_ai_boilerplate": lambda value: value,
     }
@@ -89,7 +94,8 @@ class ResearchFallbackTests(unittest.TestCase):
         self.assertIn("substantive market research", result["answer_text"].lower())
 
     def test_continuation_reuses_saved_provider_snapshot(self):
-        cache = {"research-provider-v1:gemini:DE: research": ["snapshot-gemini"]}
+        localized = localize_google_ai_prompt_core("research", country_details("DE"))
+        cache = {f"research-provider-v1:gemini:{localized}": ["snapshot-gemini"]}
         namespace = load_runtime(cache=cache, only_reuse=True)
         client = FakeClient()
         result = client.google_ai_mode("research", timeout_seconds=3)
@@ -101,7 +107,8 @@ class ResearchFallbackTests(unittest.TestCase):
         )
 
     def test_legacy_google_research_checkpoint_remains_resumable(self):
-        cache = {"DE: research": ["snapshot-legacy-google"]}
+        localized = localize_google_ai_prompt_core("research", country_details("DE"))
+        cache = {localized: ["snapshot-legacy-google"]}
         namespace = load_runtime(cache=cache, only_reuse=True)
         client = FakeClient()
         result = client.google_ai_mode("research", timeout_seconds=3)

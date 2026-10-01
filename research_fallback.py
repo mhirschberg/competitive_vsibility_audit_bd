@@ -13,6 +13,10 @@ from audit_core.research_validation import (
     snapshot_is_materializing,
     validate_research_answer,
 )
+from audit_core.ai_localization import (
+    country_details,
+    localize_google_ai_prompt_core,
+)
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -53,7 +57,13 @@ def _research_provider_adapter():
         remember_snapshot=lambda cache_key, snapshot_id: (
             remember_google_ai_snapshot(cache_key, snapshot_id)
         ),
-        localize_prompt=localize_google_ai_prompt,
+        localize_prompt=lambda prompt: localize_google_ai_prompt_core(
+            prompt,
+            country_details(
+                getattr(bd_client, "country", None)
+                or AUDIT_SETTINGS.get("country")
+            ),
+        ),
         identify_task=identify_research_task,
         validate_answer=lambda answer, prompt: validate_research_answer(
             answer,

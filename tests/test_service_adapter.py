@@ -408,11 +408,13 @@ class ServiceAdapterTests(unittest.TestCase):
         fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
         saved_by_snapshot = {}
         triggered = []
+        triggered_payloads = []
         saved_cache = {}
 
         def trigger(dataset, payload):
             snapshot_id = f'snapshot-{dataset}'
             triggered.append(dataset)
+            triggered_payloads.append(payload)
             saved_by_snapshot[snapshot_id] = fixture['snapshots'][dataset]
             return snapshot_id
 
@@ -476,7 +478,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'remember_google_ai_snapshot': lambda key, sid: saved_cache.setdefault(
                 key, []
             ).append(sid),
-            'localize_google_ai_prompt': lambda prompt: f'DE: {prompt}',
             'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             '_RESEARCH_RACE_SEMAPHORE': threading.BoundedSemaphore(3),
@@ -498,6 +499,10 @@ class ServiceAdapterTests(unittest.TestCase):
         result = client.google_ai_mode('research question', timeout_seconds=3)
 
         self.assertCountEqual(triggered, ['chatgpt', 'gemini'])
+        self.assertTrue(all(
+            'STRICT TARGET MARKET: Germany (DE).' in payload['prompt']
+            for payload in triggered_payloads
+        ))
         self.assertEqual(result['_research_race']['provider'], 'gemini')
         self.assertIn('substantive market research', result['answer_text'].lower())
         self.assertEqual(
@@ -517,7 +522,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],
             'remember_google_ai_snapshot': lambda *_args: None,
-            'localize_google_ai_prompt': lambda prompt: prompt,
             'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             'ResearchRaceTimeoutError': TimeoutError,
@@ -528,6 +532,7 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertNotIn('identify_google_ai_research_task', runtime)
         self.assertNotIn('validate_google_ai_research_answer', runtime)
         self.assertNotIn('google_ai_snapshot_is_materializing', runtime)
+        self.assertNotIn('localize_google_ai_prompt', runtime)
 
 
 if __name__ == '__main__':
