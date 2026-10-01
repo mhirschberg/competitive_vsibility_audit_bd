@@ -25,6 +25,7 @@ ARTIFACT_RESUME_SOURCE = ROOT / "audit_core" / "artifact_resume.py"
 COMPANY_STAGE_SOURCE = ROOT / "audit_core" / "company_stage.py"
 SEARCH_DISCOVERY_SOURCE = ROOT / "audit_core" / "search_discovery.py"
 SEARCH_STAGE_SOURCE = ROOT / "audit_core" / "search_stage.py"
+COMPETITOR_SELECTION_STAGE_SOURCE = ROOT / "audit_core" / "competitor_selection_stage.py"
 BRIGHTDATA_TRANSPORT_SOURCE = ROOT / "audit_core" / "brightdata_transport.py"
 OFFICIAL_DOMAINS_SOURCE = ROOT / "audit_core" / "official_domains.py"
 BRIGHTDATA_USAGE_SOURCE = ROOT / "audit_core" / "brightdata_usage.py"
@@ -72,6 +73,10 @@ SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
 SEARCH_STAGE_END = "# AUDIT-SEARCH-STAGE: end"
 SEARCH_STAGE_CALL_START = "# AUDIT-SEARCH-STAGE-CALL: start"
 SEARCH_STAGE_CALL_END = "    # AUDIT-SEARCH-STAGE-CALL: end"
+COMPETITOR_SELECTION_STAGE_START = "# AUDIT-COMPETITOR-SELECTION-STAGE: start"
+COMPETITOR_SELECTION_STAGE_END = "# AUDIT-COMPETITOR-SELECTION-STAGE: end"
+COMPETITOR_SELECTION_STAGE_CALL_START = "# AUDIT-COMPETITOR-SELECTION-STAGE-CALL: start"
+COMPETITOR_SELECTION_STAGE_CALL_END = "    # AUDIT-COMPETITOR-SELECTION-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -176,6 +181,35 @@ SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
     LAST_AI_MODE_DISCOVERY = search_stage["ai_mode_discovery"]
     bd_client.active_search_engine = ACTIVE_SEARCH_ENGINE
     warnings.extend(search_stage["warnings"])'''
+COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_competitor_selection_stage_core(
+        target_brand, competitor_candidates, keywords,
+        continuing=continuing,
+        output_directory=output_directory,
+        raw_directory=raw_directory,
+        started_at=stage_started_at,
+        include_reddit_analysis=include_reddit_analysis,
+        audit_focus=settings.get("audit_focus", ""),
+        ports=CompetitorSelectionStagePorts(
+            select_competitors=select_competitors_stage,
+            configure_race_cache=configure_google_ai_race_cache,
+            write_json=write_json,
+            model_to_dict=model_to_dict,
+            clean_record=clean_record_for_storage,
+            stage_warning=print_stage_warning,
+            print_selected=lambda competitor: console.print(
+                f"      ✓ {competitor.brand_name}"
+            ),
+            social_notice=lambda: console.print(
+                "      [cyan]↗ Social discovery started in parallel; "
+                "snapshots are labelled [Social · …].[/cyan]"
+            ),
+            start_reddit_prefetch=start_reddit_discovery_prefetch,
+        ),
+    )
+    selected_competitors = competitor_stage["selected_competitors"]
+    stage_durations["competitor_selection"] = competitor_stage["duration_seconds"]
+    warnings.extend(competitor_stage["warnings"])
+    reddit_prefetch_task = competitor_stage["reddit_prefetch_task"]'''
 
 
 def _unique_cell(notebook, cell_id):
@@ -225,6 +259,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    company_stage_source=COMPANY_STAGE_SOURCE,
                    search_discovery_source=SEARCH_DISCOVERY_SOURCE,
                    search_stage_source=SEARCH_STAGE_SOURCE,
+                   competitor_selection_stage_source=COMPETITOR_SELECTION_STAGE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -467,6 +502,18 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         SEARCH_STAGE_CALL_START,
         SEARCH_STAGE_CALL_END,
         SEARCH_STAGE_CALL_SOURCE,
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        COMPETITOR_SELECTION_STAGE_START,
+        COMPETITOR_SELECTION_STAGE_END,
+        Path(competitor_selection_stage_source).read_text(encoding="utf-8"),
+    )
+    _replace_embedded_source(
+        orchestration_cell,
+        COMPETITOR_SELECTION_STAGE_CALL_START,
+        COMPETITOR_SELECTION_STAGE_CALL_END,
+        COMPETITOR_SELECTION_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
