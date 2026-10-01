@@ -89,6 +89,11 @@ class ResearchProviderAdapter:
         return provider, snapshot_id
 
     def race(self, client, prompt, timeout_seconds):
+        only_reuse = (
+            self._only_reuse()
+            if callable(self._only_reuse)
+            else self._only_reuse
+        )
         ports = ResearchRacePorts(
             providers=self.providers,
             cached_snapshot_ids=self.cached_snapshots,
@@ -98,7 +103,7 @@ class ResearchProviderAdapter:
             validate_answer=self._validate_answer,
             is_materializing=self._is_materializing,
             failed_statuses=self._failed_statuses,
-            only_reuse=self._only_reuse,
+            only_reuse=only_reuse,
             semaphore=self._semaphore,
             poll_seconds=self._poll_seconds,
             error_type=self._error_type,
