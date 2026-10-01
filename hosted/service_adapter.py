@@ -19,6 +19,9 @@ from audit_core.audit_preparation import (
 )
 from audit_core.company_stage import CompanyStagePorts
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
+from audit_core.profile_research import (
+    ProfileResearchPorts, run_profile_research_core,
+)
 from audit_core.profile_stage import ProfileStagePorts
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_evidence import build_report_evidence_core
@@ -184,6 +187,31 @@ def _service_report_generator(runtime, client):
     return generate_report
 
 
+def _service_profile_runner(runtime, client):
+    """Run shared profile orchestration with explicit provider callbacks."""
+    def pending_notice(count):
+        console = runtime.get('console')
+        if console is not None:
+            console.print(f'      Waiting for {count} late profile snapshot(s)...')
+
+    def run_profiles(target_brand, selected_competitors, audit_focus=''):
+        return run_profile_research_core(
+            target_brand,
+            selected_competitors,
+            audit_focus,
+            ports=ProfileResearchPorts(
+                generate_profile=runtime['generate_profile_sync'],
+                recover_profile=runtime['recover_profile_sync'],
+                fallback_profile=runtime['fallback_profile'],
+                root_domain=runtime.get('get_root_domain')
+                or getattr(client, 'get_root_domain', lambda domain: domain),
+                pending_notice=pending_notice,
+            ),
+        )
+
+    return run_profiles
+
+
 def build_runtime_ports(runtime):
     """Bind explicit providers and legacy stage/artifact functions."""
     def need(name):
@@ -231,7 +259,8 @@ def build_runtime_ports(runtime):
             'restore_locked_target_scope', 'CompanyIntake', 'BrandAnalysis',
             'BuyerIntentKeyword', 'analyze_company_stage', 'run_serp_stage',
             'CompetitorCandidate', 'select_competitors_stage',
-            'start_reddit_discovery_prefetch', 'run_profile_stage',
+            'start_reddit_discovery_prefetch', 'generate_profile_sync',
+            'recover_profile_sync', 'fallback_profile',
             'serialize_profile_task', 'run_visibility_stage',
             'run_reddit_social_stage', 'serialize_engine_result',
             'summarize_reddit_audit_warning',
@@ -246,6 +275,7 @@ def build_runtime_ports(runtime):
             getattr(client, name)
     preflight()
     generate_report = _service_report_generator(runtime, client)
+    run_profiles = _service_profile_runner(runtime, client)
 
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
@@ -281,7 +311,7 @@ def build_runtime_ports(runtime):
             start_reddit_prefetch=need('start_reddit_discovery_prefetch'),
         ),
         profile_stage=ProfileStagePorts(
-            run_profiles=need('run_profile_stage'),
+            run_profiles=run_profiles,
             model_to_dict=model_to_dict,
             serialize_task=need('serialize_profile_task'),
             write_json=write_json, stage_success=success, stage_warning=warning,
