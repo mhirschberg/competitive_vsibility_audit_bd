@@ -20,8 +20,8 @@ class Model:
 
 class CompetitorSelectionStageTests(unittest.TestCase):
     def make_ports(self, calls, warnings, *, fallback=False, skipped=0):
-        def select(target, candidates, keywords):
-            calls.append(("select", target.brand_name, candidates, keywords))
+        def select(target, candidates, keywords, locked_scope):
+            calls.append(("select", target.brand_name, candidates, keywords, locked_scope))
             return {
                 "selected": [Model(brand_name="Samsung", domain="samsung.com")],
                 "rejected": [{"brand_name": "Not a competitor"}],
@@ -65,6 +65,7 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             async def run():
                 result = await run_competitor_selection_stage_core(
                     target, ["candidate"], ["premium smartphone"],
+                    locked_scope={"market_role": "manufacturer"},
                     continuing=False, output_directory=output,
                     raw_directory=raw, started_at=time.monotonic(),
                     include_reddit_analysis=True, audit_focus="iPhone",
@@ -78,6 +79,8 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             self.assertEqual(result["selected_competitors"][0].brand_name, "Samsung")
             self.assertEqual(result["selection_result"]["validation_results"],
                              [{"status": "success"}])
+            self.assertEqual(calls[0][0], "select")
+            self.assertEqual(calls[0][4], {"market_role": "manufacturer"})
             self.assertLess(
                 calls.index(("write", "03_competitor_selection.json")),
                 calls.index(("notice",)),
@@ -104,6 +107,7 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             calls, warnings = [], []
             result = asyncio.run(run_competitor_selection_stage_core(
                 Model(brand_name="Apple"), [], ["premium smartphone"],
+                locked_scope={"market_role": "manufacturer"},
                 continuing=True, output_directory=output, raw_directory=raw,
                 started_at=time.monotonic(), include_reddit_analysis=False,
                 audit_focus="", ports=self.make_ports(
@@ -143,6 +147,7 @@ class CompetitorSelectionStageTests(unittest.TestCase):
                 "keywords, continuing, output_directory, raw_directory, "
                 "stage_started_at, include_reddit_analysis, stage_durations, "
                 "warnings):\n"
+                "    company_stage = {'locked_scope': {'market_role': 'manufacturer'}}\n"
                 + COMPETITOR_SELECTION_STAGE_CALL_SOURCE
                 + "\n    return selected_competitors, selection_result, reddit_prefetch_task\n"
             )

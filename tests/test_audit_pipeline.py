@@ -79,7 +79,7 @@ class AuditPipelineTests(unittest.TestCase):
                 "ai_mode_discovery": None,
             }
 
-        def select(target, candidates, keywords):
+        def select(target, candidates, keywords, _locked_scope):
             events.append("select")
             return {
                 "selected": [Model(

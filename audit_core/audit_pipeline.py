@@ -94,6 +94,7 @@ async def run_audit_pipeline(settings, context, *, ports):
     ports.stage_banner(3, "Direct competitor selection", total_stages)
     selection = await run_competitor_selection_stage_core(
         target_brand, competitor_candidates, keywords,
+        locked_scope=company["locked_scope"],
         continuing=context.continuing,
         output_directory=context.output_directory,
         raw_directory=context.raw_directory,
