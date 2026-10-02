@@ -31,10 +31,13 @@ from audit_core.company_analysis import (
 )
 from audit_core.competitor_scope import (
     build_locked_target_scope as build_locked_target_scope_core,
+    locked_scope_brand_family,
+    locked_scope_local_domain_bonus,
     restore_locked_target_scope,
 )
 from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
+from audit_core.competitor_decisions import CompetitorDecisionPorts
 from audit_core.domains import (
     get_root_domain, is_google_goto_url, normalize_public_url,
 )
@@ -559,13 +562,19 @@ def build_runtime_ports(runtime):
             scope=scope,
             client=client,
             parse_ai_json=parse_ai_json,
-            decision_ports=need('_competitor_decision_ports')(),
-            local_domain_bonus=need('locked_scope_local_domain_bonus'),
+            decision_ports=CompetitorDecisionPorts(
+                country_details,
+                get_root_domain,
+                normalize_public_url,
+                locked_scope_brand_family,
+                locked_scope_local_domain_bonus,
+            ),
+            local_domain_bonus=locked_scope_local_domain_bonus,
             validation_workers=need('LOCKED_SCOPE_VALIDATION_WORKERS'),
             validation_limit=need('LOCKED_SCOPE_VALIDATION_LIMIT'),
             only_reuse=runtime.get('_GOOGLE_AI_ONLY_REUSE', False),
             cached_snapshot_ids=need('cached_research_snapshot_ids'),
-            brand_family=need('locked_scope_brand_family'),
+            brand_family=locked_scope_brand_family,
             selected_factory=need('SelectedCompetitor'),
             error_type=need('BrightDataAPIError'),
             output_dir=runtime.get('CURRENT_AUDIT_OUTPUT_DIRECTORY'),
@@ -578,10 +587,9 @@ def build_runtime_ports(runtime):
         for name in (
             'CompanyIntake', 'BrandAnalysis',
             'BuyerIntentKeyword',
-            'CompetitorCandidate', '_competitor_decision_ports',
-            'locked_scope_local_domain_bonus', 'LOCKED_SCOPE_VALIDATION_WORKERS',
+            'CompetitorCandidate', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
-            'locked_scope_brand_family', 'SelectedCompetitor', 'BrightDataAPIError',
+            'SelectedCompetitor', 'BrightDataAPIError',
             'BrandProfile', 'resolve_google_goto_url',
             'SnapshotTimeoutError',
             'create_styled_pdf_report',

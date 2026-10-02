@@ -146,7 +146,10 @@ AI_VISIBILITY_RACE_END = "# AUDIT-AI-VISIBILITY-RACE: end"
 SCOPE_CELL_ID = "runtime-utilities-merged"
 SCOPE_START = "# AUDIT-COMPETITOR-SCOPE: start"
 SCOPE_END = "# AUDIT-COMPETITOR-SCOPE: end"
-SCOPE_PACKAGE_IMPORT = "from .primitives import normalize_confidence\n"
+SCOPE_PACKAGE_IMPORTS = (
+    "from .primitives import normalize_confidence\n",
+    "from .domains import get_root_domain\n",
+)
 COMPETITOR_RESEARCH_START = "# AUDIT-COMPETITOR-RESEARCH: start"
 COMPETITOR_RESEARCH_END = "# AUDIT-COMPETITOR-RESEARCH: end"
 COMPETITOR_DECISIONS_START = "# AUDIT-COMPETITOR-DECISIONS: start"
@@ -941,9 +944,10 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         ),
     )
     scope_text = Path(scope_source).read_text(encoding="utf-8")
-    if scope_text.count(SCOPE_PACKAGE_IMPORT) != 1:
-        raise ValueError("Expected one service-only primitives import")
-    scope_text = scope_text.replace(SCOPE_PACKAGE_IMPORT, "", 1)
+    for import_line in SCOPE_PACKAGE_IMPORTS:
+        if scope_text.count(import_line) != 1:
+            raise ValueError(f"Expected one service-only import: {import_line.strip()}")
+        scope_text = scope_text.replace(import_line, "", 1)
     scope_cell = _unique_cell(notebook, SCOPE_CELL_ID)
     _replace_embedded_source(
         scope_cell,
@@ -1300,6 +1304,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
             "run_serp_stage": [0],
         },
         before_marker=SEARCH_DISCOVERY_START,
+    )
+    _remove_python_function_occurrences(
+        scope_cell,
+        {
+            "locked_scope_brand_family": [1],
+            "locked_scope_local_domain_bonus": [1],
+        },
     )
     _remove_python_function_occurrences(
         orchestration_cell,
