@@ -813,6 +813,19 @@ Next: review `normalize_intake` and `build_locked_scope` as the remaining
 company-analysis ports; retain them only where notebook compatibility or
 cross-module ownership still warrants explicit injection.
 
+Sixty-second checkpoint: company intake validation now calls the shared schema
+normalizer directly, and locked-scope creation calls the shared
+`competitor_scope` policy directly. Neither helper is passed through
+`CompanyAnalysisPorts` anymore; provider calls, output writing, and the
+notebook's compatibility wrapper remain at their respective boundaries. An
+offline suffix-list fixture keeps domain normalization deterministic. Service
+and notebook tests pass after regenerating the shared cell. No paid requests,
+deployment, or memory-reduction claim was made.
+
+Next: inspect whether the company analysis stage still needs a custom
+`error_type` port, or whether it can depend on the shared provider error type
+without changing the notebook's failure messages.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

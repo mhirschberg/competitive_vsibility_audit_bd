@@ -6,6 +6,8 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
+import tldextract
+
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     complete_company_keywords_core,
@@ -65,6 +67,14 @@ class CompanyAnalysisTests(unittest.TestCase):
         "audit_focus": "premium appliances",
     }
 
+    def setUp(self):
+        offline_extractor = tldextract.TLDExtract(
+            cache_dir=None, suffix_list_urls=(),
+        )
+        suffix_patch = patch("tldextract.extract", offline_extractor)
+        suffix_patch.start()
+        self.addCleanup(suffix_patch.stop)
+
     def make_ports(self, *, initial_keyword_count=8, fail_first=True):
         client = FakeClient("A concise research brief about Example and its market.")
         utility_prompts = []
@@ -97,17 +107,6 @@ class CompanyAnalysisTests(unittest.TestCase):
                 "snapshot_id": "structured-snapshot",
             }
 
-        def normalize_intake(*, data, company_name, company_url):
-            return Model(
-                brand=Model(**{
-                    **data["brand"],
-                    "brand_name": company_name,
-                    "official_url": company_url,
-                    "domain": "example.com",
-                }),
-                buyer_intent_keywords=[Model(**item) for item in data["buyer_intent_keywords"]],
-            )
-
         def complete_keywords(**kwargs):
             completions.append(kwargs)
             current = list(kwargs["current_keywords"])
@@ -133,14 +132,8 @@ class CompanyAnalysisTests(unittest.TestCase):
         ports = CompanyAnalysisPorts(
             client=client,
             run_utility=run_utility,
-            normalize_intake=normalize_intake,
             complete_keywords=complete_keywords,
             proofread_keywords=proofread_keywords,
-            build_locked_scope=lambda brand, settings: {
-                "brand_name": brand.brand_name,
-                "domain": settings["company_domain"],
-                "market_role": "manufacturer",
-            },
             error_type=RuntimeError,
         )
         return ports, client, utility_prompts, completions, proofreads

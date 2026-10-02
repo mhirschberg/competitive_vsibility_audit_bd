@@ -285,10 +285,8 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
             ports=CompanyAnalysisPorts(
                 client=bd_client,
                 run_utility=run_chatgpt_without_web,
-                normalize_intake=normalize_company_intake,
                 complete_keywords=complete_company_keywords,
                 proofread_keywords=proofread_buyer_keywords,
-                build_locked_scope=build_locked_target_scope,
                 error_type=BrightDataAPIError,
             ),
         )
