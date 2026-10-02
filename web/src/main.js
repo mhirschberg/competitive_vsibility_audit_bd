@@ -281,14 +281,16 @@ function renderTrialPass() {
     trialTitle.textContent = "Checking your field pass…";
     trialDescription.textContent = trialSession.user.email || "Signed in with Google";
   } else if (trialStatus.remaining === 0) {
-    trialTitle.textContent = "Your three trial audits are used.";
+    trialTitle.textContent = `Your ${trialStatus.limit} personal trial audits are used.`;
     trialDescription.textContent = `${trialSession.user.email || "Signed in"} · Run more with your own Bright Data account and the notebook below.`;
   } else if (trialStatus.next_available_at) {
-    trialTitle.textContent = `${trialStatus.remaining} of 3 audits left.`;
+    trialTitle.textContent = `${trialStatus.remaining} of ${trialStatus.limit} audits left.`;
     trialDescription.textContent = `Next available ${formatDate(trialStatus.next_available_at)}. Your earlier reports stay in Your audits.`;
   } else {
-    trialTitle.textContent = `${trialStatus.remaining} of 3 audits left.`;
-    trialDescription.textContent = `${trialSession.user.email || "Signed in"} · One audit every 24 hours.`;
+    trialTitle.textContent = `${trialStatus.remaining} of ${trialStatus.limit} audits left.`;
+    const cooldown = trialStatus.cooldown_hours;
+    const cadence = cooldown === 0 ? "No daily cooldown." : `One audit every ${cooldown} hours.`;
+    trialDescription.textContent = `${trialSession.user.email || "Signed in"} · ${cadence}`;
   }
   setFormState(readStored("pending") ? "pending" : currentAuditId && !terminalStatuses.has(currentAuditStatus) ? "running" : "ready");
 }
