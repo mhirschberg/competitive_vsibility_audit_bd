@@ -25,6 +25,7 @@ from audit_core.company_models import (
     BuyerIntentKeyword,
     CompanyIntake,
 )
+from audit_core.brightdata_transport import BrightDataAPIError
 from pydantic import ValidationError
 from notebook_builder import (
     COMPANY_ANALYSIS_PROVIDER_END,
@@ -134,7 +135,6 @@ class CompanyAnalysisTests(unittest.TestCase):
             run_utility=run_utility,
             complete_keywords=complete_keywords,
             proofread_keywords=proofread_keywords,
-            error_type=RuntimeError,
         )
         return ports, client, utility_prompts, completions, proofreads
 
@@ -562,7 +562,9 @@ class CompanyAnalysisTests(unittest.TestCase):
     def test_empty_research_fails_before_structuring(self):
         ports, _client, prompts, _completions, _proofreads = self.make_ports()
         ports.client.answer = ""
-        with self.assertRaisesRegex(RuntimeError, "returned no company research"):
+        with self.assertRaisesRegex(
+            BrightDataAPIError, "returned no company research",
+        ):
             run_company_analysis_core(self.settings, ports=ports)
         self.assertEqual(prompts, [])
 

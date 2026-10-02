@@ -7,6 +7,7 @@ import re
 # SERVICE-ONLY-IMPORTS: start
 from .company_models import BuyerIntentKeyword, CompanyIntake
 from .competitor_scope import build_locked_target_scope
+from .brightdata_transport import BrightDataAPIError
 from .domains import get_root_domain
 from .domains import normalize_public_url
 from .primitives import ensure_string_list, normalize_confidence
@@ -18,13 +19,11 @@ from .json_parsing import parse_ai_json
 class CompanyAnalysisPorts:
     def __init__(
         self, *, client, run_utility, complete_keywords, proofread_keywords,
-        error_type,
     ):
         self.client = client
         self.run_utility = run_utility
         self.complete_keywords = complete_keywords
         self.proofread_keywords = proofread_keywords
-        self.error_type = error_type
 
 
 def normalize_keyword_records(raw_keywords):
@@ -643,7 +642,9 @@ def run_company_analysis_core(settings, *, ports):
     )
     research_text = client.answer_text(research_record)
     if not research_text:
-        raise ports.error_type("Google AI Mode returned no company research text.")
+        raise BrightDataAPIError(
+            "Google AI Mode returned no company research text."
+        )
     client.log(f"Google AI Mode research returned {len(research_text):,} characters")
 
     structuring_errors = []
@@ -686,7 +687,7 @@ def run_company_analysis_core(settings, *, ports):
             client.log(f"ChatGPT structuring attempt {attempt} failed: {exc}", "yellow")
 
     if intake is None:
-        raise ports.error_type(
+        raise BrightDataAPIError(
             "ChatGPT could not structure the Google AI Mode research.\n- "
             + "\n- ".join(structuring_errors)
         )
@@ -705,7 +706,7 @@ def run_company_analysis_core(settings, *, ports):
         intake.buyer_intent_keywords = keyword_completion["keywords"]
 
     if len(intake.buyer_intent_keywords) != 8:
-        raise ports.error_type(
+        raise BrightDataAPIError(
             "The company-analysis workflow produced "
             f"{len(intake.buyer_intent_keywords)} keywords instead of eight."
         )

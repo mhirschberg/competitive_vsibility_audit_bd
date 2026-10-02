@@ -826,6 +826,19 @@ Next: inspect whether the company analysis stage still needs a custom
 `error_type` port, or whether it can depend on the shared provider error type
 without changing the notebook's failure messages.
 
+Sixty-third checkpoint: company-analysis failures now raise the shared
+`BrightDataAPIError` directly instead of carrying a configurable exception
+class through `CompanyAnalysisPorts`. The hosted service imports that class
+from the standalone transport module; in the generated notebook, the service-
+only import is stripped and the core resolves the same class defined by the
+embedded transport cell. The no-research failure fixture confirms the existing
+exception base and user-facing message. No provider requests, deployment, or
+memory-reduction claim was made.
+
+Next: audit other remaining service-adapter runtime bindings for duplicated
+provider error classes, but change them only where class identity and caller
+handling are demonstrably equivalent.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
