@@ -3,6 +3,14 @@
 @import "@fontsource/dm-mono/latin-500.css";
 @import "@fontsource-variable/fraunces/wght.css";
 
+@font-face {
+  font-family: "Cabin";
+  src: url("/fonts/cabin-medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
 :root {
   font-family: "DM Sans Variable", sans-serif;
   color: #1b2825;
@@ -29,12 +37,10 @@ a { color: inherit; }
 
 .page-shell { max-width: 1600px; margin: 0 auto; overflow: hidden; }
 .masthead { height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); padding: 0 clamp(24px, 5.2vw, 84px); }
-.brand { display: flex; align-items: center; gap: 11px; text-decoration: none; font-size: 14px; font-weight: 700; line-height: 1.03; letter-spacing: -.055em; }
-.brand-mark { width: 33px; height: 33px; border: 1.5px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; gap: 2px; transform: rotate(-24deg); }
-.brand-mark span { width: 5px; background: var(--ink); border-radius: 5px; }
-.brand-mark span:nth-child(1) { height: 12px; }
-.brand-mark span:nth-child(2) { height: 24px; background: var(--orange); }
-.brand-mark span:nth-child(3) { height: 17px; }
+.brand { display: flex; align-items: center; gap: 13px; flex: 0 0 auto; text-decoration: none; }
+.brand-wordmark { color: var(--ink); font: 500 23px/1 "Cabin", sans-serif; letter-spacing: -.035em; }
+.brand-divider { width: 1px; height: 24px; background: var(--line); }
+.brand-product { color: #53665e; font: 10px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; white-space: nowrap; }
 .masthead-right { display: flex; align-items: center; gap: clamp(24px, 4vw, 60px); }
 .header-nav { display: flex; align-items: center; gap: 25px; }
 .issue-label, .header-link, .eyebrow, .graphic-meta, .graphic-caption, .orbit-label, .note-topline, .method-item span, .note-bottom, .site-footer, .optional, .status-badge, .text-button, .artifact-button, .history-date, .history-state { font-family: var(--mono); }
@@ -250,6 +256,9 @@ body[data-view="audit"] .active-audit, body[data-view="history"] .history { min-
 }
 @media (max-width: 760px) {
   .masthead { height: 64px; }
+  .brand { gap: 10px; }
+  .brand-wordmark { font-size: 22px; }
+  .brand-divider, .brand-product { display: none; }
   .issue-label { display: none; }
   .header-nav { gap: 16px; }
   .hero-copy { display: block; padding: 20px 24px; }
