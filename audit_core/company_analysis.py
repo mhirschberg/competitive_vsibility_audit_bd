@@ -75,6 +75,68 @@ def normalize_keyword_records(raw_keywords):
     return normalized
 
 
+def prepare_company_intake_payload(
+    data, company_name, company_url, *, normalize_public_url,
+    get_root_domain, ensure_string_list, normalize_confidence,
+):
+    """Normalize company fields into a plain payload before schema validation."""
+    if not isinstance(data, dict):
+        raise ValueError("Company analysis must be a JSON object.")
+
+    if "brand" not in data:
+        brand_keys = {
+            "brand_name", "official_url", "domain", "category",
+            "description", "positioning", "primary_market_role",
+            "secondary_market_roles", "offering_type", "value_chain_position",
+            "substitute_definition", "classification_confidence",
+            "classification_evidence", "target_customers", "products",
+            "key_features", "differentiators", "confidence", "evidence",
+        }
+        data["brand"] = {
+            key: data[key] for key in data if key in brand_keys
+        }
+
+    brand = data.get("brand") or {}
+    if not isinstance(brand, dict):
+        brand = {}
+
+    official_url = normalize_public_url(
+        brand.get("official_url") or company_url
+    )
+    if not official_url:
+        official_url = normalize_public_url(company_url)
+    domain = get_root_domain(brand.get("domain") or official_url)
+
+    brand["brand_name"] = str(
+        brand.get("brand_name") or company_name
+    ).strip()
+    if not brand["brand_name"]:
+        brand["brand_name"] = company_name
+    brand["official_url"] = official_url
+    brand["domain"] = domain
+
+    for field_name in (
+        "category", "description", "positioning", "primary_market_role",
+        "offering_type", "value_chain_position", "substitute_definition",
+    ):
+        brand[field_name] = str(brand.get(field_name) or "").strip()
+
+    for field_name in (
+        "target_customers", "products", "key_features", "differentiators",
+        "evidence", "secondary_market_roles", "classification_evidence",
+    ):
+        brand[field_name] = ensure_string_list(brand.get(field_name))[:8]
+
+    brand["confidence"] = normalize_confidence(brand.get("confidence"))
+    brand["classification_confidence"] = normalize_confidence(
+        brand.get("classification_confidence")
+    )
+    keywords = normalize_keyword_records(
+        data.get("buyer_intent_keywords") or data.get("keywords") or []
+    )
+    return {"brand": brand, "buyer_intent_keywords": keywords}
+
+
 def build_company_research_prompt(settings):
     """Ask broad, category-neutral questions about the audited company."""
     audit_focus = str(settings.get("audit_focus", "") or "").strip()

@@ -89,6 +89,18 @@ COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
 COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
 COMPANY_ANALYSIS_PROVIDER_START = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: start"
 COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
+COMPANY_INTAKE_ADAPTER_SOURCE = '''def normalize_company_intake(data, company_name, company_url):
+    normalized = prepare_company_intake_payload(
+        data,
+        company_name,
+        company_url,
+        normalize_public_url=normalize_public_url,
+        get_root_domain=get_root_domain,
+        ensure_string_list=ensure_string_list,
+        normalize_confidence=normalize_confidence,
+    )
+    return validate_model(CompanyIntake, normalized)
+'''
 SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
 SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
@@ -646,6 +658,28 @@ def _replace_python_function_before_marker(cell, name, marker, replacement):
     cell["source"] = lines
 
 
+def _replace_python_function_occurrence(cell, name, occurrence, replacement):
+    """Replace one zero-based top-level definition of a function."""
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
+    matches = [
+        node for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name
+    ]
+    if occurrence >= len(matches):
+        raise ValueError(
+            f"Could not find occurrence {occurrence} of function {name!r}"
+        )
+    node = matches[occurrence]
+    start_line = min(
+        [node.lineno] + [item.lineno for item in node.decorator_list]
+    )
+    lines = source.splitlines(keepends=True)
+    lines[start_line - 1:node.end_lineno] = [replacement.rstrip("\n") + "\n"]
+    cell["source"] = lines
+
+
 def _replace_last_python_function(cell, name, replacement):
     """Replace the final notebook definition of a function with an adapter."""
     source = "".join(cell["source"])
@@ -1016,6 +1050,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         analysis_cell,
         Path(profile_provider_source).read_text(encoding="utf-8")
         + "\n\n" + PROFILE_PROVIDER_ADAPTER_SOURCE,
+    )
+    _replace_python_function_occurrence(
+        analysis_cell,
+        "normalize_company_intake",
+        0,
+        COMPANY_INTAKE_ADAPTER_SOURCE,
     )
     _replace_embedded_source(
         analysis_cell,
