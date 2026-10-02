@@ -1,0 +1,17 @@
+# Build only the audit worker for a measured, temporary worker configuration.
+# Usage: gcloud builds submit --config hosted/cloudbuild-worker.yaml \
+#   --substitutions=_TAG=service-native-resource-benchmark
+substitutions:
+  _REGISTRY: europe-west1-docker.pkg.dev/getmuzoboz/competitive-audit
+  _TAG: service-native-resource-benchmark
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - hosted/Dockerfile.worker
+      - -t
+      - ${_REGISTRY}/worker:${_TAG}
+      - .
+images:
+  - ${_REGISTRY}/worker:${_TAG}

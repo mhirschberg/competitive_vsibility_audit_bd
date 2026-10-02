@@ -17,6 +17,7 @@ from uuid import UUID
 from hosted.supabase_gateway import BackendError, SupabaseGateway
 from audit_core.artifact_names import is_final_report_json
 from scripts.run_local_audit import collect_artifacts
+from hosted.resource_usage import ContainerResourceSampler
 
 
 STAGE_LINE = re.compile(r"^\[\d+/\d+\]\s+(.+)$")
@@ -272,6 +273,7 @@ def run_worker(
                 text=True,
                 bufsize=1,
             )
+            resource_sampler = ContainerResourceSampler().start()
 
             stop_heartbeat = threading.Event()
 
@@ -323,6 +325,18 @@ def run_worker(
                         process.kill()
                         process.wait()
                 heartbeat_thread.join(timeout=5)
+                resource_summary = resource_sampler.stop()
+                resource_summary.update(
+                    audit_id=str(audit_id),
+                    execution_id=str(execution_id),
+                    engine_mode=engine_mode,
+                )
+                resource_line = "AUDIT_RESOURCE_SUMMARY " + json.dumps(
+                    resource_summary, sort_keys=True,
+                )
+                with log_path.open("a", encoding="utf-8") as log_file:
+                    log_file.write(resource_line + "\n")
+                print(resource_line, flush=True)
 
             artifacts = [log_path, *collect_artifacts(run_dir)]
             report_path = next(
