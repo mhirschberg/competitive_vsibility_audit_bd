@@ -33,6 +33,14 @@ runtime binding; the notebook keeps a thin same-named wrapper that calls the
 shared normalizer with its embedded Pydantic model. Schema parsing and legacy
 model injection tests remain supported.
 
+Keyword completion checkpoint: prompt construction, normalization, filtering
+of branded/duplicate results, Pydantic keyword creation, and retention of the
+provider record/snapshot ID now live in `audit_core.company_analysis`. Both
+the hosted adapter and generated notebook supply only the utility-AI call and
+small serialization/parser ports; neither needs the notebook's former
+`complete_company_keywords` implementation. Keyword proofreading is still
+bound to its notebook callback and remains a separate extraction target.
+
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports
 the same functions during migration. A representative generated runner was

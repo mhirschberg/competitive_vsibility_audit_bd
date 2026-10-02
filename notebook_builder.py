@@ -97,6 +97,19 @@ COMPANY_INTAKE_ADAPTER_SOURCE = '''def normalize_company_intake(data, company_na
         data, company_name, company_url, intake_model=CompanyIntake,
     )
 '''
+COMPANY_KEYWORD_COMPLETION_ADAPTER_SOURCE = '''def complete_company_keywords(
+    settings, brand, current_keywords,
+):
+    return complete_company_keywords_core(
+        settings,
+        brand,
+        current_keywords,
+        run_utility=run_chatgpt_without_web,
+        parse_json=parse_ai_json,
+        model_to_dict=model_to_dict,
+        keyword_model=BuyerIntentKeyword,
+    )
+'''
 SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
 SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
@@ -1093,6 +1106,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         "normalize_company_intake",
         0,
         COMPANY_INTAKE_ADAPTER_SOURCE,
+    )
+    _replace_python_function_occurrence(
+        analysis_cell,
+        "complete_company_keywords",
+        0,
+        COMPANY_KEYWORD_COMPLETION_ADAPTER_SOURCE,
     )
     _replace_embedded_source(
         analysis_cell,

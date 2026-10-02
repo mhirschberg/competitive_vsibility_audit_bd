@@ -251,8 +251,13 @@ class ServiceAdapterTests(unittest.TestCase):
 
     def test_service_company_analyzer_uses_shared_provider_core(self):
         runtime = {
-            'run_chatgpt_without_web': lambda *_args, **_kwargs: None,
-            'complete_company_keywords': lambda **kwargs: kwargs,
+            'run_chatgpt_without_web': lambda _prompt: {
+                'answer': json.dumps({
+                    'buyer_intent_keywords': [{'keyword': 'buy an oven'}],
+                }),
+                'record': {'answer_text': 'fixture'},
+                'snapshot_id': 'fixture-snapshot',
+            },
             'proofread_buyer_keywords': lambda **kwargs: kwargs,
             'BrightDataAPIError': RuntimeError,
         }
@@ -271,6 +276,16 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
         from audit_core.company_analysis import normalize_company_intake_core
         self.assertIs(ports.normalize_intake, normalize_company_intake_core)
+        self.assertNotIn('complete_company_keywords', runtime)
+        completion = ports.complete_keywords(
+            settings={'company_name': 'Acme'},
+            brand=Model(
+                category='ovens', positioning='premium', products=[],
+                key_features=[],
+            ),
+            current_keywords=[],
+        )
+        self.assertEqual(completion['keywords'][0].keyword, 'buy an oven')
         from audit_core.company_analysis import select_relevant_company_research
         self.assertIs(ports.select_relevant_research, select_relevant_company_research)
 
