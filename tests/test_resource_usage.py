@@ -9,6 +9,52 @@ from hosted.resource_usage import ContainerResourceSampler
 
 
 class ContainerResourceSamplerTests(unittest.TestCase):
+    @staticmethod
+    def _proc_stat(pid, parent_pid, cpu_ticks, rss_pages):
+        fields = ["0"] * 22
+        fields[0] = "S"
+        fields[1] = str(parent_pid)
+        fields[11] = str(cpu_ticks // 2)
+        fields[12] = str(cpu_ticks - cpu_ticks // 2)
+        fields[21] = str(rss_pages)
+        return f"{pid} (audit runner (worker)) " + " ".join(fields)
+
+    def test_process_tree_sampling_sums_visible_descendants(self):
+        with tempfile.TemporaryDirectory() as root:
+            proc_root = Path(root)
+            for pid, parent, cpu, rss in (
+                (100, 1, 10, 10),
+                (101, 100, 15, 20),
+                (102, 101, 25, 30),
+                (200, 1, 100, 200),
+            ):
+                process_dir = proc_root / str(pid)
+                process_dir.mkdir()
+                (process_dir / "stat").write_text(
+                    self._proc_stat(pid, parent, cpu, rss), encoding="ascii",
+                )
+            sampler = ContainerResourceSampler(
+                proc_root=proc_root, cgroup_root=proc_root / "missing",
+            )
+            sampler._page_size = 4096
+            with patch("hosted.resource_usage.os.getpid", return_value=100):
+                sample = sampler._read_process_tree()
+
+        self.assertEqual(sample, (60 * 4096, 50))
+
+    def test_one_second_samples_capture_peak_rss_and_cpu_cores(self):
+        sampler = ContainerResourceSampler(interval_seconds=1.0)
+        sampler.started_at = 100.0
+        sampler._clock_ticks = 100
+        sampler._record_process_sample(100.0, 1000, 100)
+        sampler._record_process_sample(101.0, 2000, 150)
+        sampler._record_process_sample(102.0, 1500, 250)
+
+        self.assertEqual(sampler._proc_peak_memory_bytes, 2000)
+        self.assertEqual(sampler._proc_peak_cpu_cores, 1.0)
+        self.assertEqual(sampler._proc_tree_cpu_seconds, 1.5)
+        self.assertEqual(sampler._proc_sample_count, 3)
+
     def test_reads_cgroup_peak_memory_and_cpu_time(self):
         with tempfile.TemporaryDirectory() as root:
             cgroup = Path(root)
