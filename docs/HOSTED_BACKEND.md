@@ -164,7 +164,10 @@ retain the original root as the Site URL until the branded domain is verified
 and then change the Site URL only after testing sign-in. The API
 checks the verified Google identity; the service-only `submit_trial_audit`
 function serializes submissions per Auth user, checks three total non-workshop
-audits and a rolling 24-hour gap, and preserves idempotent retries. Failed or
+audits and a rolling 24-hour gap by default, and preserves idempotent retries.
+The single existing site owner receives a separately stored allowance of up to
+999 personal audits without the daily cooldown; new site admins do not inherit
+that override. Failed or
 interrupted runs still count because they started an audit and may have used
 paid collection. The browser shows remaining allowance and links to the public
 notebook when the allowance is exhausted. Trial history belongs to the Google

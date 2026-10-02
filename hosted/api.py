@@ -361,9 +361,9 @@ def create_app(*, gateway=None, dispatcher=None, scheduler=None, settings=None) 
             raise HTTPException(status_code=429, detail={
                 "code": exc.reason,
                 "message": (
-                    "Your three personal trial audits have been used."
+                    "Your personal audit allowance has been used."
                     if exc.reason == "trial_total_limit"
-                    else "Personal trial audits are limited to one every 24 hours."
+                    else "Your next personal audit is not available yet."
                 ),
                 "notebook_url": "https://github.com/mhirschberg/competitive_vsibility_audit_bd",
             }) from exc
