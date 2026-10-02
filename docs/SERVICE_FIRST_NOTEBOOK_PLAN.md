@@ -699,6 +699,19 @@ Next: continue the runtime-boundary review, focusing on remaining company
 normalization and competitor-scope helpers without moving model or provider
 calls into pure core code.
 
+Fifty-seventh checkpoint: locked-scope brand-family normalization and
+country-domain scoring now live in `audit_core.competitor_scope`. The hosted
+adapter constructs `CompetitorDecisionPorts` from shared logic instead of
+requiring three notebook callbacks; the notebook uses the same functions and
+its shadowing copies are removed. Tests cover common country suffixes and
+verify service/notebook parity. Full suite: 428 passed, 4 skipped; notebook
+check and no-provider-call dry run pass. No deployment or memory-reduction
+claim was made.
+
+Next: review company intake normalization and keyword-record normalization;
+keep Pydantic construction and any AI-powered completion/proofreading behind
+explicit ports.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

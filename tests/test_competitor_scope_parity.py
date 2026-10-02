@@ -1,10 +1,13 @@
 """Service and generated notebook must make the same scope/selection decisions."""
 
 import json
+import ast
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from audit_core import competitor_scope, primitives
+from audit_core import domains
 from notebook_builder import NOTEBOOK, SCOPE_END, SCOPE_START
 
 
@@ -37,7 +40,10 @@ def notebook_scope_namespace():
     )
     source = "".join(cell["source"])
     embedded = source.split(SCOPE_START, 1)[1].split(SCOPE_END, 1)[0]
-    namespace = {"normalize_confidence": primitives.normalize_confidence}
+    namespace = {
+        "normalize_confidence": primitives.normalize_confidence,
+        "get_root_domain": domains.get_root_domain,
+    }
     exec(embedded, namespace)
     return namespace
 
@@ -59,6 +65,70 @@ def result(name, *, status="success", direct=True, score=0.8, rank=1,
 
 
 class CompetitorScopeParityTests(unittest.TestCase):
+    def test_shared_domain_rules_are_not_shadowed_in_generated_notebook(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "runtime-utilities-merged"
+        )
+        definitions = [
+            node.name for node in ast.parse("".join(cell["source"])).body
+            if isinstance(node, ast.FunctionDef)
+        ]
+        for name in ("locked_scope_brand_family", "locked_scope_local_domain_bonus"):
+            self.assertEqual(definitions.count(name), 1)
+
+    def test_domain_family_and_locality_helpers_match_between_runners(self):
+        notebook = notebook_scope_namespace()
+        def get_root_domain(value):
+            host = str(value or "").lower().removeprefix("www.")
+            labels = host.split(".")
+            suffix_size = 3 if host.endswith((
+                ".co.uk", ".com.au", ".com.br", ".com.mx",
+            )) else 2
+            return ".".join(labels[-suffix_size:])
+        with mock.patch.object(
+            competitor_scope, "get_root_domain", side_effect=get_root_domain,
+        ), mock.patch.object(
+            competitor_scope.tldextract, "extract",
+            side_effect=lambda value: SimpleNamespace(
+                domain=value.split(".")[0],
+            ),
+        ):
+            notebook["get_root_domain"] = get_root_domain
+            for domain, expected in (
+                ("www.example.com", "example"),
+                ("shop.example.co.uk", "example"),
+            ):
+                self.assertEqual(
+                    competitor_scope.locked_scope_brand_family(domain), expected,
+                )
+                self.assertEqual(
+                    notebook["locked_scope_brand_family"](domain), expected,
+                )
+
+        with mock.patch.object(
+            competitor_scope, "get_root_domain", side_effect=get_root_domain,
+        ):
+            notebook["get_root_domain"] = get_root_domain
+            for domain, country, expected in (
+                ("brand.de", "DE", 20),
+                ("brand.com", "US", 20),
+                ("brand.com.au", "AU", 20),
+                ("brand.com", "DE", 0),
+                ("brand.de", "ZZ", 0),
+            ):
+                self.assertEqual(
+                    competitor_scope.locked_scope_local_domain_bonus(
+                        domain, country,
+                    ), expected,
+                )
+                self.assertEqual(
+                    notebook["locked_scope_local_domain_bonus"](
+                        domain, country,
+                    ), expected,
+                )
+
     def test_market_role_fixtures_match_notebook(self):
         notebook = notebook_scope_namespace()
         fixtures = (

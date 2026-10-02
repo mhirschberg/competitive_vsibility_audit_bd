@@ -4,8 +4,12 @@ This module is also bundled into the standalone notebook.
 """
 
 import re
+import tldextract
 
+# SERVICE-ONLY-IMPORTS: start
+from .domains import get_root_domain
 from .primitives import normalize_confidence
+# SERVICE-ONLY-IMPORTS: end
 
 
 LOCKED_SCOPE_VALIDATION_LIMIT = 12
@@ -169,6 +173,25 @@ LOCKED_SCOPE_COUNTRY_TLDS = {
     "BR": "com.br",
     "MX": "com.mx",
 }
+
+
+def locked_scope_brand_family(domain):
+    """Collapse subdomains to a registrable brand-family label."""
+    domain = get_root_domain(domain)
+    if not domain:
+        return ""
+    extracted = tldextract.extract(domain)
+    return str(extracted.domain or "").strip().lower() or domain
+
+
+def locked_scope_local_domain_bonus(domain, country_code):
+    """Prefer domains ending in the target market's configured country TLD."""
+    domain = get_root_domain(domain)
+    country_code = str(country_code or "").upper()
+    country_tld = LOCKED_SCOPE_COUNTRY_TLDS.get(country_code)
+    if not country_tld:
+        return 0
+    return 20 if domain.endswith("." + country_tld) else 0
 
 
 def locked_scope_normalize_text(

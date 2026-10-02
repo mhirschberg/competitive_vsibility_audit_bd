@@ -676,6 +676,9 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime.pop('remove_ai_boilerplate', None)
         runtime.pop('model_to_dict', None)
         runtime.pop('select_relevant_company_research', None)
+        runtime.pop('_competitor_decision_ports', None)
+        runtime.pop('locked_scope_local_domain_bonus', None)
+        runtime.pop('locked_scope_brand_family', None)
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],
