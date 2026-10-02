@@ -15,7 +15,7 @@ import reddit_social
 from hosted.service_adapter import (
     _service_company_analyzer, _service_reddit_runners, _service_utility_ai_race,
     _service_parse_bing_markdown, _service_search_runner,
-    build_runtime_ports, run_with_legacy_runtime,
+    build_preparation_ports, build_runtime_ports, run_with_legacy_runtime,
 )
 from hosted.brightdata_provider import BrightDataProviderClient
 from audit_core.brightdata_transport import (
@@ -34,6 +34,36 @@ from tests.test_audit_pipeline import AuditPipelineTests, Model
 
 
 class ServiceAdapterTests(unittest.TestCase):
+    def test_service_preparation_owns_snapshot_cache_and_legacy_import(self):
+        runtime = self.runtime([])
+        for name in (
+            'resolve_official_site', 'configure_google_ai_race_cache',
+            'import_google_ai_snapshot_ids',
+        ):
+            runtime.pop(name, None)
+        client = BrightDataProviderClient('token', 'zone', 'US')
+        recovered = []
+        client.download_snapshot = lambda _snapshot_id: [
+            {'prompt': 'recover this snapshot'},
+        ]
+        client.record_recovered_snapshot = lambda *args: recovered.append(args)
+
+        with tempfile.TemporaryDirectory() as root:
+            ports = build_preparation_ports(
+                runtime, base_directory=root, client=client,
+            )
+            cache_path = Path(root) / 'raw' / 'google_ai_snapshot_cache.json'
+            ports.configure_google_ai_race_cache(cache_path, only_reuse=True)
+            self.assertTrue(runtime['_GOOGLE_AI_ONLY_REUSE'])
+            imported = ports.import_google_ai_snapshot_ids('sd_abc123')
+            self.assertEqual(imported, 1)
+            self.assertEqual(
+                runtime['cached_google_ai_snapshot_ids']('recover this snapshot'),
+                ['sd_abc123'],
+            )
+            self.assertEqual(len(recovered), 1)
+            self.assertEqual(recovered[0][0:2], ('sd_abc123', 1))
+
     def test_reddit_runners_bind_provider_context_for_each_call(self):
         client = object()
         utility_race = lambda **_kwargs: "answer"
@@ -398,6 +428,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 ), patch(
                     'hosted.service_adapter.run_visibility_stage_core',
                     side_effect=checked_visibility_core,
+                ), patch(
+                    'hosted.service_adapter.resolve_official_site',
+                    side_effect=runtime['resolve_official_site'],
                 ):
                     result = asyncio.run(run_with_legacy_runtime(
                         settings, runtime, base_directory=Path(root),

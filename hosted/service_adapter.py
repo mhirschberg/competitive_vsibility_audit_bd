@@ -19,6 +19,8 @@ from audit_core.audit_pipeline import (
 from audit_core.audit_preparation import (
     AuditPreparationPorts, prepare_audit_run_core,
 )
+from audit_core.official_domains import resolve_official_site
+from audit_core.research_snapshot_cache import ResearchSnapshotCache
 from audit_core.artifact_writes import write_json_with_scope
 from audit_core.artifact_writes import (
     create_audit_zip, write_json, write_text,
@@ -113,6 +115,19 @@ _RESEARCH_BINDINGS = (
 )
 
 _SERVICE_LOG = logging.getLogger('competitive_audit')
+
+
+class ServiceResearchRaceTimeoutError(SnapshotTimeoutError):
+    """Timeout retaining all already-triggered research snapshot IDs."""
+
+    def __init__(self, snapshot_ids, timeout_seconds):
+        self.snapshot_ids = list(snapshot_ids)
+        super().__init__(self.snapshot_ids[0], timeout_seconds)
+        self.args = (
+            'Research snapshots did not finish within '
+            f'{timeout_seconds} seconds; already-triggered IDs: '
+            + ', '.join(self.snapshot_ids),
+        )
 
 
 def _service_notice(message, *, style='info'):
@@ -238,17 +253,35 @@ def _standalone_brightdata_client(runtime):
             runtime, message, style=style,
         )
     )
-    client = factory(
+    client = build_brightdata_provider(
+        factory=factory,
         token=legacy.token,
         serp_zone=legacy.serp_zone,
         country=legacy.country,
         debug=getattr(legacy, 'debug', False),
         logger=logger,
-        parse_bing_markdown=_service_parse_bing_markdown,
     )
 
     runtime['bd_client'] = client
     return client
+
+
+def build_brightdata_provider(
+    *, token, serp_zone, country='US', debug=False, logger=None,
+    factory=None,
+):
+    """Construct the service provider from explicit credentials and settings."""
+    if factory is None:
+        from hosted.brightdata_provider import BrightDataProviderClient
+        factory = BrightDataProviderClient
+    return factory(
+        token=token,
+        serp_zone=serp_zone,
+        country=country,
+        debug=debug,
+        logger=logger,
+        parse_bing_markdown=_service_parse_bing_markdown,
+    )
 
 
 def _service_report_generator(runtime, client):
@@ -558,12 +591,12 @@ def _service_company_analyzer(runtime, client, utility_race=None):
     )
 
 
-def build_runtime_ports(runtime):
+def build_runtime_ports(runtime, *, client=None):
     """Bind explicit providers and the remaining transition-stage callbacks."""
     def need(name):
         return runtime[name]
 
-    client = _standalone_brightdata_client(runtime)
+    client = client or _standalone_brightdata_client(runtime)
     if client is None:
         raise KeyError('bd_client')
     runtime['bd_client'] = client
@@ -743,23 +776,74 @@ def build_runtime_ports(runtime):
     )
 
 
-def build_preparation_ports(runtime, *, base_directory="/content"):
-    """Bind official-site and checkpoint operations from the same runtime."""
+def build_preparation_ports(
+    runtime, *, base_directory="/content", client=None, cache=None,
+):
+    """Bind service-owned site resolution and durable run checkpoints."""
     def need(name):
         return runtime[name]
 
+    client = client or need('bd_client')
+    cache = cache or ResearchSnapshotCache()
+
+    # The coordinator and research provider share this audit-scoped cache.
+    def configure_cache(path, only_reuse=False):
+        cache.configure(path, only_reuse=only_reuse)
+        runtime['_GOOGLE_AI_ONLY_REUSE'] = bool(only_reuse)
+
+    runtime['configure_google_ai_race_cache'] = configure_cache
+    runtime['cached_google_ai_snapshot_ids'] = cache.cached
+    runtime['remember_google_ai_snapshot'] = cache.remember
+    runtime['_GOOGLE_AI_ONLY_REUSE'] = False
+    runtime['RESEARCH_PROVIDERS'] = ('chatgpt', 'gemini')
+    runtime['ResearchRaceTimeoutError'] = ServiceResearchRaceTimeoutError
+
+    def cached_research_snapshot_ids(prompt):
+        country = getattr(client, 'country', None) or (
+            runtime.get('SERVICE_AUDIT_SETTINGS')
+            or runtime.get('AUDIT_SETTINGS', {})
+        ).get('country')
+        localized = localize_google_ai_prompt_core(
+            prompt, country_details(country),
+        )
+        found = {
+            provider: cache.cached(
+                f'research-provider-v1:{provider}:{localized}'
+            )
+            for provider in ('chatgpt', 'gemini')
+        }
+        legacy = cache.cached(localized)
+        found = {provider: ids for provider, ids in found.items() if ids}
+        if legacy:
+            found['google_ai_mode'] = legacy
+        return found
+
+    runtime['cached_research_snapshot_ids'] = cached_research_snapshot_ids
+
+    def import_snapshot_ids(snapshot_ids):
+        from audit_core.brightdata_transport import GOOGLE_AI_MODE_DATASET_ID
+        return cache.import_ids(
+            snapshot_ids,
+            download_snapshot=client.download_snapshot,
+            record_recovered=lambda snapshot_id, result_count: (
+                client.record_recovered_snapshot(
+                    snapshot_id, result_count, GOOGLE_AI_MODE_DATASET_ID,
+                )
+            ),
+        )
+
     return AuditPreparationPorts(
-        resolve_official_site=need('resolve_official_site'),
+        resolve_official_site=resolve_official_site,
         get_root_domain=get_root_domain,
         find_latest_audit_to_continue=lambda settings: find_latest_audit_to_continue(
             settings, base_directory=base_directory,
         ),
         slugify=slugify,
         audit_export_prefix=audit_export_prefix,
-        configure_usage_checkpoint=need('bd_client').configure_usage_checkpoint,
+        configure_usage_checkpoint=client.configure_usage_checkpoint,
         write_json=write_json,
-        configure_google_ai_race_cache=need('configure_google_ai_race_cache'),
-        import_google_ai_snapshot_ids=need('import_google_ai_snapshot_ids'),
+        configure_google_ai_race_cache=configure_cache,
+        import_google_ai_snapshot_ids=import_snapshot_ids,
         notice=lambda message: _runtime_notice(runtime, message),
         set_output_directory=lambda path: runtime.__setitem__(
             'CURRENT_AUDIT_OUTPUT_DIRECTORY', path
@@ -769,11 +853,12 @@ def build_preparation_ports(runtime, *, base_directory="/content"):
 
 async def run_with_legacy_runtime(settings, runtime, *, base_directory):
     """Run the shared coordinator with existing, already-loaded providers."""
-    pipeline_ports = build_runtime_ports(runtime)
+    client = _standalone_brightdata_client(runtime)
     preparation_ports = build_preparation_ports(
-        runtime, base_directory=base_directory,
+        runtime, base_directory=base_directory, client=client,
     )
     runtime['CURRENT_AUDIT_OUTPUT_DIRECTORY'] = None
+    pipeline_ports = build_runtime_ports(runtime, client=client)
     prepared = await prepare_audit_run_core(
         settings, base_directory=Path(base_directory), ports=preparation_ports,
     )
