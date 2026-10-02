@@ -21,6 +21,7 @@ from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_I
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
+from audit_core.audit_models import CompetitorCandidate
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -160,7 +161,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'BrandAnalysis': company.brand_factory,
             'BuyerIntentKeyword': company.keyword_factory,
             'run_serp_stage': search.run_search,
-            'CompetitorCandidate': search.candidate_factory,
             'select_competitors_stage': competitor.select_competitors,
             '_competitor_decision_ports': lambda: object(),
             'locked_scope_local_domain_bonus': lambda *_args: 0,
@@ -168,7 +168,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'LOCKED_SCOPE_VALIDATION_LIMIT': 12,
             'cached_research_snapshot_ids': lambda _prompt: [],
             'locked_scope_brand_family': lambda value: value,
-            'SelectedCompetitor': Model,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
             'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
             'is_google_goto_url': lambda _url: False,
@@ -178,7 +177,6 @@ class ServiceAdapterTests(unittest.TestCase):
                     'service profile must not call notebook wrapper'
                 ))
             ),
-            'BrandProfile': Model,
             'remove_ai_boilerplate': lambda value: value,
             'normalize_public_url': lambda value: value,
             'get_root_domain': lambda value: value.split('/', 1)[0],
@@ -469,7 +467,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 'wait_longer_for_google_ai_mode': True,
             },
             '_GOOGLE_AI_ONLY_REUSE': True,
-            'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
             'model_to_dict': lambda item: item,
             'run_serp_stage': lambda *_args, **_kwargs: (
                 (_ for _ in ()).throw(AssertionError(
@@ -517,7 +514,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 'include_google_ai_mode': True,
                 'wait_longer_for_google_ai_mode': False,
             },
-            'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
             'model_to_dict': lambda item: item,
             'is_google_goto_url': lambda _url: False,
             'resolve_google_goto_url': lambda url: url,
@@ -551,12 +547,15 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime = self.runtime([])
         for name in ('CompanyIntake', 'BrandAnalysis', 'BuyerIntentKeyword'):
             runtime.pop(name)
+        for name in ('BrandProfile', 'CompetitorCandidate', 'SelectedCompetitor'):
+            runtime.pop(name, None)
 
         ports = build_runtime_ports(runtime)
 
         self.assertIs(ports.company_stage.intake_factory, CompanyIntake)
         self.assertIs(ports.company_stage.brand_factory, BrandAnalysis)
         self.assertIs(ports.company_stage.keyword_factory, BuyerIntentKeyword)
+        self.assertIs(ports.search_stage.candidate_factory, CompetitorCandidate)
 
     def test_worker_images_copy_the_importable_reddit_module(self):
         root = Path(__file__).resolve().parents[1]

@@ -33,6 +33,9 @@ from audit_core.company_analysis import (
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
+from audit_core.audit_models import (
+    BrandProfile, CompetitorCandidate, SelectedCompetitor,
+)
 from audit_core.competitor_scope import (
     locked_scope_brand_family,
     locked_scope_local_domain_bonus,
@@ -273,7 +276,7 @@ def _service_profile_runner(runtime):
         return normalize_brand_profile_core(
             data,
             job,
-            profile_factory=runtime['BrandProfile'],
+            profile_factory=BrandProfile,
             normalize_public_url=normalize_public_url,
             get_root_domain=get_root_domain,
             ensure_string_list=ensure_string_list,
@@ -302,7 +305,7 @@ def _service_profile_runner(runtime):
 
     def fallback_profile(job, target_brand):
         return fallback_profile_core(
-            job, target_brand, profile_factory=runtime['BrandProfile'],
+            job, target_brand, profile_factory=BrandProfile,
         )
 
     def pending_notice(count):
@@ -414,7 +417,7 @@ def _service_search_runner(runtime, client):
             run_ai_mode_question=run_ai_mode_question,
             run_keyword_serp_task=client.run_keyword_serp_task,
             model_to_dict=model_to_dict,
-            candidate_factory=runtime['CompetitorCandidate'],
+            candidate_factory=CompetitorCandidate,
         )
 
     return run_search
@@ -582,7 +585,7 @@ def build_runtime_ports(runtime):
             only_reuse=runtime.get('_GOOGLE_AI_ONLY_REUSE', False),
             cached_snapshot_ids=need('cached_research_snapshot_ids'),
             brand_family=locked_scope_brand_family,
-            selected_factory=need('SelectedCompetitor'),
+            selected_factory=SelectedCompetitor,
             error_type=BrightDataAPIError,
             output_dir=runtime.get('CURRENT_AUDIT_OUTPUT_DIRECTORY'),
             write_json=write_json,
@@ -592,10 +595,9 @@ def build_runtime_ports(runtime):
     def preflight():
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
-            'CompetitorCandidate', 'LOCKED_SCOPE_VALIDATION_WORKERS',
+            'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
-            'SelectedCompetitor',
-            'BrandProfile', 'resolve_google_goto_url',
+            'resolve_google_goto_url',
             'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
@@ -632,7 +634,7 @@ def build_runtime_ports(runtime):
         ),
         search_stage=SearchStagePorts(
             run_search=run_search,
-            candidate_factory=need('CompetitorCandidate'),
+            candidate_factory=CompetitorCandidate,
             model_to_dict=model_to_dict, write_json=write_json,
             stage_success=success, stage_warning=warning,
             format_duration=format_duration_fn,

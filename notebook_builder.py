@@ -57,6 +57,7 @@ REPORT_EXPORT_SOURCE = ROOT / "audit_core" / "report_export.py"
 ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
 UTILITY_AI_RACE_SOURCE = ROOT / "audit_core" / "utility_ai_race.py"
 COMPANY_MODELS_SOURCE = ROOT / "audit_core" / "company_models.py"
+AUDIT_MODELS_SOURCE = ROOT / "audit_core" / "audit_models.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -92,6 +93,8 @@ COMPANY_ANALYSIS_PROVIDER_START = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: start"
 COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
 COMPANY_MODELS_START = "# AUDIT-COMPANY-MODELS: start"
 COMPANY_MODELS_END = "# AUDIT-COMPANY-MODELS: end"
+AUDIT_MODELS_START = "# AUDIT-RESULT-MODELS: start"
+AUDIT_MODELS_END = "# AUDIT-RESULT-MODELS: end"
 COMPANY_INTAKE_ADAPTER_SOURCE = '''def normalize_company_intake(data, company_name, company_url):
     return normalize_company_intake_core(
         data, company_name, company_url, intake_model=CompanyIntake,
@@ -951,6 +954,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         COMPANY_MODELS_START,
         COMPANY_MODELS_END,
         Path(COMPANY_MODELS_SOURCE).read_text(encoding="utf-8"),
+    )
+    _replace_python_classes_with_source(
+        primitives_cell,
+        {"CompetitorCandidate", "SelectedCompetitor", "BrandProfile"},
+        AUDIT_MODELS_START,
+        AUDIT_MODELS_END,
+        Path(AUDIT_MODELS_SOURCE).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         primitives_cell,
