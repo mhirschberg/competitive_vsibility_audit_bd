@@ -5,7 +5,10 @@ import re
 
 
 # SERVICE-ONLY-IMPORTS: start
+from .company_models import CompanyIntake
 from .domains import get_root_domain
+from .domains import normalize_public_url
+from .primitives import ensure_string_list, normalize_confidence
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -135,6 +138,26 @@ def prepare_company_intake_payload(
         data.get("buyer_intent_keywords") or data.get("keywords") or []
     )
     return {"brand": brand, "buyer_intent_keywords": keywords}
+
+
+def normalize_company_intake_core(
+    data, company_name, company_url, *, intake_model=None,
+):
+    """Normalize company input and validate it with the shared intake schema."""
+    model = intake_model or CompanyIntake
+    payload = prepare_company_intake_payload(
+        data,
+        company_name,
+        company_url,
+        normalize_public_url=normalize_public_url,
+        get_root_domain=get_root_domain,
+        ensure_string_list=ensure_string_list,
+        normalize_confidence=normalize_confidence,
+    )
+    validator = getattr(model, "model_validate", None)
+    if callable(validator):
+        return validator(payload)
+    return model.parse_obj(payload)
 
 
 def build_company_research_prompt(settings):

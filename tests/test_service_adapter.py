@@ -252,7 +252,6 @@ class ServiceAdapterTests(unittest.TestCase):
     def test_service_company_analyzer_uses_shared_provider_core(self):
         runtime = {
             'run_chatgpt_without_web': lambda *_args, **_kwargs: None,
-            'normalize_company_intake': lambda **kwargs: kwargs,
             'complete_company_keywords': lambda **kwargs: kwargs,
             'proofread_buyer_keywords': lambda **kwargs: kwargs,
             'BrightDataAPIError': RuntimeError,
@@ -270,6 +269,8 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(ports.parse_json, shared_parse_ai_json)
         self.assertEqual(ports.error_type, RuntimeError)
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
+        from audit_core.company_analysis import normalize_company_intake_core
+        self.assertIs(ports.normalize_intake, normalize_company_intake_core)
         from audit_core.company_analysis import select_relevant_company_research
         self.assertIs(ports.select_relevant_research, select_relevant_company_research)
 
