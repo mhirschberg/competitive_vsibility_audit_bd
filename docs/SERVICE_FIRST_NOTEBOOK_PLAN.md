@@ -2,6 +2,15 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
+Next checkpoint: `audit_core.company_analysis` now owns the provider-neutral
+keyword-record normalization (comma-separated strings, legacy query/term
+aliases, defaults, trimming, and case-insensitive deduplication). The
+standalone notebook embeds this same implementation and removes the duplicate
+definition from its legacy analysis cell. Pydantic `CompanyIntake` and
+`BuyerIntentKeyword` construction and validation remain an explicit notebook
+adapter boundary for now; this extraction does not change AI completion,
+placeholder filtering, or schema behavior.
+
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports
 the same functions during migration. A representative generated runner was

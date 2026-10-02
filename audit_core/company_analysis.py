@@ -26,6 +26,55 @@ class CompanyAnalysisPorts:
         self.error_type = error_type
 
 
+def normalize_keyword_records(raw_keywords):
+    """Normalize keyword strings and mappings without applying AI/schema rules."""
+    if isinstance(raw_keywords, str):
+        raw_keywords = [
+            item.strip()
+            for item in raw_keywords.split(",")
+            if item.strip()
+        ]
+
+    if not isinstance(raw_keywords, list):
+        return []
+
+    normalized = []
+    seen = set()
+
+    for item in raw_keywords:
+        if isinstance(item, str):
+            keyword = item.strip()
+            record = {
+                "keyword": keyword,
+                "intent": "commercial",
+                "rationale": "",
+            }
+        elif isinstance(item, dict):
+            keyword = str(
+                item.get("keyword")
+                or item.get("query")
+                or item.get("term")
+                or ""
+            ).strip()
+            record = {
+                "keyword": keyword,
+                "intent": str(item.get("intent") or "commercial").strip(),
+                "rationale": str(
+                    item.get("rationale") or item.get("reason") or ""
+                ).strip(),
+            }
+        else:
+            continue
+
+        key = keyword.lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(record)
+
+    return normalized
+
+
 def build_company_research_prompt(settings):
     """Ask broad, category-neutral questions about the audited company."""
     audit_focus = str(settings.get("audit_focus", "") or "").strip()

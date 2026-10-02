@@ -1297,6 +1297,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     _remove_python_function_occurrences(
         analysis_cell,
         {
+            "normalize_keyword_records": [0],
             "normalize_citation": [0],
             "select_relevant_company_research": [0],
             "build_ai_mode_source_candidates": [0],
