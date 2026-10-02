@@ -13,8 +13,8 @@ own explicit approval.
 | Phase | Scope and exit check | Status |
 | --- | --- | --- |
 | 0. Record the plan | Commit this approval-gated sequence and the current baseline. | Complete |
-| 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Awaiting approval |
-| 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Not started |
+| 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Complete |
+| 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Awaiting approval |
 | 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Not started |
 | 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Not started |
 | 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
@@ -25,7 +25,25 @@ service-native entry point, fixture parity passes, and local resource behavior
 is recorded. Phases 6 and any deployment are explicitly outside that finish
 line until separately approved.
 
-Latest checkpoint: hosted progress now uses service logging for stage banners,
+Phase 1 inventory: service binding requirements for the Bing Markdown parser,
+shared failed-status policy, and default search-engine selection were removed;
+the parser, failed statuses, and `$1.50 / 1,000 results` pricing now come from
+shared modules. Validation worker/limit defaults also come from the shared
+scope module. Remaining runtime values are intentionally not copied from a
+notebook into `audit_core`: per-run settings/output state; provider credentials
+and research snapshot cache hooks; canonical-site and Google redirect network
+resolution; PDF rendering; and optional test/provider-module overrides. Phase
+2 owns the per-run setup and checkpoint adapters; true external I/O remains an
+explicit hosted port.
+
+Latest checkpoint: Phase 1 closed the runtime contract for pure shared
+behavior. The service now uses shared Bing Markdown parsing, shared failed
+statuses, and the shared default search engine instead of notebook bindings;
+remaining bindings are recorded above as per-run state, external I/O, or
+test/provider seams. Offline adapter/parser tests cover the removed bindings.
+No paid requests or deployment were made.
+
+Previous checkpoint: hosted progress now uses service logging for stage banners,
 successes, and warnings rather than notebook-provided print callbacks. The
 console is optional for adapter notices, with logging as the hosted fallback;
 an adapter test assembles and exercises progress without notebook UI bindings.

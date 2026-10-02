@@ -14,10 +14,13 @@ import reddit_social
 
 from hosted.service_adapter import (
     _service_company_analyzer, _service_reddit_runners, _service_utility_ai_race,
-    _service_search_runner, build_runtime_ports, run_with_legacy_runtime,
+    _service_parse_bing_markdown, _service_search_runner,
+    build_runtime_ports, run_with_legacy_runtime,
 )
 from hosted.brightdata_provider import BrightDataProviderClient
-from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
+from audit_core.brightdata_transport import (
+    CHATGPT_DATASET_ID, FAILED_STATUSES, GEMINI_DATASET_ID,
+)
 from audit_core.brightdata_usage import DEFAULT_PRICE_PER_1000_RESULTS_USD
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
@@ -708,7 +711,6 @@ class ServiceAdapterTests(unittest.TestCase):
 
         runtime.update({
             'BrightDataProviderClient': FakeStandaloneProvider,
-            'parse_bing_markdown': lambda **kwargs: kwargs,
         })
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
@@ -716,7 +718,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'remember_google_ai_snapshot': lambda key, sid: saved_cache.setdefault(
                 key, []
             ).append(sid),
-            'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             '_RESEARCH_RACE_SEMAPHORE': threading.BoundedSemaphore(3),
             'RESEARCH_POLL_SECONDS': 0,
@@ -727,6 +728,13 @@ class ServiceAdapterTests(unittest.TestCase):
         client = runtime['bd_client']
         self.assertIsInstance(client, FakeStandaloneProvider)
         self.assertIsNot(client, legacy_client)
+        self.assertIs(client.parse_bing_markdown, _service_parse_bing_markdown)
+        parsed_bing = _service_parse_bing_markdown(
+            '## [Unverified](https://www.bing.com/ck/a?u=invalid)\n',
+            'buyer question',
+        )
+        self.assertEqual(parsed_bing['parser'], 'strict_bing')
+        self.assertEqual(parsed_bing['results'], [])
         runtime['_GOOGLE_AI_ONLY_REUSE'] = True
         with self.assertRaisesRegex(RuntimeError, 'No saved research snapshots'):
             client.google_ai_mode('research question', timeout_seconds=3)
@@ -767,12 +775,15 @@ class ServiceAdapterTests(unittest.TestCase):
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],
             'remember_google_ai_snapshot': lambda *_args: None,
-            'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             'ResearchRaceTimeoutError': TimeoutError,
         })
         ports = build_runtime_ports(runtime)
         self.assertTrue(callable(ports.search_stage.run_search))
+        self.assertIs(
+            runtime['RESEARCH_PROVIDER_ADAPTER']._failed_statuses,
+            FAILED_STATUSES,
+        )
         self.assertNotIn('identify_google_ai_research_task', runtime)
         self.assertNotIn('validate_google_ai_research_answer', runtime)
         self.assertNotIn('google_ai_snapshot_is_materializing', runtime)

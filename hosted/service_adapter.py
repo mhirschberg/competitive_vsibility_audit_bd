@@ -49,9 +49,11 @@ from audit_core.competitor_selection_stage import CompetitorSelectionStagePorts
 from audit_core.competitor_pipeline import select_competitors_with_provider
 from audit_core.competitor_decisions import CompetitorDecisionPorts
 from audit_core.domains import (
-    get_root_domain, is_google_goto_url, normalize_public_url,
+    canonical_source_url, get_hostname, get_root_domain,
+    is_google_goto_url, normalize_public_url,
 )
 from audit_core.json_parsing import parse_ai_json
+from audit_core.serp_markdown import SerpMarkdownParser, SerpParserPorts
 from audit_core.text_cleaning import remove_ai_boilerplate
 from audit_core.profile_research import (
     ProfileResearchPorts, run_profile_research_core,
@@ -107,7 +109,6 @@ from audit_core.brightdata_usage import DEFAULT_PRICE_PER_1000_RESULTS_USD
 _RESEARCH_BINDINGS = (
     'RESEARCH_PROVIDERS', 'cached_google_ai_snapshot_ids',
     'remember_google_ai_snapshot',
-    'FAILED_STATUSES',
     '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError',
 )
 
@@ -142,6 +143,25 @@ def _runtime_notice(runtime, message, *, style='info'):
         console.print(message)
         return
     _service_notice(message, style=style)
+
+
+_SERVICE_BING_MARKDOWN_PARSER = SerpMarkdownParser(SerpParserPorts(
+    get_hostname=get_hostname,
+    get_root_domain=get_root_domain,
+    canonical_source_url=canonical_source_url,
+    is_google_goto_url=is_google_goto_url,
+    resolve_google_goto_url=None,
+    diagnostics={},
+))
+
+
+def _service_parse_bing_markdown(
+    markdown, query, num_results=20, requested_country='US',
+):
+    """Use the shared offline Bing Markdown parser in hosted provider calls."""
+    return _SERVICE_BING_MARKDOWN_PARSER.parse_bing_markdown(
+        markdown, query, num_results, requested_country,
+    )
 
 
 def _bind_research_provider_adapter(client, runtime):
@@ -180,7 +200,7 @@ def _bind_research_provider_adapter(client, runtime):
             remove_boilerplate=remove_ai_boilerplate,
         ),
         is_materializing=snapshot_is_materializing,
-        failed_statuses=runtime['FAILED_STATUSES'],
+        failed_statuses=FAILED_STATUSES,
         only_reuse=lambda: runtime['_GOOGLE_AI_ONLY_REUSE'],
         semaphore=runtime.get('_RESEARCH_RACE_SEMAPHORE')
         or threading.BoundedSemaphore(3),
@@ -208,9 +228,6 @@ def _standalone_brightdata_client(runtime):
         # Lightweight coordinator fixtures can continue to inject a fake port.
         return legacy
 
-    if not callable(runtime.get('parse_bing_markdown')):
-        raise KeyError('Missing standalone Bright Data binding: parse_bing_markdown')
-
     factory = runtime.get('BrightDataProviderClient')
     if factory is None:
         from hosted.brightdata_provider import BrightDataProviderClient
@@ -227,7 +244,7 @@ def _standalone_brightdata_client(runtime):
         country=legacy.country,
         debug=getattr(legacy, 'debug', False),
         logger=logger,
-        parse_bing_markdown=runtime.get('parse_bing_markdown'),
+        parse_bing_markdown=_service_parse_bing_markdown,
     )
 
     runtime['bd_client'] = client
@@ -436,7 +453,7 @@ def _service_search_runner(runtime, client):
             target_domain,
             client=client,
             requested_engine=settings.get(
-                'search_engine', runtime.get('SEARCH_ENGINE', 'auto'),
+                'search_engine', 'auto',
             ),
             measure_google_ai_mode=bool(
                 settings.get('include_google_ai_mode', True)
