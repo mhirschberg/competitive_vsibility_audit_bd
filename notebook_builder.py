@@ -105,7 +105,6 @@ COMPANY_KEYWORD_COMPLETION_ADAPTER_SOURCE = '''def complete_company_keywords(
         brand,
         current_keywords,
         run_utility=run_chatgpt_without_web,
-        parse_json=parse_ai_json,
         model_to_dict=model_to_dict,
         keyword_model=BuyerIntentKeyword,
     )
@@ -118,7 +117,6 @@ BUYER_KEYWORD_PROOFREADING_ADAPTER_SOURCE = '''def proofread_buyer_keywords(
         brand,
         current_keywords,
         run_utility=run_chatgpt_without_web,
-        parse_json=parse_ai_json,
         model_to_dict=model_to_dict,
         market_language_fn=market_language,
         keyword_model=BuyerIntentKeyword,
@@ -287,7 +285,6 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
             ports=CompanyAnalysisPorts(
                 client=bd_client,
                 run_utility=run_chatgpt_without_web,
-                parse_json=parse_ai_json,
                 normalize_intake=normalize_company_intake,
                 complete_keywords=complete_company_keywords,
                 proofread_keywords=proofread_buyer_keywords,

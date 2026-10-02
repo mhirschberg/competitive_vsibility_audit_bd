@@ -22,7 +22,6 @@ from audit_core.competitor_scope import build_locked_target_scope
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
-from audit_core.json_parsing import parse_ai_json as shared_parse_ai_json
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -271,7 +270,7 @@ class ServiceAdapterTests(unittest.TestCase):
         ports = run_core.call_args.kwargs['ports']
         self.assertIs(ports.client, client)
         self.assertIs(ports.run_utility, utility_race)
-        self.assertIs(ports.parse_json, shared_parse_ai_json)
+        self.assertFalse(hasattr(ports, 'parse_json'))
         self.assertEqual(ports.error_type, RuntimeError)
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
         from audit_core.company_analysis import normalize_company_intake_core

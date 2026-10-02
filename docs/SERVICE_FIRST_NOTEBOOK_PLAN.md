@@ -800,6 +800,19 @@ boundary now that both service and notebook resolve to the same shared parser;
 retain it as a port only if it continues to provide useful test or format
 variation coverage.
 
+Sixty-first checkpoint: company-stage analysis, keyword completion, and
+proofreading now call the shared JSON parser directly instead of carrying a
+parser callback through `CompanyAnalysisPorts` and helper calls. This is safe
+because the notebook and hosted adapters already use the same parser; malformed
+or fenced JSON still follows its existing recovery behavior. A fenced-JSON
+company fixture checks this end to end, and the generated notebook embeds the
+same code. No provider requests, deployment, or memory-reduction claim was
+made.
+
+Next: review `normalize_intake` and `build_locked_scope` as the remaining
+company-analysis ports; retain them only where notebook compatibility or
+cross-module ownership still warrants explicit injection.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
