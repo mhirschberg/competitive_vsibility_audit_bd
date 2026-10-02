@@ -99,6 +99,7 @@ from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
     BrightDataAPIError, SnapshotTimeoutError,
 )
+from audit_core.brightdata_usage import DEFAULT_PRICE_PER_1000_RESULTS_USD
 
 
 _RESEARCH_BINDINGS = (
@@ -600,7 +601,6 @@ def build_runtime_ports(runtime):
             'cached_research_snapshot_ids',
             'resolve_google_goto_url',
             'create_styled_pdf_report',
-            'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
             need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
@@ -690,7 +690,7 @@ def build_runtime_ports(runtime):
         ),
         finalize_stage_factory=finalize_ports,
         stage_banner=need('print_stage'),
-        price_per_1000=need('BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD'),
+        price_per_1000=DEFAULT_PRICE_PER_1000_RESULTS_USD,
         after_search=after_search,
     )
 

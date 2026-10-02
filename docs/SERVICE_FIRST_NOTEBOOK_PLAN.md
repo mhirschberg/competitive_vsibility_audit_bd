@@ -2,13 +2,19 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
-Latest checkpoint: `hosted.service_adapter` now reads competitor-validation
+Latest checkpoint: the Bright Data estimate of `$1.50 per 1,000 results` now
+has one source of truth in `audit_core.brightdata_usage`. The service adapter
+no longer requires the notebook's price variable; the generated notebook binds
+its display setting to the embedded shared constant. No audit/provider calls
+or deployment were involved.
+
+Previous checkpoint: `hosted.service_adapter` now reads competitor-validation
 worker and candidate limits directly from `audit_core.competitor_scope`, where
 the shared defaults already live. Service startup no longer requires those
 duplicate constants from notebook runtime; the captured values are covered by
 an adapter test. No audit/provider calls or deployment were involved.
 
-Previous checkpoint: `audit_core.audit_models` now owns the Pydantic schemas
+Earlier checkpoint: `audit_core.audit_models` now owns the Pydantic schemas
 for competitor candidates, selected competitors, and brand profiles. The
 hosted adapter imports these models directly instead of requiring notebook
 runtime bindings, and the notebook builder embeds the same module in its
