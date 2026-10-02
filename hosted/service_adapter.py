@@ -506,7 +506,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
                 run_utility=utility_race,
                 parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
-                keyword_model=runtime.get('BuyerIntentKeyword', BuyerIntentKeyword),
             ),
             proofread_keywords=lambda **kwargs: proofread_buyer_keywords_core(
                 **kwargs,
@@ -514,7 +513,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
                 parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
                 market_language_fn=market_language,
-                keyword_model=runtime.get('BuyerIntentKeyword', BuyerIntentKeyword),
             ),
             build_locked_scope=build_locked_target_scope_core,
             error_type=runtime['BrightDataAPIError'],
@@ -538,9 +536,6 @@ def build_runtime_ports(runtime):
     success = need('print_stage_success')
     warning = need('print_stage_warning')
     format_duration_fn = format_duration
-    intake_model = runtime.get('CompanyIntake', CompanyIntake)
-    brand_model = runtime.get('BrandAnalysis', BrandAnalysis)
-    keyword_model = runtime.get('BuyerIntentKeyword', BuyerIntentKeyword)
     analyze_company = _service_company_analyzer(
         runtime, client, utility_race=utility_race,
     )
@@ -640,9 +635,9 @@ def build_runtime_ports(runtime):
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
             analyze=analyze_company,
-            intake_factory=intake_model,
-            brand_factory=brand_model,
-            keyword_factory=keyword_model,
+            intake_factory=CompanyIntake,
+            brand_factory=BrandAnalysis,
+            keyword_factory=BuyerIntentKeyword,
             get_locked_scope=lambda: None,
             set_locked_scope=lambda scope: company_scope.__setitem__(
                 'value', dict(scope) if isinstance(scope, dict) else scope

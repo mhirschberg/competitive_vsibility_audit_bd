@@ -773,6 +773,20 @@ Next: inspect the remaining company-stage runtime bindings and classify each
 as shared policy, provider operation, persistence, model validation, or UI
 output before removing another dependency.
 
+Fifty-ninth checkpoint: the hosted company stage now binds `CompanyIntake`,
+`BrandAnalysis`, and `BuyerIntentKeyword` from the shared service schemas rather
+than optionally inheriting notebook runtime classes. Keyword completion and
+proofreading likewise use the shared keyword schema directly. These are
+provider-neutral model contracts, not per-run provider or UI settings; the
+notebook still embeds and uses the same schema source. Offline adapter tests
+verify the hosted path works when the legacy model bindings are absent. No
+provider request, notebook change, deployment, or memory-reduction claim was
+made.
+
+Next: review the remaining Stage 1 provider and persistence ports for redundant
+runtime callbacks, keeping Bright Data operations and filesystem writes
+explicit at the adapter boundary.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

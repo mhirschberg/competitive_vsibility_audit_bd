@@ -561,7 +561,7 @@ class ServiceAdapterTests(unittest.TestCase):
 
         self.assertTrue(callable(ports.search_stage.run_search))
 
-    def test_runtime_ports_use_shared_company_models_by_default(self):
+    def test_runtime_ports_bind_shared_company_models_without_notebook_models(self):
         runtime = self.runtime([])
         for name in ('CompanyIntake', 'BrandAnalysis', 'BuyerIntentKeyword'):
             runtime.pop(name)
