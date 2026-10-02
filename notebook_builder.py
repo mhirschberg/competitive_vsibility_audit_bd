@@ -56,6 +56,7 @@ REPORT_STAGE_SOURCE = ROOT / "audit_core" / "report_stage.py"
 REPORT_EXPORT_SOURCE = ROOT / "audit_core" / "report_export.py"
 ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
 UTILITY_AI_RACE_SOURCE = ROOT / "audit_core" / "utility_ai_race.py"
+COMPANY_MODELS_SOURCE = ROOT / "audit_core" / "company_models.py"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -89,6 +90,8 @@ COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
 COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
 COMPANY_ANALYSIS_PROVIDER_START = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: start"
 COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
+COMPANY_MODELS_START = "# AUDIT-COMPANY-MODELS: start"
+COMPANY_MODELS_END = "# AUDIT-COMPANY-MODELS: end"
 COMPANY_INTAKE_ADAPTER_SOURCE = '''def normalize_company_intake(data, company_name, company_url):
     normalized = prepare_company_intake_payload(
         data,
@@ -680,6 +683,40 @@ def _replace_python_function_occurrence(cell, name, occurrence, replacement):
     cell["source"] = lines
 
 
+def _replace_python_classes_with_source(cell, names, start, end, source):
+    """Replace legacy top-level classes with one tagged shared source region."""
+    text = "".join(cell["source"])
+    if start in text or end in text:
+        _replace_embedded_source(cell, start, end, source)
+        return
+
+    tree = ast.parse(text)
+    classes = [
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name in set(names)
+    ]
+    found = {node.name for node in classes}
+    if found != set(names):
+        raise ValueError(
+            f"Expected model classes {sorted(names)!r}, found {sorted(found)!r}"
+        )
+
+    lines = text.splitlines(keepends=True)
+    first_line = min(node.lineno for node in classes)
+    removed = {
+        line_index
+        for node in classes
+        for line_index in range(node.lineno - 1, node.end_lineno)
+    }
+    output = []
+    for index, line in enumerate(lines):
+        if index == first_line - 1:
+            output.extend([start + "\n", source.rstrip("\n") + "\n", end + "\n"])
+        if index not in removed:
+            output.append(line)
+    cell["source"] = output
+
+
 def _replace_last_python_function(cell, name, replacement):
     """Replace the final notebook definition of a function with an adapter."""
     source = "".join(cell["source"])
@@ -895,6 +932,13 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
+    _replace_python_classes_with_source(
+        primitives_cell,
+        {"BuyerIntentKeyword", "BrandAnalysis", "CompanyIntake"},
+        COMPANY_MODELS_START,
+        COMPANY_MODELS_END,
+        Path(COMPANY_MODELS_SOURCE).read_text(encoding="utf-8"),
+    )
     _replace_embedded_source(
         primitives_cell,
         PRIMITIVES_START,

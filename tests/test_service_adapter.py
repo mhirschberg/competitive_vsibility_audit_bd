@@ -19,6 +19,9 @@ from hosted.service_adapter import (
 from hosted.brightdata_provider import BrightDataProviderClient
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
 from audit_core.competitor_scope import build_locked_target_scope
+from audit_core.company_models import (
+    BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
+)
 from audit_core.json_parsing import parse_ai_json as shared_parse_ai_json
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
@@ -533,6 +536,17 @@ class ServiceAdapterTests(unittest.TestCase):
         ports = build_runtime_ports(runtime)
 
         self.assertTrue(callable(ports.search_stage.run_search))
+
+    def test_runtime_ports_use_shared_company_models_by_default(self):
+        runtime = self.runtime([])
+        for name in ('CompanyIntake', 'BrandAnalysis', 'BuyerIntentKeyword'):
+            runtime.pop(name)
+
+        ports = build_runtime_ports(runtime)
+
+        self.assertIs(ports.company_stage.intake_factory, CompanyIntake)
+        self.assertIs(ports.company_stage.brand_factory, BrandAnalysis)
+        self.assertIs(ports.company_stage.keyword_factory, BuyerIntentKeyword)
 
     def test_worker_images_copy_the_importable_reddit_module(self):
         root = Path(__file__).resolve().parents[1]
