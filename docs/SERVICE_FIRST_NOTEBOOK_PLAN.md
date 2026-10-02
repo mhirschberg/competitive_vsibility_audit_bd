@@ -1080,3 +1080,42 @@ source labels, report builder, and Bright Data accounting.
 - Worker idle time waiting for external snapshots may cost more than resident
   memory. Event-driven suspension is a later architecture change, not a
   prerequisite for extracting the engine.
+
+## Live Cloud Run worker sizing benchmark — 2026-10-02
+
+A full default-options Notion audit (US; ChatGPT, Gemini, and Copilot enabled;
+Google AI Mode and Reddit disabled) completed successfully on the service-native
+worker image built from commit `4d46d7f`. The isolated execution used 1 vCPU,
+1 GiB, one task, and no retries. The production Job was restored immediately
+after creating the test execution; its current notebook image and 2 vCPU / 2
+GiB settings were not changed permanently.
+
+- Audit pipeline elapsed: 703.993 seconds (11m44s); Cloud Run execution: 12m10s.
+- Audit child-process CPU time: 14.795 seconds (about 2.1% of one core averaged
+  over the pipeline duration). Cloud Monitoring's 12 one-minute samples showed
+  a maximum CPU utilization of 29.5% and a 6.6% sample average.
+- Child-process high-water RSS: 310,161,408 bytes (about 296 MiB). The 1 GiB
+  task's Cloud Monitoring samples showed a maximum of 224,346,112 bytes
+  (about 214 MiB / 20.9%) across 14 samples.
+- The cgroup v2 counters were unavailable in this container, so the exact
+  high-water measurement is `RUSAGE_CHILDREN` rather than a summed worker-plus-
+  runner process-tree peak. Cloud Monitoring covers the whole task but samples
+  every 60 seconds and can miss short peaks. Keep both qualifications attached
+  to this benchmark.
+
+For a single standard audit, 1 vCPU / 1 GiB is a successful and substantially
+smaller configuration than the existing 2 vCPU / 2 GiB job. It is the
+recommended next production candidate, but not yet a permanent change: this is
+one live run, and Reddit-enabled / longer-wait configurations and concurrent
+workshop load were not exercised. Cloud Run Jobs require at least 1 vCPU; 512
+MiB is allowed with 1 vCPU, but has not been live-tested here.
+
+At the current standard on-demand rates, 1 vCPU / 1 GiB for 12m10s is roughly
+$0.0146 gross worker compute, compared with $0.0292 for 2 vCPU / 2 GiB at the
+same duration (about $0.0146 saved per audit, before any applicable free tier
+or credits). This excludes Bright Data and all other services. Cloud Run Jobs
+are billed for the instance lifetime with a one-minute minimum; see [Cloud Run
+pricing](https://cloud.google.com/run/pricing) and [Cloud Run job CPU
+limits](https://docs.cloud.google.com/run/docs/configuring/jobs/cpu). The
+Cloud Monitoring sampling caveat is documented in [Cloud Run
+metrics](https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z).
