@@ -263,16 +263,23 @@ class AuditPipelineTests(unittest.TestCase):
 
     def run_fixture(self, root, *, reddit):
         events = []
-        output = Path(root) / "competitive-visibility-apple"
+        output = Path(root) / "competitive-visibility-apple-20260930-000000"
         context = AuditRunContext(
-            run_id="apple-fixture", run_timestamp=datetime(
+            run_id="apple-20260930-000000", run_timestamp=datetime(
                 2026, 9, 30, tzinfo=timezone.utc,
             ),
             export_prefix="20260930-apple-us", output_directory=output,
             raw_directory=output / "raw",
             site_resolution={
+                "submitted_url": "https://apple.com/",
+                "submitted_hostname": "apple.com",
+                "canonical_url": "https://apple.com/",
+                "canonical_hostname": "apple.com",
+                "redirect_chain": [],
                 "submitted_domain": "apple.com",
                 "canonical_domain": "apple.com",
+                "final_http_status": 200,
+                "verification": "verified_response",
             },
         )
         settings = {
@@ -366,6 +373,71 @@ class AuditPipelineTests(unittest.TestCase):
             source.index("# Report display")
         ]
 
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 9, 30, tzinfo=tz or timezone.utc)
+
+        volatile_fields = {
+            "duration_seconds", "audit_started_at", "completed_at",
+            "stage_durations", "elapsed_seconds",
+            "created_at", "updated_at", "run_id", "audit_as_of_date",
+        }
+
+        def normalize(value, roots):
+            if isinstance(value, dict):
+                return {
+                    key: normalize(item, roots)
+                    for key, item in value.items()
+                    if key not in volatile_fields
+                }
+            if isinstance(value, list):
+                return [normalize(item, roots) for item in value]
+            if isinstance(value, str):
+                for root in roots:
+                    value = value.replace(str(root), "<OUTPUT>")
+            return value
+
+        def output_artifacts(root, *, exclude_run_settings=False):
+            files = sorted(path for path in root.rglob("*") if path.is_file())
+            artifacts = {}
+            for path in files:
+                relative = path.relative_to(root)
+                if exclude_run_settings and relative.name == "00_run_settings.json":
+                    continue
+                if path.suffix == ".json":
+                    artifacts[str(relative)] = normalize(
+                        json.loads(path.read_text(encoding="utf-8")),
+                        (root,),
+                    )
+                elif path.suffix in {".md", ".txt"}:
+                    content = path.read_text(encoding="utf-8")
+                    for candidate_root in (root,):
+                        content = content.replace(str(candidate_root), "<OUTPUT>")
+                    artifacts[str(relative)] = content
+                else:
+                    artifacts[str(relative)] = path.read_bytes()
+            return artifacts
+
+        def differing_paths(left, right, prefix=""):
+            if isinstance(left, dict) and isinstance(right, dict):
+                result = []
+                for key in sorted(set(left) | set(right)):
+                    path = f"{prefix}.{key}" if prefix else str(key)
+                    if key not in left or key not in right:
+                        result.append(path)
+                    else:
+                        result.extend(differing_paths(left[key], right[key], path))
+                return result
+            if isinstance(left, list) and isinstance(right, list):
+                if len(left) != len(right):
+                    return [f"{prefix}.length"]
+                result = []
+                for index, (left_item, right_item) in enumerate(zip(left, right)):
+                    result.extend(differing_paths(left_item, right_item, f"{prefix}[{index}]"))
+                return result
+            return [] if left == right else [prefix]
+
         for reddit in (False, True):
             with self.subTest(reddit=reddit), tempfile.TemporaryDirectory() as root:
                 service_root = Path(root) / "service"
@@ -384,7 +456,7 @@ class AuditPipelineTests(unittest.TestCase):
                 )
                 namespace = {
                     "asyncio": asyncio,
-                    "datetime": datetime,
+                    "datetime": FixedDateTime,
                     "timezone": timezone,
                     "json": json,
                     "time": __import__("time"),
@@ -399,6 +471,8 @@ class AuditPipelineTests(unittest.TestCase):
                         "submitted_url": url, "submitted_hostname": "apple.com",
                         "canonical_url": "https://apple.com/",
                         "canonical_hostname": "apple.com", "redirect_chain": [],
+                        "final_http_status": 200,
+                        "verification": "verified_response",
                     },
                     "get_root_domain": lambda host: host,
                     "slugify": lambda value: value.lower(),
@@ -495,6 +569,41 @@ class AuditPipelineTests(unittest.TestCase):
                 self.assertEqual(
                     {key: service_result[key] for key in stable_fields},
                     {key: notebook_result[key] for key in stable_fields},
+                )
+                notebook_output = Path(
+                    namespace["CURRENT_AUDIT_OUTPUT_DIRECTORY"]
+                )
+                service_artifacts = output_artifacts(
+                    service_root / "competitive-visibility-apple-20260930-000000",
+                )
+                notebook_artifacts = output_artifacts(
+                    notebook_output, exclude_run_settings=True,
+                )
+                self.assertEqual(set(service_artifacts), set(notebook_artifacts))
+                for artifact_name in service_artifacts:
+                    with self.subTest(reddit=reddit, artifact=artifact_name):
+                        if isinstance(service_artifacts[artifact_name], dict):
+                            self.assertEqual(
+                                set(service_artifacts[artifact_name]),
+                                set(notebook_artifacts[artifact_name]),
+                            )
+                        self.assertEqual(
+                            service_artifacts[artifact_name],
+                            notebook_artifacts[artifact_name],
+                            msg="Differing normalized fields: " + ", ".join(
+                                differing_paths(
+                                    service_artifacts[artifact_name],
+                                    notebook_artifacts[artifact_name],
+                                )[:20]
+                            ),
+                        )
+                self.assertEqual(
+                    service_result["usage"]["estimated_cost_usd"],
+                    notebook_result["usage"]["estimated_cost_usd"],
+                )
+                self.assertEqual(
+                    service_result["visibility"]["chatgpt"]["engine_name"],
+                    notebook_result["visibility"]["chatgpt"]["engine_name"],
                 )
 
 

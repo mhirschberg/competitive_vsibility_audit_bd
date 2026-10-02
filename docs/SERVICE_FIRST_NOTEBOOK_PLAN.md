@@ -16,7 +16,7 @@ own explicit approval.
 | 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Complete |
 | 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Complete |
 | 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Complete |
-| 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Awaiting approval |
+| 4. Prove notebook/service parity | Run both paths against the same saved deterministic fixtures; record whether their provider data is synthetic or captured. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Complete (synthetic fixtures) |
 | 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
 | 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
 
@@ -717,6 +717,22 @@ claim was made.
 Next: remove remaining notebook-derived serialization and presentation
 callbacks where the shared engine already has equivalent behavior, while
 keeping report artifacts and the notebook's user-facing flow unchanged.
+
+Phase 4 checkpoint: the service pipeline and generated-notebook orchestration
+now run against the same deterministic Apple fixture with Reddit both disabled
+and enabled. Parity checks compare normalized audit results and all generated
+artifacts (JSON records, Markdown, text, PDF, and ZIP), including competitor
+selection, measured source labels, usage/cost, and output manifests. The
+focused competitor-research and visibility tests continue to verify their
+shared fixture semantics. The available provider-response fixtures are
+explicitly synthetic regression data, not captured Bright Data responses; no
+captured production response was present in the repository. The full local
+suite passes (461 tests, 4 skipped), including the notebook-builder dry run;
+no live provider calls or deployments were made. This proves code-path parity
+on offline fixtures, not the live accuracy or reliability of provider data.
+
+Next: measure elapsed time and process-tree peak memory on representative
+offline fixtures (Phase 5), then report the measurements and limitations.
 
 Forty-seventh checkpoint: hosted orchestration now binds audit-record
 assembly, report filenames, Bright Data usage copy, storage cleanup, and
