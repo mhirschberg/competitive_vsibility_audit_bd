@@ -250,7 +250,6 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime = {
             'run_chatgpt_without_web': lambda *_args, **_kwargs: None,
             'normalize_company_intake': lambda **kwargs: kwargs,
-            'select_relevant_company_research': lambda **kwargs: kwargs,
             'complete_company_keywords': lambda **kwargs: kwargs,
             'proofread_buyer_keywords': lambda **kwargs: kwargs,
             'BrightDataAPIError': RuntimeError,
@@ -268,6 +267,8 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(ports.parse_json, shared_parse_ai_json)
         self.assertEqual(ports.error_type, RuntimeError)
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
+        from audit_core.company_analysis import select_relevant_company_research
+        self.assertIs(ports.select_relevant_research, select_relevant_company_research)
 
     def test_adapter_runs_same_fixture_with_and_without_social(self):
         for reddit in (False, True):
@@ -674,6 +675,7 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime.pop('is_google_goto_url', None)
         runtime.pop('remove_ai_boilerplate', None)
         runtime.pop('model_to_dict', None)
+        runtime.pop('select_relevant_company_research', None)
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],

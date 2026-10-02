@@ -27,6 +27,7 @@ from audit_core.company_stage import CompanyStagePorts
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     run_company_analysis_core,
+    select_relevant_company_research,
 )
 from audit_core.competitor_scope import (
     build_locked_target_scope as build_locked_target_scope_core,
@@ -488,9 +489,7 @@ def _service_company_analyzer(runtime, client):
             run_utility=runtime['run_chatgpt_without_web'],
             parse_json=parse_ai_json,
             normalize_intake=runtime['normalize_company_intake'],
-            select_relevant_research=runtime[
-                'select_relevant_company_research'
-            ],
+            select_relevant_research=select_relevant_company_research,
             complete_keywords=runtime['complete_company_keywords'],
             proofread_keywords=runtime['proofread_buyer_keywords'],
             build_locked_scope=build_locked_target_scope_core,
@@ -592,8 +591,7 @@ def build_runtime_ports(runtime):
         if not callable(runtime.get('company_analysis_runner')):
             for name in (
             'run_chatgpt_without_web', 'normalize_company_intake',
-            'select_relevant_company_research', 'complete_company_keywords',
-            'proofread_buyer_keywords',
+            'complete_company_keywords', 'proofread_buyer_keywords',
             ):
                 need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
