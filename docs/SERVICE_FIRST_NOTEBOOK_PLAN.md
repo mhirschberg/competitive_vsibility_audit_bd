@@ -14,8 +14,8 @@ own explicit approval.
 | --- | --- | --- |
 | 0. Record the plan | Commit this approval-gated sequence and the current baseline. | Complete |
 | 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Complete |
-| 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Awaiting approval |
-| 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Not started |
+| 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Complete |
+| 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Awaiting approval |
 | 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Not started |
 | 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
 | 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
@@ -33,8 +33,10 @@ scope module. Remaining runtime values are intentionally not copied from a
 notebook into `audit_core`: per-run settings/output state; provider credentials
 and research snapshot cache hooks; canonical-site and Google redirect network
 resolution; PDF rendering; and optional test/provider-module overrides. Phase
-2 owns the per-run setup and checkpoint adapters; true external I/O remains an
-explicit hosted port.
+2 moved official-site verification, audit-scoped research snapshot storage,
+resume recovery, and usage checkpoints into service-owned preparation. Provider
+credentials still enter through the transition adapter until Phase 3 creates
+the native worker bootstrap; true external I/O remains an explicit hosted port.
 
 Latest checkpoint: Phase 1 closed the runtime contract for pure shared
 behavior. The service now uses shared Bing Markdown parsing, shared failed
@@ -42,6 +44,19 @@ statuses, and the shared default search engine instead of notebook bindings;
 remaining bindings are recorded above as per-run state, external I/O, or
 test/provider seams. Offline adapter/parser tests cover the removed bindings.
 No paid requests or deployment were made.
+
+Phase 2 checkpoint: hosted audit preparation now uses the shared protected
+official-site resolver directly, creates usage and research-snapshot
+checkpoints under the audit's own `raw/` directory, and restores provider
+snapshot IDs without notebook cache functions. The snapshot cache retains the
+existing on-disk format, including legacy Google AI Mode entries, and resume
+continues to reuse saved IDs rather than starting replacement requests. The
+Bright Data provider can now be constructed from explicit service credentials
+and settings; the transitional runner still sources those credentials from its
+already-initialized provider until Phase 3 establishes the native worker
+bootstrap. Fresh-run, resume, cache recovery, provider construction, and adapter
+tests are offline. Full suite: 452 passed, 4 skipped. No paid requests,
+deployment, or production changes were made.
 
 Previous checkpoint: hosted progress now uses service logging for stage banners,
 successes, and warnings rather than notebook-provided print callbacks. The
