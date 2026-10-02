@@ -287,7 +287,6 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
                 run_utility=run_chatgpt_without_web,
                 complete_keywords=complete_company_keywords,
                 proofread_keywords=proofread_buyer_keywords,
-                error_type=BrightDataAPIError,
             ),
         )
 

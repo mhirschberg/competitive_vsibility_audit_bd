@@ -506,7 +506,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
                 model_to_dict=model_to_dict,
                 market_language_fn=market_language,
             ),
-            error_type=runtime['BrightDataAPIError'],
         ),
     )
 

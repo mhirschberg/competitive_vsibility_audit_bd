@@ -272,7 +272,7 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertFalse(hasattr(ports, 'parse_json'))
         self.assertFalse(hasattr(ports, 'normalize_intake'))
         self.assertFalse(hasattr(ports, 'build_locked_scope'))
-        self.assertEqual(ports.error_type, RuntimeError)
+        self.assertFalse(hasattr(ports, 'error_type'))
         self.assertNotIn('complete_company_keywords', runtime)
         self.assertNotIn('run_chatgpt_without_web', runtime)
         completion = ports.complete_keywords(
