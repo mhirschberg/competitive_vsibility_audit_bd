@@ -30,7 +30,6 @@ from audit_core.company_analysis import (
     normalize_company_intake_core,
     proofread_buyer_keywords_core,
     run_company_analysis_core,
-    select_relevant_company_research,
 )
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
@@ -500,7 +499,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
             run_utility=utility_race,
             parse_json=parse_ai_json,
             normalize_intake=normalize_company_intake_core,
-            select_relevant_research=select_relevant_company_research,
             complete_keywords=lambda **kwargs: complete_company_keywords_core(
                 **kwargs,
                 run_utility=utility_race,

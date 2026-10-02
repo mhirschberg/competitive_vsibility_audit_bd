@@ -787,6 +787,19 @@ Next: review the remaining Stage 1 provider and persistence ports for redundant
 runtime callbacks, keeping Bright Data operations and filesystem writes
 explicit at the adapter boundary.
 
+Sixtieth checkpoint: company research excerpt selection is now called directly
+inside `audit_core.company_analysis`; it is no longer an injected callback to
+the prompt builder or analysis ports. Both the service and generated notebook
+therefore use the same deterministic selection policy without adapter wiring.
+The notebook builder still removes the shadowed duplicate implementation.
+Company prompt fixtures and notebook generation checks cover the shared path.
+No provider requests, deployment, or memory-reduction claim was made.
+
+Next: inspect whether the company-stage JSON parser is still a meaningful
+boundary now that both service and notebook resolve to the same shared parser;
+retain it as a port only if it continues to provide useful test or format
+variation coverage.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

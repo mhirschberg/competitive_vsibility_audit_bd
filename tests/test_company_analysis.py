@@ -134,7 +134,6 @@ class CompanyAnalysisTests(unittest.TestCase):
             run_utility=run_utility,
             parse_json=json.loads,
             normalize_intake=normalize_intake,
-            select_relevant_research=lambda **kwargs: kwargs["research_text"],
             complete_keywords=complete_keywords,
             proofread_keywords=proofread_keywords,
             build_locked_scope=lambda brand, settings: {
@@ -156,7 +155,6 @@ class CompanyAnalysisTests(unittest.TestCase):
         structuring = build_company_structuring_prompt(
             self.settings,
             "Evidence block",
-            select_relevant_research=lambda **kwargs: kwargs["research_text"],
             strict_retry=True,
         )
         self.assertIn("Evidence block", structuring)
