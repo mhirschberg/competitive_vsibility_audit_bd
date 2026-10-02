@@ -486,29 +486,31 @@ def _service_reddit_runners(
     return start_discovery, run_social_stage
 
 
-def _service_company_analyzer(runtime, client):
+def _service_company_analyzer(runtime, client, utility_race=None):
     """Run company research and structuring through the shared provider core."""
     if callable(runtime.get('company_analysis_runner')):
         return runtime['company_analysis_runner']
+
+    utility_race = utility_race or _service_utility_ai_race(runtime, client)
 
     return lambda settings: run_company_analysis_core(
         settings,
         ports=CompanyAnalysisPorts(
             client=client,
-            run_utility=runtime['run_chatgpt_without_web'],
+            run_utility=utility_race,
             parse_json=parse_ai_json,
             normalize_intake=normalize_company_intake_core,
             select_relevant_research=select_relevant_company_research,
             complete_keywords=lambda **kwargs: complete_company_keywords_core(
                 **kwargs,
-                run_utility=runtime['run_chatgpt_without_web'],
+                run_utility=utility_race,
                 parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
                 keyword_model=runtime.get('BuyerIntentKeyword', BuyerIntentKeyword),
             ),
             proofread_keywords=lambda **kwargs: proofread_buyer_keywords_core(
                 **kwargs,
-                run_utility=runtime['run_chatgpt_without_web'],
+                run_utility=utility_race,
                 parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
                 market_language_fn=market_language,
@@ -530,6 +532,7 @@ def build_runtime_ports(runtime):
         raise KeyError('bd_client')
     runtime['bd_client'] = client
     _bind_research_provider_adapter(client, runtime)
+    utility_race = _service_utility_ai_race(runtime, client)
     console = need('console')
     clean_record = clean_record_for_storage
     success = need('print_stage_success')
@@ -538,7 +541,9 @@ def build_runtime_ports(runtime):
     intake_model = runtime.get('CompanyIntake', CompanyIntake)
     brand_model = runtime.get('BrandAnalysis', BrandAnalysis)
     keyword_model = runtime.get('BuyerIntentKeyword', BuyerIntentKeyword)
-    analyze_company = _service_company_analyzer(runtime, client)
+    analyze_company = _service_company_analyzer(
+        runtime, client, utility_race=utility_race,
+    )
     company_scope = {'value': None}
 
     def write_company_json(path, data):
@@ -616,11 +621,6 @@ def build_runtime_ports(runtime):
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
             need(name)
-        if not callable(runtime.get('company_analysis_runner')):
-            for name in (
-            'run_chatgpt_without_web',
-            ):
-                need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
         if not callable(getattr(client, 'run_keyword_serp_task', None)):
@@ -633,7 +633,7 @@ def build_runtime_ports(runtime):
     start_reddit_discovery, run_reddit_social = _service_reddit_runners(
         runtime,
         client,
-        utility_race=_service_utility_ai_race(runtime, client),
+        utility_race=utility_race,
         reddit_module=runtime.get('reddit_module', reddit_social),
     )
 
