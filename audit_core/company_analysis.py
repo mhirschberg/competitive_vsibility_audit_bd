@@ -5,7 +5,7 @@ import re
 
 
 # SERVICE-ONLY-IMPORTS: start
-from .company_models import CompanyIntake
+from .company_models import BuyerIntentKeyword, CompanyIntake
 from .domains import get_root_domain
 from .domains import normalize_public_url
 from .primitives import ensure_string_list, normalize_confidence
@@ -158,6 +158,86 @@ def normalize_company_intake_core(
     if callable(validator):
         return validator(payload)
     return model.parse_obj(payload)
+
+
+def build_company_keyword_completion_prompt(settings, brand, current_keywords):
+    """Build the prompt used to complete a short buyer-keyword set."""
+    existing = [item.keyword for item in current_keywords]
+    audit_focus = str(settings.get("audit_focus", "") or "").strip()
+    return f"""
+Using only the supplied information, return exactly eight unique
+non-branded buyer-intent searches appropriate for this market.
+
+Category: {brand.category}
+Audit focus: {audit_focus or "primary offering"}
+Positioning: {brand.positioning}
+Offerings: {", ".join(brand.products[:5])}
+Attributes or benefits: {", ".join(brand.key_features[:6])}
+
+Existing keywords:
+{json.dumps(existing, ensure_ascii=False)}
+
+The searches should sound like something a real customer would enter
+when looking for, evaluating, comparing, or buying alternatives.
+
+They may be consumer, B2B, local, commercial, transactional, or
+solution-evaluation searches depending on the category.
+
+Return only JSON:
+
+{{
+  "buyer_intent_keywords": [
+    {{
+      "keyword": "buyer query",
+      "intent": "commercial",
+      "rationale": "short reason"
+    }}
+  ]
+}}
+
+Do not include the audited brand or competitor names.
+""".strip()
+
+
+def complete_company_keywords_core(
+    settings, brand, current_keywords, *, run_utility, parse_json,
+    model_to_dict, keyword_model=None,
+):
+    """Complete a short keyword set while preserving measured AI provenance."""
+    prompt = build_company_keyword_completion_prompt(
+        settings, brand, current_keywords,
+    )
+    result = run_utility(prompt)
+    parsed = parse_json(result["answer"])
+    completed = normalize_keyword_records(
+        parsed.get("buyer_intent_keywords") or parsed.get("keywords") or []
+    )
+
+    combined = []
+    seen = set()
+    audited_name = settings["company_name"].lower().strip()
+    model = keyword_model or BuyerIntentKeyword
+    for item in [
+        *[model_to_dict(keyword) for keyword in current_keywords],
+        *completed,
+    ]:
+        keyword = str(item.get("keyword") or "").strip()
+        key = keyword.lower()
+        if not key or key in seen or audited_name in key:
+            continue
+        seen.add(key)
+        validator = getattr(model, "model_validate", None)
+        combined.append(
+            validator(item) if callable(validator) else model.parse_obj(item)
+        )
+        if len(combined) == 8:
+            break
+
+    return {
+        "keywords": combined,
+        "record": result["record"],
+        "snapshot_id": result["snapshot_id"],
+    }
 
 
 def build_company_research_prompt(settings):

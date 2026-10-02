@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
+    complete_company_keywords_core,
     build_company_research_prompt,
     build_company_structuring_prompt,
     normalize_keyword_records,
@@ -272,6 +273,47 @@ class CompanyAnalysisTests(unittest.TestCase):
         self.assertEqual(intake.brand.domain, "example.com")
         self.assertEqual(intake.buyer_intent_keywords[0].keyword, "buy an oven")
 
+    def test_keyword_completion_deduplicates_filters_brand_and_keeps_snapshot(self):
+        current = [
+            BuyerIntentKeyword(keyword=f"existing query {index}")
+            for index in range(1, 8)
+        ]
+        model_to_dict = lambda item: item.model_dump()
+        responses = []
+
+        def run_utility(prompt):
+            responses.append(prompt)
+            return {
+                "answer": json.dumps({"buyer_intent_keywords": [
+                    {"keyword": "EXISTING QUERY 1"},
+                    {"keyword": "Example oven"},
+                    {"keyword": " compare premium ovens ", "intent": "commercial"},
+                ]}),
+                "record": {"answer_text": "fixture completion"},
+                "snapshot_id": "fixture-snapshot",
+            }
+
+        result = complete_company_keywords_core(
+            {"company_name": "Example", "audit_focus": "premium ovens"},
+            BrandAnalysis(
+                brand_name="Example", official_url="https://example.com/",
+                domain="example.com", category="ovens",
+                positioning="premium", products=["wall ovens"],
+                key_features=["induction"],
+            ),
+            current,
+            run_utility=run_utility,
+            parse_json=json.loads,
+            model_to_dict=model_to_dict,
+        )
+
+        self.assertEqual(len(responses), 1)
+        self.assertIn("premium ovens", responses[0])
+        self.assertEqual(len(result["keywords"]), 8)
+        self.assertEqual(result["keywords"][-1].keyword, "compare premium ovens")
+        self.assertEqual(result["snapshot_id"], "fixture-snapshot")
+        self.assertEqual(result["record"]["answer_text"], "fixture completion")
+
     def test_generated_notebook_has_one_shared_keyword_normalizer(self):
         notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -308,6 +350,27 @@ class CompanyAnalysisTests(unittest.TestCase):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
         self.assertIn("normalize_company_intake_core", calls)
+
+    def test_notebook_keyword_completion_is_a_shared_core_adapter(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        analysis_cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "final-analysis"
+        )
+        tree = ast.parse("".join(analysis_cell["source"]))
+        adapters = [
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "complete_company_keywords"
+        ]
+        self.assertEqual(len(adapters), 1)
+        calls = {
+            node.func.id
+            for node in ast.walk(adapters[0])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        self.assertEqual(calls, {"complete_company_keywords_core"})
 
     def test_shared_company_models_preserve_nested_defaults_and_validation(self):
         brand = BrandAnalysis(
