@@ -92,7 +92,8 @@ class CompanyAnalysisTests(unittest.TestCase):
                 "buyer_intent_keywords": items,
             }
             return {
-                "answer": json.dumps(parsed), "record": {"answer_text": "structured"},
+                "answer": f"```json\n{json.dumps(parsed)}\n```",
+                "record": {"answer_text": "structured"},
                 "snapshot_id": "structured-snapshot",
             }
 
@@ -132,7 +133,6 @@ class CompanyAnalysisTests(unittest.TestCase):
         ports = CompanyAnalysisPorts(
             client=client,
             run_utility=run_utility,
-            parse_json=json.loads,
             normalize_intake=normalize_intake,
             complete_keywords=complete_keywords,
             proofread_keywords=proofread_keywords,
@@ -297,7 +297,6 @@ class CompanyAnalysisTests(unittest.TestCase):
             ),
             current,
             run_utility=run_utility,
-            parse_json=json.loads,
             model_to_dict=model_to_dict,
         )
 
@@ -345,7 +344,6 @@ class CompanyAnalysisTests(unittest.TestCase):
             ),
             originals,
             run_utility=run_utility,
-            parse_json=json.loads,
             model_to_dict=lambda item: item.model_dump(),
             market_language_fn=lambda country: f"German ({country})",
         )
@@ -364,7 +362,6 @@ class CompanyAnalysisTests(unittest.TestCase):
         skipped = proofread_buyer_keywords_core(
             {"country": "US"}, Model(brand_name="Acme", category="coffee"), originals,
             run_utility=lambda *_args, **_kwargs: self.fail("must skip"),
-            parse_json=json.loads,
             model_to_dict=lambda item: item.model_dump(),
         )
         self.assertEqual(skipped["status"], "skipped")
@@ -380,7 +377,6 @@ class CompanyAnalysisTests(unittest.TestCase):
                 "answer": json.dumps({"keywords": [{"keyword": "espresso machine"}]}),
                 "record": result_record, "snapshot_id": "rejected-snapshot",
             },
-            parse_json=json.loads,
             model_to_dict=lambda item: item.model_dump(),
             market_language_fn=lambda _country: "English",
         )
@@ -393,7 +389,6 @@ class CompanyAnalysisTests(unittest.TestCase):
             {"company_name": "Acme", "country": "US"},
             Model(brand_name="Acme", category="coffee"), original_models,
             run_utility=lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("late")),
-            parse_json=json.loads,
             model_to_dict=lambda item: item.model_dump(),
             market_language_fn=lambda _country: "English",
         )

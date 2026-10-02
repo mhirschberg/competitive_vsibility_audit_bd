@@ -10,17 +10,17 @@ from .domains import get_root_domain
 from .domains import normalize_public_url
 from .primitives import ensure_string_list, normalize_confidence
 from .ai_localization import market_language
+from .json_parsing import parse_ai_json
 # SERVICE-ONLY-IMPORTS: end
 
 
 class CompanyAnalysisPorts:
     def __init__(
-        self, *, client, run_utility, parse_json, normalize_intake,
+        self, *, client, run_utility, normalize_intake,
         complete_keywords, proofread_keywords, build_locked_scope, error_type,
     ):
         self.client = client
         self.run_utility = run_utility
-        self.parse_json = parse_json
         self.normalize_intake = normalize_intake
         self.complete_keywords = complete_keywords
         self.proofread_keywords = proofread_keywords
@@ -199,15 +199,15 @@ Do not include the audited brand or competitor names.
 
 
 def complete_company_keywords_core(
-    settings, brand, current_keywords, *, run_utility, parse_json,
-    model_to_dict, keyword_model=None,
+    settings, brand, current_keywords, *, run_utility, model_to_dict,
+    keyword_model=None,
 ):
     """Complete a short keyword set while preserving measured AI provenance."""
     prompt = build_company_keyword_completion_prompt(
         settings, brand, current_keywords,
     )
     result = run_utility(prompt)
-    parsed = parse_json(result["answer"])
+    parsed = parse_ai_json(result["answer"])
     completed = normalize_keyword_records(
         parsed.get("buyer_intent_keywords") or parsed.get("keywords") or []
     )
@@ -363,8 +363,8 @@ Return only JSON:
 
 
 def proofread_buyer_keywords_core(
-    settings, brand, current_keywords, *, run_utility, parse_json,
-    model_to_dict, market_language_fn=None, keyword_model=None,
+    settings, brand, current_keywords, *, run_utility, model_to_dict,
+    market_language_fn=None, keyword_model=None,
 ):
     """Proofread buyer keywords, applying changes only after safety checks."""
     original_records = [model_to_dict(item) for item in current_keywords]
@@ -387,7 +387,7 @@ def proofread_buyer_keywords_core(
     )
     try:
         result = run_utility(prompt, timeout_seconds=900)
-        parsed = parse_json(result["answer"])
+        parsed = parse_ai_json(result["answer"])
         corrected_records = normalize_keyword_records(
             parsed.get("buyer_intent_keywords") or parsed.get("keywords") or []
         )
@@ -671,7 +671,7 @@ def run_company_analysis_core(settings, *, ports):
             )
         try:
             candidate_result = ports.run_utility(prompt)
-            parsed = ports.parse_json(candidate_result["answer"])
+            parsed = parse_ai_json(candidate_result["answer"])
             candidate_intake = ports.normalize_intake(
                 data=parsed,
                 company_name=settings["company_name"],

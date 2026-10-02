@@ -497,18 +497,15 @@ def _service_company_analyzer(runtime, client, utility_race=None):
         ports=CompanyAnalysisPorts(
             client=client,
             run_utility=utility_race,
-            parse_json=parse_ai_json,
             normalize_intake=normalize_company_intake_core,
             complete_keywords=lambda **kwargs: complete_company_keywords_core(
                 **kwargs,
                 run_utility=utility_race,
-                parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
             ),
             proofread_keywords=lambda **kwargs: proofread_buyer_keywords_core(
                 **kwargs,
                 run_utility=utility_race,
-                parse_json=parse_ai_json,
                 model_to_dict=model_to_dict,
                 market_language_fn=market_language,
             ),
