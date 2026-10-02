@@ -172,12 +172,9 @@ class ServiceAdapterTests(unittest.TestCase):
         client.run_keyword_serp_task = run_keyword_serp_task
         runtime = {
             'bd_client': client,
-            'console': Model(print=lambda message: None),
             'write_json': company.write_json,
             'model_to_dict': company.model_to_dict,
             'clean_record_for_storage': company.clean_record,
-            'print_stage_success': company.stage_success,
-            'print_stage_warning': search.stage_warning,
             'format_duration': search.format_duration,
             'restore_locked_target_scope': company.restore_locked_scope,
             'CompanyIntake': company.intake_factory,
@@ -558,6 +555,19 @@ class ServiceAdapterTests(unittest.TestCase):
         ports = build_runtime_ports(runtime)
 
         self.assertTrue(callable(ports.search_stage.run_search))
+
+    def test_runtime_ports_supply_progress_without_notebook_ui_callbacks(self):
+        runtime = self.runtime([])
+        for name in ('console', 'print_stage', 'print_stage_success', 'print_stage_warning'):
+            runtime.pop(name, None)
+
+        ports = build_runtime_ports(runtime)
+
+        with self.assertLogs('competitive_audit', level='INFO') as captured:
+            ports.stage_banner(2, 'Search', 6)
+            ports.search_stage.stage_success('Search complete')
+        self.assertIn('[2/6] Search', captured.output[0])
+        self.assertIn('Search complete', captured.output[1])
 
     def test_runtime_ports_bind_shared_company_models_without_notebook_models(self):
         runtime = self.runtime([])

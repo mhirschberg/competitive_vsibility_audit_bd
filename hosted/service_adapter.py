@@ -6,6 +6,8 @@ never reads or executes the notebook and never initiates a provider call.
 """
 
 from pathlib import Path
+import logging
+import re
 import threading
 
 import reddit_social
@@ -109,6 +111,38 @@ _RESEARCH_BINDINGS = (
     '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError',
 )
 
+_SERVICE_LOG = logging.getLogger('competitive_audit')
+
+
+def _service_notice(message, *, style='info'):
+    """Report adapter-owned progress without requiring notebook callbacks."""
+    text = re.sub(r'\[/?[a-zA-Z][^\]]*\]', '', str(message))
+    if style in ('warning', 'yellow'):
+        _SERVICE_LOG.warning('%s', text)
+    else:
+        _SERVICE_LOG.info('%s', text)
+
+
+def _service_stage_banner(stage_number, title, total_stages):
+    _service_notice(f'[{stage_number}/{total_stages}] {title}')
+
+
+def _service_stage_success(message):
+    _service_notice(f'✓ {message}')
+
+
+def _service_stage_warning(message):
+    _service_notice(f'⚠ {message}', style='warning')
+
+
+def _runtime_notice(runtime, message, *, style='info'):
+    """Keep notebook console styling when present; fall back to service logs."""
+    console = runtime.get('console')
+    if console is not None:
+        console.print(message)
+        return
+    _service_notice(message, style=style)
+
 
 def _bind_research_provider_adapter(client, runtime):
     """Install the explicit ChatGPT/Gemini race at the legacy-client boundary.
@@ -182,12 +216,10 @@ def _standalone_brightdata_client(runtime):
         from hosted.brightdata_provider import BrightDataProviderClient
         factory = BrightDataProviderClient
 
-    console = runtime.get('console')
     logger = (
-        (lambda message, style='dim': console.print(
-            f'[{style}]{message}[/{style}]'
-        ))
-        if console is not None else None
+        lambda message, style='dim': _runtime_notice(
+            runtime, message, style=style,
+        )
     )
     client = factory(
         token=legacy.token,
@@ -312,9 +344,10 @@ def _service_profile_runner(runtime):
         )
 
     def pending_notice(count):
-        console = runtime.get('console')
-        if console is not None:
-            console.print(f'      Waiting for {count} late profile snapshot(s)...')
+        _runtime_notice(
+            runtime,
+            f'      Waiting for {count} late profile snapshot(s)...',
+        )
 
     def run_profiles(target_brand, selected_competitors, audit_focus=''):
         return run_profile_research_core(
@@ -519,10 +552,9 @@ def build_runtime_ports(runtime):
     runtime['bd_client'] = client
     _bind_research_provider_adapter(client, runtime)
     utility_race = _service_utility_ai_race(runtime, client)
-    console = need('console')
     clean_record = clean_record_for_storage
-    success = need('print_stage_success')
-    warning = need('print_stage_warning')
+    success = _service_stage_success
+    warning = _service_stage_warning
     format_duration_fn = format_duration
     analyze_company = _service_company_analyzer(
         runtime, client, utility_race=utility_race,
@@ -554,8 +586,8 @@ def build_runtime_ports(runtime):
             write_json=write_json,
             create_zip=create_audit_zip,
             stage_success=success,
-            completion_notice=lambda message: console.print(
-                f'\n[bold green]{message}[/bold green]'
+            completion_notice=lambda message: _runtime_notice(
+                runtime, message, style='green',
             ),
             format_duration=format_duration_fn,
         )
@@ -642,12 +674,14 @@ def build_runtime_ports(runtime):
             configure_race_cache=need('configure_google_ai_race_cache'),
             write_json=write_json, model_to_dict=model_to_dict,
             clean_record=clean_record, stage_warning=warning,
-            print_selected=lambda competitor: console.print(
-                f'      ✓ {competitor.brand_name}'
+            print_selected=lambda competitor: _runtime_notice(
+                runtime, f'      ✓ {competitor.brand_name}',
             ),
-            social_notice=lambda: console.print(
-                '      [cyan]↗ Social discovery started in parallel; '
-                'snapshots are labelled [Social · …].[/cyan]'
+            social_notice=lambda: _runtime_notice(
+                runtime,
+                '      ↗ Social discovery started in parallel; '
+                'snapshots are labelled [Social · …].',
+                style='cyan',
             ),
             start_reddit_prefetch=start_reddit_discovery,
         ),
@@ -667,7 +701,7 @@ def build_runtime_ports(runtime):
             stage_warning=warning, format_duration=format_duration_fn,
         ),
         social_stage=SocialCompletionPorts(
-            print_stage=need('print_stage'), stage_success=success,
+            print_stage=_service_stage_banner, stage_success=success,
             stage_warning=warning, format_duration=format_duration_fn,
             summarize_warning=reddit_social.summarize_reddit_audit_warning,
             write_json=write_json,
@@ -686,7 +720,7 @@ def build_runtime_ports(runtime):
             stage_warning=warning, format_duration=format_duration_fn,
         ),
         finalize_stage_factory=finalize_ports,
-        stage_banner=need('print_stage'),
+        stage_banner=_service_stage_banner,
         price_per_1000=DEFAULT_PRICE_PER_1000_RESULTS_USD,
         after_search=after_search,
     )
@@ -709,7 +743,7 @@ def build_preparation_ports(runtime, *, base_directory="/content"):
         write_json=write_json,
         configure_google_ai_race_cache=need('configure_google_ai_race_cache'),
         import_google_ai_snapshot_ids=need('import_google_ai_snapshot_ids'),
-        notice=need('console').print,
+        notice=lambda message: _runtime_notice(runtime, message),
         set_output_directory=lambda path: runtime.__setitem__(
             'CURRENT_AUDIT_OUTPUT_DIRECTORY', path
         ),
