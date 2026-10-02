@@ -17,6 +17,21 @@ from notebook_builder import (
 )
 
 
+class _PydanticV1:
+    def dict(self):
+        return {"version": 1}
+
+
+class _PydanticV2:
+    def model_dump(self):
+        return {"version": 2}
+
+
+class _PlainRecord:
+    def __init__(self):
+        self.name = "plain"
+
+
 class NotebookBuilderTests(unittest.TestCase):
     def test_checked_in_notebook_is_current(self):
         self.assertEqual(build_notebook(), NOTEBOOK.read_bytes())
@@ -93,6 +108,30 @@ class NotebookBuilderTests(unittest.TestCase):
         ]
         self.assertEqual(definitions.count("clean_ai_json_text"), 1)
         self.assertEqual(definitions.count("parse_ai_json"), 1)
+
+    def test_shared_model_serializer_is_not_shadowed_by_legacy_copy(self):
+        notebook = json.loads(build_notebook())
+        cell = next(
+            cell for cell in notebook["cells"]
+            if cell.get("metadata", {}).get("id") == "final-core"
+        )
+        source = "".join(cell["source"])
+        tree = ast.parse(source)
+        definitions = [
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        self.assertEqual(definitions.count("model_to_dict"), 1)
+        namespace = {}
+        embedded = source.split(PRIMITIVES_START, 1)[1].split(
+            PRIMITIVES_END, 1,
+        )[0]
+        exec(embedded, namespace)
+        for model in (_PydanticV1(), _PydanticV2(), _PlainRecord()):
+            self.assertEqual(
+                namespace["model_to_dict"](model),
+                primitives.model_to_dict(model),
+            )
 
     def test_shared_text_cleaner_is_not_shadowed_by_legacy_copies(self):
         notebook = json.loads(build_notebook())

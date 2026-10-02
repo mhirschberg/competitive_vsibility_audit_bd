@@ -673,6 +673,7 @@ class ServiceAdapterTests(unittest.TestCase):
         runtime = self.runtime(events)
         runtime.pop('is_google_goto_url', None)
         runtime.pop('remove_ai_boilerplate', None)
+        runtime.pop('model_to_dict', None)
         runtime.update({
             'RESEARCH_PROVIDERS': ('chatgpt', 'gemini'),
             'cached_google_ai_snapshot_ids': lambda _key: [],

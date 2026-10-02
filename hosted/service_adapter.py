@@ -48,7 +48,8 @@ from audit_core.profile_provider import (
 )
 from audit_core.profile_stage import ProfileStagePorts
 from audit_core.primitives import (
-    ensure_string_list, format_duration, normalize_confidence, slugify,
+    ensure_string_list, format_duration, model_to_dict,
+    normalize_confidence, slugify,
 )
 from audit_core.report_content import DETERMINISTIC_REPORT_GENERATOR
 from audit_core.report_export import (
@@ -410,7 +411,7 @@ def _service_search_runner(runtime, client):
             ),
             run_ai_mode_question=run_ai_mode_question,
             run_keyword_serp_task=client.run_keyword_serp_task,
-            model_to_dict=runtime['model_to_dict'],
+            model_to_dict=model_to_dict,
             candidate_factory=runtime['CompetitorCandidate'],
         )
 
@@ -509,7 +510,6 @@ def build_runtime_ports(runtime):
     runtime['bd_client'] = client
     _bind_research_provider_adapter(client, runtime)
     console = need('console')
-    model_to_dict = need('model_to_dict')
     clean_record = clean_record_for_storage
     success = need('print_stage_success')
     warning = need('print_stage_warning')

@@ -675,6 +675,17 @@ Next: continue auditing the remaining notebook-supplied policy and domain
 callbacks; keep network resolution, report rendering, persistence, and UI
 callbacks at their existing adapter boundaries.
 
+Fifty-fifth checkpoint: model serialization now lives in the shared
+`audit_core.primitives.model_to_dict` helper, and the hosted adapter no longer
+requires a notebook-provided serializer. The helper preserves native Pydantic
+v1/v2 behavior and supports plain record objects used by fixtures. Notebook
+generation embeds that same helper and drops the old definition idempotently.
+The full suite passes (426 tests, 4 skipped); generated notebook and no-paid-
+request dry run checks pass. No deployment or memory-reduction claim was made.
+
+Next: inspect remaining service callbacks, prioritizing policy/normalization
+logic while retaining network, persistence, and presentation at the edges.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

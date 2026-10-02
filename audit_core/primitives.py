@@ -93,3 +93,16 @@ def format_duration(seconds):
     minutes = int(seconds // 60)
     remaining = int(seconds % 60)
     return f"{minutes}m {remaining}s"
+
+
+def model_to_dict(model):
+    """Serialize Pydantic models or plain Python record objects."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    if hasattr(model, "dict"):
+        return model.dict()
+    if isinstance(model, dict):
+        return dict(model)
+    if hasattr(model, "__dict__"):
+        return vars(model).copy()
+    raise TypeError(f"Cannot serialize {type(model).__name__} as a model")
