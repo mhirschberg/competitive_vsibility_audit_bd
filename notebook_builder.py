@@ -699,6 +699,26 @@ def _replace_python_function_occurrence(cell, name, occurrence, replacement):
     cell["source"] = lines
 
 
+def _replace_python_assignment(cell, name, replacement):
+    """Replace one top-level assignment to a named notebook variable."""
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
+    matches = [
+        node for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in node.targets
+        )
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Expected one assignment to {name!r}")
+    node = matches[0]
+    lines = source.splitlines(keepends=True)
+    lines[node.lineno - 1:node.end_lineno] = [replacement.rstrip("\n") + "\n"]
+    cell["source"] = lines
+
+
 def _replace_python_classes_with_source(cell, names, start, end, source):
     """Replace legacy top-level classes with one tagged shared source region."""
     text = "".join(cell["source"])
@@ -948,6 +968,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     """Return notebook bytes with generated cells synchronized to sources."""
     notebook = json.loads(Path(notebook_path).read_text(encoding="utf-8"))
     primitives_cell = _unique_cell(notebook, PRIMITIVES_CELL_ID)
+    orchestration_cell = _unique_cell(notebook, "final-orchestration")
     _replace_python_classes_with_source(
         primitives_cell,
         {"BuyerIntentKeyword", "BrandAnalysis", "CompanyIntake"},
@@ -1005,6 +1026,12 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         BRIGHTDATA_USAGE_START,
         BRIGHTDATA_USAGE_END,
         Path(brightdata_usage_source).read_text(encoding="utf-8"),
+    )
+    _replace_python_assignment(
+        orchestration_cell,
+        "BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD",
+        "BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD = "
+        "DEFAULT_PRICE_PER_1000_RESULTS_USD",
     )
     _replace_embedded_source(
         primitives_cell,

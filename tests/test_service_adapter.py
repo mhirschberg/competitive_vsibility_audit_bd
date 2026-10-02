@@ -18,6 +18,7 @@ from hosted.service_adapter import (
 )
 from hosted.brightdata_provider import BrightDataProviderClient
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
+from audit_core.brightdata_usage import DEFAULT_PRICE_PER_1000_RESULTS_USD
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
@@ -198,7 +199,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'create_styled_pdf_report': report.create_pdf,
             'build_audit_record': final.build_record,
             'create_audit_zip': final.create_zip,
-            'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD': 1.5,
             'configure_google_ai_race_cache': lambda path, only_reuse: None,
             'print_stage': fixture.stage_banner,
             'resolve_official_site': lambda url: (
@@ -582,6 +582,14 @@ class ServiceAdapterTests(unittest.TestCase):
             select.call_args.kwargs['validation_limit'],
             LOCKED_SCOPE_VALIDATION_LIMIT,
         )
+
+    def test_usage_price_is_shared_not_a_runtime_binding(self):
+        runtime = self.runtime([])
+        runtime.pop('BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD', None)
+
+        ports = build_runtime_ports(runtime)
+
+        self.assertEqual(ports.price_per_1000, DEFAULT_PRICE_PER_1000_RESULTS_USD)
 
     def test_worker_images_copy_the_importable_reddit_module(self):
         root = Path(__file__).resolve().parents[1]

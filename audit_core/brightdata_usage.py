@@ -11,6 +11,7 @@ from threading import Lock
 
 
 FAILED_STATUSES = {"failed", "error", "canceled", "cancelled", "aborted"}
+DEFAULT_PRICE_PER_1000_RESULTS_USD = 1.5
 
 
 class BrightDataUsageLedger:
@@ -163,7 +164,9 @@ class BrightDataUsageLedger:
             except Exception:
                 continue
 
-    def usage_summary(self, price_per_1000=1.5):
+    def usage_summary(
+        self, price_per_1000=DEFAULT_PRICE_PER_1000_RESULTS_USD,
+    ):
         with self._usage_lock:
             events = [dict(item) for item in self._usage_events]
             history_complete = self._usage_history_complete

@@ -5,7 +5,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from audit_core.brightdata_usage import BrightDataUsageLedger
+from audit_core.brightdata_usage import (
+    DEFAULT_PRICE_PER_1000_RESULTS_USD, BrightDataUsageLedger,
+)
 from notebook_builder import (
     BRIGHTDATA_USAGE_END, BRIGHTDATA_USAGE_START, NOTEBOOK,
 )
@@ -43,6 +45,20 @@ def exercise_ledger(ledger_type):
 
 
 class BrightDataUsageTests(unittest.TestCase):
+    def test_price_default_is_shared_with_the_standalone_notebook(self):
+        notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+        cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "final-orchestration"
+        )
+        source = "".join(cell["source"])
+        self.assertIn(
+            "BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD = "
+            "DEFAULT_PRICE_PER_1000_RESULTS_USD",
+            source,
+        )
+        self.assertEqual(DEFAULT_PRICE_PER_1000_RESULTS_USD, 1.5)
+
     def test_service_and_notebook_count_results_identically(self):
         service = exercise_ledger(BrightDataUsageLedger)
         notebook = exercise_ledger(bundled_ledger())
