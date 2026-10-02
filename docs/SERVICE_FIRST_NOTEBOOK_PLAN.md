@@ -839,6 +839,21 @@ Next: audit other remaining service-adapter runtime bindings for duplicated
 provider error classes, but change them only where class identity and caller
 handling are demonstrably equivalent.
 
+Sixty-fourth checkpoint: the hosted adapter no longer requests a
+notebook-created `BrightDataAPIError` class. Research and competitor operations
+use the same shared provider error class as the standalone Bright Data client.
+Search and profile recovery likewise use the provider module's
+`SnapshotTimeoutError`, so pending-snapshot handling catches the exception
+actually raised by that client. The distinct research-race timeout remains an
+explicit port because it carries a list of snapshot IDs and has its own
+caller-facing message. Offline service, Google-timeout, and competitor-scope
+tests pass without either legacy error-class binding. No provider requests,
+deployment, or memory-reduction claim was made.
+
+Next: inventory any remaining runtime class/factory dependencies at the
+service boundary, separating true output-model adapters from notebook copies
+of shared schemas.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a

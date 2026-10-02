@@ -25,12 +25,6 @@ from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
 
-class SnapshotTimeoutError(TimeoutError):
-    def __init__(self, snapshot_id):
-        super().__init__(f'pending {snapshot_id}')
-        self.snapshot_id = snapshot_id
-
-
 class ServiceAdapterTests(unittest.TestCase):
     def test_reddit_runners_bind_provider_context_for_each_call(self):
         client = object()
@@ -175,7 +169,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'cached_research_snapshot_ids': lambda _prompt: [],
             'locked_scope_brand_family': lambda value: value,
             'SelectedCompetitor': Model,
-            'BrightDataAPIError': RuntimeError,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
             'bind_reddit_runtime': reddit_social.bind_reddit_runtime,
             'is_google_goto_url': lambda _url: False,
@@ -189,7 +182,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'remove_ai_boilerplate': lambda value: value,
             'normalize_public_url': lambda value: value,
             'get_root_domain': lambda value: value.split('/', 1)[0],
-            'SnapshotTimeoutError': SnapshotTimeoutError,
             'serialize_profile_task': lambda item: {
                 key: value for key, value in item.items()
                 if key not in ('profile', 'record')
@@ -255,7 +247,7 @@ class ServiceAdapterTests(unittest.TestCase):
             'record': {'answer_text': 'fixture'},
             'snapshot_id': 'fixture-snapshot',
         }
-        runtime = {'BrightDataAPIError': RuntimeError}
+        runtime = {}
         client = object()
         expected = {'workflow': 'shared-company-core'}
         with patch(
@@ -527,7 +519,6 @@ class ServiceAdapterTests(unittest.TestCase):
             },
             'CompetitorCandidate': lambda **kwargs: SimpleNamespace(**kwargs),
             'model_to_dict': lambda item: item,
-            'SnapshotTimeoutError': SnapshotTimeoutError,
             'is_google_goto_url': lambda _url: False,
             'resolve_google_goto_url': lambda url: url,
             'get_root_domain': lambda url: str(url).split('/')[0],
@@ -669,7 +660,6 @@ class ServiceAdapterTests(unittest.TestCase):
             '_RESEARCH_RACE_SEMAPHORE': threading.BoundedSemaphore(3),
             'RESEARCH_POLL_SECONDS': 0,
             'ResearchRaceTimeoutError': TimeoutError,
-            'BrightDataAPIError': RuntimeError,
         })
 
         build_runtime_ports(runtime)
@@ -719,7 +709,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'FAILED_STATUSES': {'failed', 'canceled'},
             '_GOOGLE_AI_ONLY_REUSE': False,
             'ResearchRaceTimeoutError': TimeoutError,
-            'BrightDataAPIError': RuntimeError,
         })
         ports = build_runtime_ports(runtime)
         self.assertTrue(callable(ports.search_stage.run_search))
