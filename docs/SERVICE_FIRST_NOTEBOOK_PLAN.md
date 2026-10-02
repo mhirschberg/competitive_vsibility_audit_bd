@@ -17,7 +17,7 @@ own explicit approval.
 | 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Complete |
 | 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Complete |
 | 4. Prove notebook/service parity | Run both paths against the same saved deterministic fixtures; record whether their provider data is synthetic or captured. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Complete (synthetic fixtures) |
-| 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
+| 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Complete (offline fixture only) |
 | 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
 
 The finish line for the code refactor is Phase 5: the hosted worker has a
@@ -733,6 +733,23 @@ on offline fixtures, not the live accuracy or reliability of provider data.
 
 Next: measure elapsed time and process-tree peak memory on representative
 offline fixtures (Phase 5), then report the measurements and limitations.
+
+Phase 5 checkpoint: ran the reproducible local harness
+`scripts/measure_offline_audit_resources.py` five times on macOS with Python
+3.13.3. The synthetic full-pipeline parity fixture (service and generated
+notebook, Reddit disabled and enabled, all external adapters faked) took a
+median 0.366 seconds per run (range 0.360–0.412 seconds); the maximum resident
+set observed for the sole test process was 71.5 MiB. This number includes
+interpreter startup, imports, and the in-process test workload; it is not a
+Cloud Run worker measurement and does not establish expected production memory,
+capacity, or savings versus the notebook. The test creates no worker child
+processes or provider traffic. macOS process-list sampling was unavailable in
+the sandbox, so the reproducible harness uses Python's `RUSAGE_CHILDREN` peak
+RSS for the directly-run test process. No live calls or deployment were made.
+
+The code-refactor finish line (Phases 0–5) is now met: native worker entry
+point, offline service/notebook parity, and recorded local resource behavior.
+Phase 6, paid/live validation, and any deployment remain separately gated.
 
 Forty-seventh checkpoint: hosted orchestration now binds audit-record
 assembly, report filenames, Bright Data usage copy, storage cleanup, and
