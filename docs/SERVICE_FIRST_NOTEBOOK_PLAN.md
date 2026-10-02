@@ -2,7 +2,13 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
-Latest checkpoint: hosted Stage 2 now requires the provider client's
+Latest checkpoint: hosted progress now uses service logging for stage banners,
+successes, and warnings rather than notebook-provided print callbacks. The
+console is optional for adapter notices, with logging as the hosted fallback;
+an adapter test assembles and exercises progress without notebook UI bindings.
+No audit/provider calls or deployment were involved.
+
+Previous checkpoint: hosted Stage 2 now requires the provider client's
 `run_keyword_serp_task` method and no longer falls back to the notebook's
 `run_serp_stage` wrapper. Missing provider capability fails during preflight,
 before site resolution or paid work. The end-to-end offline fixture now uses
