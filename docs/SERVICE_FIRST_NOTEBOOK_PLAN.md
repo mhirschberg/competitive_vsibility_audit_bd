@@ -2,6 +2,29 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
+## Approval-gated execution plan
+
+Work is performed one phase at a time. I will report the result and request
+approval before starting the next phase. The plan and code stay on the local
+`feature/service-first-notebook` branch unless the user separately asks to
+push or deploy. Paid/live provider calls and production changes require their
+own explicit approval.
+
+| Phase | Scope and exit check | Status |
+| --- | --- | --- |
+| 0. Record the plan | Commit this approval-gated sequence and the current baseline. | Complete |
+| 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Awaiting approval |
+| 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Not started |
+| 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Not started |
+| 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Not started |
+| 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
+| 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
+
+The finish line for the code refactor is Phase 5: the hosted worker has a
+service-native entry point, fixture parity passes, and local resource behavior
+is recorded. Phases 6 and any deployment are explicitly outside that finish
+line until separately approved.
+
 Latest checkpoint: hosted progress now uses service logging for stage banners,
 successes, and warnings rather than notebook-provided print callbacks. The
 console is optional for adapter notices, with logging as the hosted fallback;
