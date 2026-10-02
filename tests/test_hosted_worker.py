@@ -151,6 +151,11 @@ report = {"target": {"brand_name": "Rayner"}, "competitor_selection": {"selected
             )
         self.assertEqual(result, 0)
         self.assertEqual(self.gateway.finishes[0][0], 'completed')
+        log_bytes = next(
+            data for path, data in self.gateway.uploads if path.endswith("/audit.log")
+        )
+        self.assertIn(b"AUDIT_RESOURCE_SUMMARY", log_bytes)
+        self.assertIn(b'"engine_mode": "service_native"', log_bytes)
 
     def test_native_settings_preserve_per_engine_and_social_options(self):
         self.gateway.input_options.update({
