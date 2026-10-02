@@ -372,9 +372,6 @@ def _service_visibility_runner(runtime, client):
 def _service_search_runner(runtime, client):
     """Bind shared Stage 2 discovery and market-aware AI Mode to the provider."""
     if not callable(getattr(client, 'run_keyword_serp_task', None)):
-        legacy_runner = runtime.get('run_serp_stage')
-        if callable(legacy_runner):
-            return legacy_runner
         raise KeyError('Missing Stage 2 provider method: run_keyword_serp_task')
 
     async def run_search(keywords, target_domain):
@@ -603,10 +600,10 @@ def build_runtime_ports(runtime):
             'create_styled_pdf_report',
         ):
             need(name)
+        if not callable(getattr(client, 'run_keyword_serp_task', None)):
+            raise KeyError('Missing Stage 2 provider method: run_keyword_serp_task')
         for name in ('refresh_usage_results', 'usage_summary'):
             getattr(client, name)
-        if not callable(getattr(client, 'run_keyword_serp_task', None)):
-            need('run_serp_stage')
     preflight()
     generate_report = _service_report_generator(runtime, client)
     run_search = _service_search_runner(runtime, client)

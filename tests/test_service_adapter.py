@@ -142,8 +142,11 @@ class ServiceAdapterTests(unittest.TestCase):
 
         client = Model(
             active_search_engine=None,
+            debug=False,
             google_ai_mode=profile_record,
             answer_text=lambda record: record['answer_text'],
+            log=lambda *_args, **_kwargs: None,
+            choose_search_engine=lambda _query, _requested: 'google',
             wait_for_snapshot=lambda *_args, **_kwargs: [],
             configure_usage_checkpoint=lambda path, restore: events.append(
                 ('usage', restore)
@@ -151,6 +154,22 @@ class ServiceAdapterTests(unittest.TestCase):
             refresh_usage_results=report.refresh_usage,
             usage_summary=report.usage_summary,
         )
+
+        async def run_keyword_serp_task(
+            *, keyword, semaphore, num_results, search_engine,
+        ):
+            async with semaphore:
+                return {
+                    'keyword': keyword, 'success': True,
+                    'search_engine': search_engine,
+                    'results': [{
+                        'domain': 'samsung.com',
+                        'url': 'https://samsung.com/',
+                        'title': 'Samsung smartphones', 'rank': 1,
+                    }],
+                }
+
+        client.run_keyword_serp_task = run_keyword_serp_task
         runtime = {
             'bd_client': client,
             'console': Model(print=lambda message: None),
@@ -164,7 +183,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'CompanyIntake': company.intake_factory,
             'BrandAnalysis': company.brand_factory,
             'BuyerIntentKeyword': company.keyword_factory,
-            'run_serp_stage': search.run_search,
             'select_competitors_stage': competitor.select_competitors,
             '_competitor_decision_ports': lambda: object(),
             'locked_scope_local_domain_bonus': lambda *_args: 0,
@@ -397,7 +415,9 @@ class ServiceAdapterTests(unittest.TestCase):
                 )
                 self.assertEqual(runtime['ACTIVE_SEARCH_ENGINE'], 'google')
                 self.assertEqual(runtime['ACTIVE_SEARCH_STATUS'], 'available')
-                self.assertIsNone(runtime['LAST_AI_MODE_DISCOVERY'])
+                self.assertEqual(
+                    runtime['LAST_AI_MODE_DISCOVERY']['successful'], 0,
+                )
                 self.assertNotIn('LOCKED_TARGET_SCOPE', runtime)
                 self.assertEqual(runtime['bd_client'].active_search_engine, 'google')
                 self.assertEqual(events[0], 'resolve')
@@ -421,7 +441,7 @@ class ServiceAdapterTests(unittest.TestCase):
     def test_missing_binding_fails_before_site_or_provider_work(self):
         events = []
         runtime = self.runtime(events)
-        del runtime['run_serp_stage']
+        del runtime['bd_client'].run_keyword_serp_task
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(KeyError):
                 asyncio.run(run_with_legacy_runtime(
@@ -469,11 +489,6 @@ class ServiceAdapterTests(unittest.TestCase):
             },
             '_GOOGLE_AI_ONLY_REUSE': True,
             'model_to_dict': lambda item: item,
-            'run_serp_stage': lambda *_args, **_kwargs: (
-                (_ for _ in ()).throw(AssertionError(
-                    'shared search core must bypass the notebook stage wrapper'
-                ))
-            ),
         }
 
         with patch(
@@ -537,7 +552,7 @@ class ServiceAdapterTests(unittest.TestCase):
 
     def test_runtime_ports_do_not_require_notebook_search_stage_wrapper(self):
         runtime = self.runtime([])
-        runtime.pop('run_serp_stage')
+        runtime.pop('run_serp_stage', None)
         runtime['bd_client'].run_keyword_serp_task = lambda **_kwargs: None
 
         ports = build_runtime_ports(runtime)
@@ -641,6 +656,9 @@ class ServiceAdapterTests(unittest.TestCase):
 
             def trigger_dataset(self, dataset, payload):
                 return trigger(dataset, payload)
+
+            async def run_keyword_serp_task(self, **_kwargs):
+                return {'success': True, 'results': []}
 
             def snapshot_status(self, _snapshot):
                 return {'status': 'ready'}

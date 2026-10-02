@@ -2,7 +2,14 @@
 
 Status: design for `feature/service-first-notebook`; no production switch.
 
-Latest checkpoint: the Bright Data estimate of `$1.50 per 1,000 results` now
+Latest checkpoint: hosted Stage 2 now requires the provider client's
+`run_keyword_serp_task` method and no longer falls back to the notebook's
+`run_serp_stage` wrapper. Missing provider capability fails during preflight,
+before site resolution or paid work. The end-to-end offline fixture now uses
+the same granular provider interface. No live requests or deployment were
+made.
+
+Previous checkpoint: the Bright Data estimate of `$1.50 per 1,000 results` now
 has one source of truth in `audit_core.brightdata_usage`. The service adapter
 no longer requires the notebook's price variable; the generated notebook binds
 its display setting to the embedded shared constant. No audit/provider calls
