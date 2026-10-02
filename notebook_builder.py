@@ -289,7 +289,6 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
                 run_utility=run_chatgpt_without_web,
                 parse_json=parse_ai_json,
                 normalize_intake=normalize_company_intake,
-                select_relevant_research=select_relevant_company_research,
                 complete_keywords=complete_company_keywords,
                 proofread_keywords=proofread_buyer_keywords,
                 build_locked_scope=build_locked_target_scope,

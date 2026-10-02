@@ -294,8 +294,6 @@ class ServiceAdapterTests(unittest.TestCase):
             current_keywords=[BuyerIntentKeyword(keyword='buy an oven')],
         )
         self.assertEqual(proofreading['status'], 'skipped')
-        from audit_core.company_analysis import select_relevant_company_research
-        self.assertIs(ports.select_relevant_research, select_relevant_company_research)
 
     def test_adapter_runs_same_fixture_with_and_without_social(self):
         for reddit in (False, True):

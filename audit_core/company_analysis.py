@@ -16,14 +16,12 @@ from .ai_localization import market_language
 class CompanyAnalysisPorts:
     def __init__(
         self, *, client, run_utility, parse_json, normalize_intake,
-        select_relevant_research, complete_keywords, proofread_keywords,
-        build_locked_scope, error_type,
+        complete_keywords, proofread_keywords, build_locked_scope, error_type,
     ):
         self.client = client
         self.run_utility = run_utility
         self.parse_json = parse_json
         self.normalize_intake = normalize_intake
-        self.select_relevant_research = select_relevant_research
         self.complete_keywords = complete_keywords
         self.proofread_keywords = proofread_keywords
         self.build_locked_scope = build_locked_scope
@@ -488,11 +486,11 @@ follow-up questions.
 
 
 def build_company_structuring_prompt(
-    settings, research_text, *, select_relevant_research, strict_retry=False,
+    settings, research_text, *, strict_retry=False,
 ):
     """Turn the research into the stable brand and keyword JSON schema."""
     audit_focus = str(settings.get("audit_focus", "") or "").strip()
-    relevant_research = select_relevant_research(
+    relevant_research = select_relevant_company_research(
         research_text=research_text,
         company_name=settings["company_name"],
         company_domain=settings["company_domain"],
@@ -657,11 +655,10 @@ def run_company_analysis_core(settings, *, ports):
         prompt = build_company_structuring_prompt(
             settings,
             research_text,
-            select_relevant_research=ports.select_relevant_research,
             strict_retry=attempt == 2,
         )
         if getattr(client, "debug", False):
-            relevant_research = ports.select_relevant_research(
+            relevant_research = select_relevant_company_research(
                 research_text=research_text,
                 company_name=settings["company_name"],
                 company_domain=settings["company_domain"],
