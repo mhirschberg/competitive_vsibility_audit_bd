@@ -27,7 +27,6 @@ from audit_core.company_stage import CompanyStagePorts
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     complete_company_keywords_core,
-    normalize_company_intake_core,
     proofread_buyer_keywords_core,
     run_company_analysis_core,
 )
@@ -35,7 +34,6 @@ from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
 from audit_core.competitor_scope import (
-    build_locked_target_scope as build_locked_target_scope_core,
     locked_scope_brand_family,
     locked_scope_local_domain_bonus,
     restore_locked_target_scope,
@@ -497,7 +495,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
         ports=CompanyAnalysisPorts(
             client=client,
             run_utility=utility_race,
-            normalize_intake=normalize_company_intake_core,
             complete_keywords=lambda **kwargs: complete_company_keywords_core(
                 **kwargs,
                 run_utility=utility_race,
@@ -509,7 +506,6 @@ def _service_company_analyzer(runtime, client, utility_race=None):
                 model_to_dict=model_to_dict,
                 market_language_fn=market_language,
             ),
-            build_locked_scope=build_locked_target_scope_core,
             error_type=runtime['BrightDataAPIError'],
         ),
     )

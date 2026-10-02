@@ -6,6 +6,7 @@ import re
 
 # SERVICE-ONLY-IMPORTS: start
 from .company_models import BuyerIntentKeyword, CompanyIntake
+from .competitor_scope import build_locked_target_scope
 from .domains import get_root_domain
 from .domains import normalize_public_url
 from .primitives import ensure_string_list, normalize_confidence
@@ -16,15 +17,13 @@ from .json_parsing import parse_ai_json
 
 class CompanyAnalysisPorts:
     def __init__(
-        self, *, client, run_utility, normalize_intake,
-        complete_keywords, proofread_keywords, build_locked_scope, error_type,
+        self, *, client, run_utility, complete_keywords, proofread_keywords,
+        error_type,
     ):
         self.client = client
         self.run_utility = run_utility
-        self.normalize_intake = normalize_intake
         self.complete_keywords = complete_keywords
         self.proofread_keywords = proofread_keywords
-        self.build_locked_scope = build_locked_scope
         self.error_type = error_type
 
 
@@ -672,7 +671,7 @@ def run_company_analysis_core(settings, *, ports):
         try:
             candidate_result = ports.run_utility(prompt)
             parsed = parse_ai_json(candidate_result["answer"])
-            candidate_intake = ports.normalize_intake(
+            candidate_intake = normalize_company_intake_core(
                 data=parsed,
                 company_name=settings["company_name"],
                 company_url=settings["company_url"],
@@ -711,7 +710,7 @@ def run_company_analysis_core(settings, *, ports):
             f"{len(intake.buyer_intent_keywords)} keywords instead of eight."
         )
 
-    locked_scope = ports.build_locked_scope(intake.brand, settings)
+    locked_scope = build_locked_target_scope(intake.brand, settings)
     proofreading = ports.proofread_keywords(
         settings=settings,
         brand=intake.brand,

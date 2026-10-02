@@ -18,7 +18,6 @@ from hosted.service_adapter import (
 )
 from hosted.brightdata_provider import BrightDataProviderClient
 from audit_core.brightdata_transport import CHATGPT_DATASET_ID, GEMINI_DATASET_ID
-from audit_core.competitor_scope import build_locked_target_scope
 from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
@@ -271,10 +270,9 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(ports.client, client)
         self.assertIs(ports.run_utility, utility_race)
         self.assertFalse(hasattr(ports, 'parse_json'))
+        self.assertFalse(hasattr(ports, 'normalize_intake'))
+        self.assertFalse(hasattr(ports, 'build_locked_scope'))
         self.assertEqual(ports.error_type, RuntimeError)
-        self.assertIs(ports.build_locked_scope, build_locked_target_scope)
-        from audit_core.company_analysis import normalize_company_intake_core
-        self.assertIs(ports.normalize_intake, normalize_company_intake_core)
         self.assertNotIn('complete_company_keywords', runtime)
         self.assertNotIn('run_chatgpt_without_web', runtime)
         completion = ports.complete_keywords(
