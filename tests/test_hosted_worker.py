@@ -4,7 +4,9 @@ from uuid import UUID
 import subprocess
 from pathlib import Path
 
-from hosted.worker import _artifact_storage_name, run_worker
+from hosted.worker import (
+    _artifact_storage_name, _service_audit_settings, run_worker,
+)
 
 
 AUDIT_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -117,6 +119,57 @@ class HostedWorkerTests(unittest.TestCase):
         self.assertEqual(result, 0)
         old.assert_called_once()
         new.assert_not_called()
+
+    def test_service_native_mode_does_not_build_notebook_runner(self):
+        source = '''
+import json, os
+from pathlib import Path
+settings = json.loads(os.environ["AUDIT_SETTINGS_JSON"])
+assert settings["company_name"] == "Rayner"
+assert settings["company_url"] == "https://rayner.com"
+assert settings["include_reddit_analysis"] is True
+print("[1/2] Company analysis and buyer keywords", flush=True)
+output = Path(os.environ["AUDIT_OUTPUT_DIRECTORY"]) / "competitive-visibility-test"
+output.mkdir()
+report = {"target": {"brand_name": "Rayner"}, "competitor_selection": {"selected": []}, "warnings": [], "bright_data_usage": {"events": []}}
+(output / "06_competitive_visibility_audit.json").write_text(json.dumps(report))
+'''
+        command_factory = lambda *, python_executable, run_directory: [
+            python_executable, "-u", "-c", source,
+        ]
+        with patch(
+            'runner_builder._build_runner_script',
+            side_effect=AssertionError('notebook runner must not be built'),
+        ), patch(
+            'runner_builder._build_service_runner_script',
+            side_effect=AssertionError('transitional runner must not be built'),
+        ):
+            result = run_worker(
+                self.gateway, AUDIT_ID, engine_mode='service_native',
+                service_command_factory=command_factory,
+                heartbeat_interval=3600,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(self.gateway.finishes[0][0], 'completed')
+
+    def test_native_settings_preserve_per_engine_and_social_options(self):
+        self.gateway.input_options.update({
+            'include_google_ai_mode': True,
+            'include_chatgpt_visibility': False,
+            'include_gemini_visibility': True,
+            'wait_longer_for_gemini': True,
+            'wait_longer_for_copilot': True,
+        })
+        settings = _service_audit_settings(
+            self.gateway.get_audit(AUDIT_ID), self.gateway.input_options,
+        )
+        self.assertEqual(settings['company_url'], 'https://rayner.com')
+        self.assertTrue(settings['include_reddit_analysis'])
+        self.assertTrue(settings['include_google_ai_mode'])
+        self.assertFalse(settings['include_chatgpt_visibility'])
+        self.assertTrue(settings['include_gemini_visibility'])
+        self.assertTrue(settings['wait_longer_for_gemini'])
+        self.assertTrue(settings['wait_longer_for_copilot'])
 
     def test_invalid_engine_mode_fails_before_claim(self):
         with patch.object(self.gateway, 'claim_audit') as claim:

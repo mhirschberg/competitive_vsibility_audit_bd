@@ -1,4 +1,4 @@
-"""One Cloud Run Job execution runs one pinned notebook audit."""
+"""One Cloud Run Job execution runs one audit and publishes its artifacts."""
 
 from __future__ import annotations
 
@@ -131,6 +131,41 @@ def _usage_rows(
     return rows
 
 
+def _service_audit_settings(audit: dict, options: dict) -> dict:
+    """Translate the durable audit row into the service coordinator contract."""
+    domain = str(audit.get("company_domain") or "").strip()
+    company_url = (
+        domain if domain.lower().startswith(("http://", "https://"))
+        else f"https://{domain}"
+    )
+    social_sources = options.get("social_sources") or []
+    return {
+        "company_name": str(audit.get("company_name") or "").strip(),
+        "company_domain": domain,
+        "company_url": company_url,
+        "audit_focus": str(audit.get("audit_focus") or "").strip(),
+        "country": str(audit.get("country_code") or "US").strip().upper(),
+        "search_engine": options.get("search_engine", "auto"),
+        "serp_zone": os.getenv("SERP_ZONE", ""),
+        "include_reddit_analysis": "reddit" in social_sources,
+        "reddit_comment_posts_per_cohort": int(
+            options.get("reddit_comment_posts_per_cohort", 0) or 0
+        ),
+        "include_google_ai_mode": options.get("include_google_ai_mode") is True,
+        "include_chatgpt_visibility": options.get("include_chatgpt_visibility") is not False,
+        "include_gemini_visibility": options.get("include_gemini_visibility") is not False,
+        "include_copilot_visibility": options.get("include_copilot_visibility") is True,
+        "wait_longer_for_google_ai_mode": options.get(
+            "wait_longer_for_google_ai_mode"
+        ) is True,
+        "wait_longer_for_chatgpt": options.get("wait_longer_for_chatgpt") is True,
+        "wait_longer_for_gemini": options.get("wait_longer_for_gemini") is True,
+        "wait_longer_for_copilot": options.get("wait_longer_for_copilot") is True,
+        "debug_mode": bool(options.get("debug", False)),
+        "continue_last_audit": False,
+    }
+
+
 def _publish_artifact(gateway, audit: dict, audit_id: UUID, path: Path,
                       *, storage_name: str | None = None):
     workspace_id = audit["workspace_id"]
@@ -159,9 +194,10 @@ def run_worker(
     heartbeat_interval=30,
     platform_execution_id=None,
     engine_mode="notebook",
+    service_command_factory=None,
 ) -> int:
     """Return 0 on success/already-claimed, 1 on a recorded audit failure."""
-    if engine_mode not in {"notebook", "service_adapter"}:
+    if engine_mode not in {"notebook", "service_adapter", "service_native"}:
         raise ValueError(f"Unsupported audit engine mode: {engine_mode}")
     claim = gateway.claim_audit(audit_id, platform_execution_id)
     if claim is None:
@@ -172,44 +208,63 @@ def run_worker(
         audit = gateway.get_audit(audit_id)
         options = audit.get("input_options") or {}
 
-        if runner_source_factory is None:
-            from runner_builder import (
-                _build_runner_script, _build_service_runner_script,
-            )
-            runner_source_factory = (
-                _build_service_runner_script
-                if engine_mode == "service_adapter" else _build_runner_script
-            )
-
         with tempfile.TemporaryDirectory(prefix="competitive-audit-worker-") as name:
             run_dir = Path(name)
-            runner_path = run_dir / "notebook_runner.py"
             log_path = run_dir / "audit.log"
-            source = runner_source_factory(
-                audit["company_name"],
-                audit["company_domain"],
-                audit.get("audit_focus") or "",
-                audit["country_code"],
-                options.get("search_engine", "auto"),
-                "reddit" in (options.get("social_sources") or []),
-                bool(options.get("debug", False)),
-                options.get("wait_longer_for_google_ai_mode") is True,
-                options.get("include_copilot_visibility") is True,
-                options.get("reddit_comment_posts_per_cohort", 0),
-                options.get("include_google_ai_mode") is True,
-                options.get("include_chatgpt_visibility") is not False,
-                options.get("wait_longer_for_chatgpt") is True,
-                options.get("include_gemini_visibility") is not False,
-                options.get("wait_longer_for_gemini") is True,
-                options.get("wait_longer_for_copilot") is True,
-            )
-            compile(source, str(runner_path), "exec")
-            runner_path.write_text(source, encoding="utf-8")
             child_env = os.environ.copy()
             child_env["PYTHONUNBUFFERED"] = "1"
             child_env.setdefault("XDG_CACHE_HOME", str(run_dir / ".cache"))
+            if engine_mode == "service_native":
+                if service_command_factory is None:
+                    command = [python_executable, "-m", "hosted.service_runner"]
+                else:
+                    command = service_command_factory(
+                        python_executable=python_executable,
+                        run_directory=run_dir,
+                    )
+                child_env["AUDIT_SETTINGS_JSON"] = json.dumps(
+                    _service_audit_settings(audit, options),
+                    ensure_ascii=False,
+                )
+                child_env["AUDIT_OUTPUT_DIRECTORY"] = str(run_dir)
+                module_root = str(Path(__file__).resolve().parents[1])
+                existing_pythonpath = child_env.get("PYTHONPATH", "")
+                child_env["PYTHONPATH"] = os.pathsep.join(
+                    part for part in (module_root, existing_pythonpath) if part
+                )
+            else:
+                if runner_source_factory is None:
+                    from runner_builder import (
+                        _build_runner_script, _build_service_runner_script,
+                    )
+                    runner_source_factory = (
+                        _build_service_runner_script
+                        if engine_mode == "service_adapter" else _build_runner_script
+                    )
+                runner_path = run_dir / "notebook_runner.py"
+                source = runner_source_factory(
+                    audit["company_name"],
+                    audit["company_domain"],
+                    audit.get("audit_focus") or "",
+                    audit["country_code"],
+                    options.get("search_engine", "auto"),
+                    "reddit" in (options.get("social_sources") or []),
+                    bool(options.get("debug", False)),
+                    options.get("wait_longer_for_google_ai_mode") is True,
+                    options.get("include_copilot_visibility") is True,
+                    options.get("reddit_comment_posts_per_cohort", 0),
+                    options.get("include_google_ai_mode") is True,
+                    options.get("include_chatgpt_visibility") is not False,
+                    options.get("wait_longer_for_chatgpt") is True,
+                    options.get("include_gemini_visibility") is not False,
+                    options.get("wait_longer_for_gemini") is True,
+                    options.get("wait_longer_for_copilot") is True,
+                )
+                compile(source, str(runner_path), "exec")
+                runner_path.write_text(source, encoding="utf-8")
+                command = [python_executable, "-u", str(runner_path)]
             process = subprocess.Popen(
-                [python_executable, "-u", str(runner_path)],
+                command,
                 cwd=run_dir,
                 env=child_env,
                 stdout=subprocess.PIPE,
@@ -289,11 +344,11 @@ def run_worker(
                     execution_id,
                     claim_token,
                     "failed",
-                    error_code="runner_failed",
+                    error_code="audit_process_failed",
                     error_message=(
-                        f"Notebook runner exited with status {return_code}"
+                        f"Audit process exited with status {return_code}"
                         if return_code != 0
-                        else "Notebook runner produced no final JSON report"
+                        else "Audit process produced no final JSON report"
                     ),
                 )
                 return 1

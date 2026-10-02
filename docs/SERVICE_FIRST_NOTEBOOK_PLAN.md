@@ -15,8 +15,8 @@ own explicit approval.
 | 0. Record the plan | Commit this approval-gated sequence and the current baseline. | Complete |
 | 1. Close the runtime contract | Inventory the remaining notebook-derived names in the service adapter; move only pure defaults/helpers that already have an equivalent shared implementation. Keep real provider, storage, URL-network, and PDF-rendering operations as explicit ports. Add tests proving the service no longer needs removed names. | Complete |
 | 2. Own service preparation | Give the service its own setup path for audit context, output/checkpoint locations, canonical-site resolution, snapshot-cache restore, and provider construction; keep notebook setup independent. Verify resume and fresh-run fixtures. | Complete |
-| 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Awaiting approval |
-| 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Not started |
+| 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Complete |
+| 4. Prove notebook/service parity | Run both paths against the same captured provider fixtures. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Awaiting approval |
 | 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Not started |
 | 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
 
@@ -57,6 +57,19 @@ already-initialized provider until Phase 3 establishes the native worker
 bootstrap. Fresh-run, resume, cache recovery, provider construction, and adapter
 tests are offline. Full suite: 452 passed, 4 skipped. No paid requests,
 deployment, or production changes were made.
+
+Phase 3 checkpoint: `hosted.service_runner` is now an ordinary Python module
+entry point. Hosted workers can select `AUDIT_ENGINE_MODE=service_native`; that
+path passes audit settings through the process environment and does not import
+`runner_builder`, generate Python from the notebook, or load the notebook. It
+uses the service-owned provider, preparation, audit coordinator, redirect
+resolver, and PDF renderer. The notebook and transitional adapter modes remain
+available as rollback paths until fixture parity passes; the default mode has
+not been switched and no production configuration changed. Offline tests cover
+worker dispatch/options, explicit credential bootstrap, PDF/redirect support,
+and the service coordinator. Full suite: 461 passed, 4 skipped. A local PDF
+render produced a valid 12 KB file. No provider calls, push, or deployment were
+made.
 
 Previous checkpoint: hosted progress now uses service logging for stage banners,
 successes, and warnings rather than notebook-provided print callbacks. The

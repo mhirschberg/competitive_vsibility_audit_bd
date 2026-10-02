@@ -237,6 +237,9 @@ def _bind_research_provider_adapter(client, runtime):
 def _standalone_brightdata_client(runtime):
     """Replace the initialized notebook client when its credentials exist."""
     legacy = runtime.get('bd_client')
+    from hosted.brightdata_provider import BrightDataProviderClient
+    if isinstance(legacy, BrightDataProviderClient):
+        return legacy
     if legacy is None or not all(
         hasattr(legacy, name) for name in ('token', 'serp_zone', 'country')
     ):
