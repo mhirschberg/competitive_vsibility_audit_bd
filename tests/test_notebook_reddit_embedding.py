@@ -5,8 +5,10 @@ from pathlib import Path
 from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import urlparse
+from unittest.mock import patch
 
 from audit_core import competitor_decisions, competitor_pipeline, competitor_research
+from audit_core.company_analysis import select_relevant_company_research
 from notebook_builder import _without_service_imports
 from audit_core.brightdata_usage import BrightDataUsageLedger
 
@@ -254,14 +256,6 @@ class NotebookEmbeddingTests(unittest.TestCase):
         self.assertLessEqual(len(structuring_prompt), 4050)
 
     def test_company_research_selection_keeps_all_buyer_queries(self):
-        runtime = "".join(self.notebook["cells"][4]["source"])
-        start = runtime.index("def select_relevant_company_research")
-        end = runtime.index("_original_normalize_company_intake", start)
-        namespace = {
-            "re": re,
-            "get_root_domain": lambda domain: domain,
-        }
-        exec(runtime[start:end], namespace)
         queries = [f"{index}. buyer need {index}" for index in range(1, 9)]
         research = (
             "Company market description.\n\n"
@@ -270,10 +264,14 @@ class NotebookEmbeddingTests(unittest.TestCase):
             + "\n\n".join(queries)
         )
 
-        selected = namespace["select_relevant_company_research"](
-            research, "Samsung", "samsung.com", "premium smartphone",
-            max_characters=1800,
-        )
+        with patch(
+            "audit_core.company_analysis.get_root_domain",
+            side_effect=lambda value: str(value).removeprefix("www."),
+        ):
+            selected = select_relevant_company_research(
+                research, "Samsung", "samsung.com", "premium smartphone",
+                max_characters=1800,
+            )
 
         self.assertLessEqual(len(selected), 1800)
         self.assertIn("Research-proposed buyer searches:", selected)

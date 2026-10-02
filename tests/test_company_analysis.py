@@ -1,5 +1,6 @@
 """Offline tests for company research and structuring orchestration."""
 
+import ast
 import json
 from pathlib import Path
 import unittest
@@ -198,6 +199,18 @@ class CompanyAnalysisTests(unittest.TestCase):
                 COMPANY_ANALYSIS_SOURCE.read_text(encoding="utf-8")
             ).strip(),
         )
+        definitions = []
+        for notebook_cell in notebook["cells"]:
+            try:
+                tree = ast.parse("".join(notebook_cell.get("source", [])))
+            except SyntaxError:
+                continue
+            definitions.extend(
+                node.name for node in tree.body
+                if isinstance(node, ast.FunctionDef)
+                and node.name == "select_relevant_company_research"
+            )
+        self.assertEqual(definitions, ["select_relevant_company_research"])
 
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
 """Provider-neutral orchestration for company research and keyword setup."""
 
 import json
+import re
 
 
 # SERVICE-ONLY-IMPORTS: start
+from .domains import get_root_domain
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -145,6 +147,81 @@ Requirements:
             f"Company structuring prompt is too long: {len(prompt)} characters."
         )
     return prompt
+
+
+def select_relevant_company_research(
+    research_text, company_name, company_domain, audit_focus="",
+    max_characters=2400,
+):
+    """Select high-signal research blocks while retaining all eight queries."""
+    text = str(research_text or "").strip()
+    if len(text) <= max_characters:
+        return text
+
+    buyer_queries = []
+    heading = re.search(r"buyer[- ]intent searches|buyer searches", text, re.I)
+    if heading:
+        buyer_queries = re.findall(
+            r"(?m)^\s*\d{1,2}[.)]\s+([^\n]+)",
+            text[heading.end():],
+        )[:8]
+    buyer_excerpt = ""
+    if len(buyer_queries) == 8:
+        buyer_excerpt = "Research-proposed buyer searches:\n" + "\n".join(
+            f"{index}. {query.strip()}"
+            for index, query in enumerate(buyer_queries, 1)
+        )
+    selection_budget = max_characters - len(buyer_excerpt) - 2
+
+    company_name_lower = str(company_name or "").strip().lower()
+    domain_stem = get_root_domain(company_domain).split(".")[0].lower()
+    focus_terms = set(re.findall(r"[a-z0-9]{4,}", str(audit_focus or "").lower()))
+    useful_terms = {
+        "company", "category", "market", "product", "products", "service",
+        "services", "customers", "customer", "buyers", "audience",
+        "positioning", "offering", "offerings", "features", "benefits",
+        "differentiators", "manufacturer", "provider", "platform",
+        "specializes", "specialization",
+    }
+    blocks = [
+        block.strip() for block in re.split(r"\n\s*\n", text) if block.strip()
+    ]
+    if len(blocks) < 4:
+        blocks = [text[index:index + 600] for index in range(0, len(text), 600)]
+
+    scored_blocks = []
+    for index, block in enumerate(blocks):
+        lowered = block.lower()
+        score = 0
+        if company_name_lower and company_name_lower in lowered:
+            score += 20
+        if domain_stem and domain_stem in lowered:
+            score += 12
+        score += sum(5 for term in focus_terms if term in lowered)
+        score += sum(1 for term in useful_terms if term in lowered)
+        if lowered.count("http://") + lowered.count("https://") >= 3:
+            score -= 5
+        scored_blocks.append((score, index, block))
+
+    scored_blocks.sort(key=lambda item: (-item[0], item[1]))
+    selected = []
+    used_characters = 0
+    for score, index, block in scored_blocks:
+        if score <= 0 and selected:
+            continue
+        remaining = selection_budget - used_characters
+        if remaining <= 100:
+            break
+        selected.append((index, block[:remaining]))
+        used_characters += len(selected[-1][1]) + 2
+
+    selected.sort(key=lambda item: item[0])
+    result = "\n\n".join(block for _, block in selected).strip()
+    if buyer_excerpt:
+        result = (result + "\n\n" + buyer_excerpt).strip()
+    if not result:
+        result = text[:max_characters]
+    return result[:max_characters]
 
 
 def run_company_analysis_core(settings, *, ports):

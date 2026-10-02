@@ -1294,6 +1294,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         analysis_cell,
         {
             "normalize_citation": [0],
+            "select_relevant_company_research": [0],
             "build_ai_mode_source_candidates": [0],
             "merge_discovery_candidates": [0],
             "run_serp_stage": [0],

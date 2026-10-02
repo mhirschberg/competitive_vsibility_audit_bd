@@ -686,6 +686,19 @@ request dry run checks pass. No deployment or memory-reduction claim was made.
 Next: inspect remaining service callbacks, prioritizing policy/normalization
 logic while retaining network, persistence, and presentation at the edges.
 
+Fifty-sixth checkpoint: selecting the most relevant company-research excerpts
+now lives in `audit_core.company_analysis` and is used directly by the hosted
+service. The notebook embeds that same provider module and no longer keeps a
+second selector implementation. Output matched the previous notebook helper
+on four captured-style fixtures, including long research with all eight buyer
+queries. The full suite passes (426 tests, 4 skipped); notebook generation and
+the no-provider-call dry run pass. No paid requests, deployment, or memory
+reduction claim was made.
+
+Next: continue the runtime-boundary review, focusing on remaining company
+normalization and competitor-scope helpers without moving model or provider
+calls into pure core code.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
