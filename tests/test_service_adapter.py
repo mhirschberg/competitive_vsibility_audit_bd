@@ -250,32 +250,34 @@ class ServiceAdapterTests(unittest.TestCase):
         return runtime
 
     def test_service_company_analyzer_uses_shared_provider_core(self):
-        runtime = {
-            'run_chatgpt_without_web': lambda _prompt: {
-                'answer': json.dumps({
-                    'buyer_intent_keywords': [{'keyword': 'buy an oven'}],
-                }),
-                'record': {'answer_text': 'fixture'},
-                'snapshot_id': 'fixture-snapshot',
-            },
-            'BrightDataAPIError': RuntimeError,
+        utility_race = lambda _prompt, **_kwargs: {
+            'answer': json.dumps({
+                'buyer_intent_keywords': [{'keyword': 'buy an oven'}],
+            }),
+            'record': {'answer_text': 'fixture'},
+            'snapshot_id': 'fixture-snapshot',
         }
+        runtime = {'BrightDataAPIError': RuntimeError}
         client = object()
         expected = {'workflow': 'shared-company-core'}
         with patch(
             'hosted.service_adapter.run_company_analysis_core',
             return_value=expected,
         ) as run_core:
-            result = _service_company_analyzer(runtime, client)({'company_name': 'Acme'})
+            result = _service_company_analyzer(
+                runtime, client, utility_race=utility_race,
+            )({'company_name': 'Acme'})
         self.assertIs(result, expected)
         ports = run_core.call_args.kwargs['ports']
         self.assertIs(ports.client, client)
+        self.assertIs(ports.run_utility, utility_race)
         self.assertIs(ports.parse_json, shared_parse_ai_json)
         self.assertEqual(ports.error_type, RuntimeError)
         self.assertIs(ports.build_locked_scope, build_locked_target_scope)
         from audit_core.company_analysis import normalize_company_intake_core
         self.assertIs(ports.normalize_intake, normalize_company_intake_core)
         self.assertNotIn('complete_company_keywords', runtime)
+        self.assertNotIn('run_chatgpt_without_web', runtime)
         completion = ports.complete_keywords(
             settings={'company_name': 'Acme'},
             brand=Model(

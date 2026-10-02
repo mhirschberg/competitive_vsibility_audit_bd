@@ -759,6 +759,20 @@ Next: review company intake normalization and keyword-record normalization;
 keep Pydantic construction and any AI-powered completion/proofreading behind
 explicit ports.
 
+Fifty-eighth checkpoint: hosted company analysis now uses the shared,
+validator-backed Gemini/ChatGPT utility race directly for structuring, keyword
+completion, and proofreading. The service adapter no longer requires the
+legacy notebook `run_chatgpt_without_web` callback; Reddit and company analysis
+share the same explicitly constructed provider adapter. The generated
+notebook path is unchanged and continues calling its compatibility wrapper.
+Offline adapter coverage verifies the utility port and absence of the legacy
+runtime binding. No provider request, notebook change, deployment, or memory
+reduction claim was made.
+
+Next: inspect the remaining company-stage runtime bindings and classify each
+as shared policy, provider operation, persistence, model validation, or UI
+output before removing another dependency.
+
 ## Decision
 
 The service implementation becomes the source of truth. The Colab notebook is a
