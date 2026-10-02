@@ -110,6 +110,20 @@ COMPANY_KEYWORD_COMPLETION_ADAPTER_SOURCE = '''def complete_company_keywords(
         keyword_model=BuyerIntentKeyword,
     )
 '''
+BUYER_KEYWORD_PROOFREADING_ADAPTER_SOURCE = '''def proofread_buyer_keywords(
+    settings, brand, current_keywords,
+):
+    return proofread_buyer_keywords_core(
+        settings,
+        brand,
+        current_keywords,
+        run_utility=run_chatgpt_without_web,
+        parse_json=parse_ai_json,
+        model_to_dict=model_to_dict,
+        market_language_fn=market_language,
+        keyword_model=BuyerIntentKeyword,
+    )
+'''
 SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
 SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
@@ -1112,6 +1126,27 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         "complete_company_keywords",
         0,
         COMPANY_KEYWORD_COMPLETION_ADAPTER_SOURCE,
+    )
+    utility_cell = _unique_cell(notebook, "runtime-utilities-merged")
+    _replace_python_function_occurrence(
+        utility_cell,
+        "proofread_buyer_keywords",
+        0,
+        BUYER_KEYWORD_PROOFREADING_ADAPTER_SOURCE,
+    )
+    _remove_python_function_occurrences(
+        analysis_cell,
+        {
+            "normalize_keyword_for_quality": [0],
+            "is_generic_placeholder_keyword": [0],
+        },
+    )
+    _remove_python_function_occurrences(
+        utility_cell,
+        {
+            "keyword_meaningful_tokens": [0],
+            "keyword_proofreading_is_safe": [0],
+        },
     )
     _replace_embedded_source(
         analysis_cell,

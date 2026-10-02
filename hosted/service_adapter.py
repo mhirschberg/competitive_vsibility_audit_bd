@@ -28,6 +28,7 @@ from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     complete_company_keywords_core,
     normalize_company_intake_core,
+    proofread_buyer_keywords_core,
     run_company_analysis_core,
     select_relevant_company_research,
 )
@@ -505,7 +506,14 @@ def _service_company_analyzer(runtime, client):
                 model_to_dict=model_to_dict,
                 keyword_model=runtime.get('BuyerIntentKeyword', BuyerIntentKeyword),
             ),
-            proofread_keywords=runtime['proofread_buyer_keywords'],
+            proofread_keywords=lambda **kwargs: proofread_buyer_keywords_core(
+                **kwargs,
+                run_utility=runtime['run_chatgpt_without_web'],
+                parse_json=parse_ai_json,
+                model_to_dict=model_to_dict,
+                market_language_fn=market_language,
+                keyword_model=runtime.get('BuyerIntentKeyword', BuyerIntentKeyword),
+            ),
             build_locked_scope=build_locked_target_scope_core,
             error_type=runtime['BrightDataAPIError'],
         ),
@@ -610,7 +618,7 @@ def build_runtime_ports(runtime):
             need(name)
         if not callable(runtime.get('company_analysis_runner')):
             for name in (
-            'run_chatgpt_without_web', 'proofread_buyer_keywords',
+            'run_chatgpt_without_web',
             ):
                 need(name)
         for name in ('refresh_usage_results', 'usage_summary'):
