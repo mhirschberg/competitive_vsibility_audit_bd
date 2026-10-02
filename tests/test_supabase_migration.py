@@ -16,6 +16,7 @@ PURGE_MIGRATION = MIGRATION.with_name("20260926020000_workshop_anonymous_purge.s
 USERS_MIGRATION = MIGRATION.with_name("20260927000000_registered_users_admin.sql")
 COST_MIGRATION = MIGRATION.with_name("20260927010000_admin_cost_overview.sql")
 EMAIL_MIGRATION = MIGRATION.with_name("20260928000000_audit_email_notifications.sql")
+TRIAL_OVERRIDE_MIGRATION = MIGRATION.with_name("20261002000000_personal_trial_owner_allowance.sql")
 
 
 class SupabaseMigrationTests(unittest.TestCase):
@@ -120,6 +121,31 @@ class SupabaseMigrationTests(unittest.TestCase):
         for name in ("claim_audit_ready_email", "finish_audit_ready_email", "defer_audit_ready_email"):
             self.assertRegex(sql, rf"revoke all on function public\.{name}\([^;]+from public, anon, authenticated")
             self.assertRegex(sql, rf"grant execute on function public\.{name}\([^;]+to service_role")
+
+    def test_personal_trial_override_is_private_and_one_time_owner_only(self):
+        sql = TRIAL_OVERRIDE_MIGRATION.read_text(encoding="utf-8").lower()
+        self.assertIn("create table public.personal_trial_overrides", sql)
+        self.assertIn("audit_limit integer not null check (audit_limit between 1 and 999)", sql)
+        self.assertIn("cooldown_hours integer not null check (cooldown_hours >= 0)", sql)
+        self.assertIn("revoke all on public.personal_trial_overrides from public, anon, authenticated", sql)
+        self.assertIn("grant all on public.personal_trial_overrides to service_role", sql)
+        self.assertIn("where (select count(*) from public.site_admins) = 1", sql)
+        self.assertIn("select user_id, 999, 0", sql)
+        self.assertIn("v_limit := coalesce(v_limit, 3)", sql)
+        self.assertIn("v_cooldown_hours := coalesce(v_cooldown_hours, 24)", sql)
+        self.assertIn("make_interval(hours => v_cooldown_hours)", sql)
+        self.assertRegex(sql, r"revoke all on function public\.trial_status\(uuid\) from public, anon, authenticated")
+        self.assertRegex(sql, r"grant execute on function public\.trial_status\(uuid\) to service_role")
+        self.assertIn("raise exception 'trial_total_limit'", sql)
+        self.assertIn("raise exception 'trial_daily_limit'", sql)
+        self.assertRegex(
+            sql,
+            r"revoke all on function public\.submit_trial_audit\([\s\S]+?\) from public, anon, authenticated",
+        )
+        self.assertRegex(
+            sql,
+            r"grant execute on function public\.submit_trial_audit\([\s\S]+?\) to service_role",
+        )
 
 
 if __name__ == "__main__":
