@@ -9,6 +9,7 @@ from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     build_company_research_prompt,
     build_company_structuring_prompt,
+    normalize_keyword_records,
     run_company_analysis_core,
 )
 from notebook_builder import (
@@ -147,6 +148,45 @@ class CompanyAnalysisTests(unittest.TestCase):
         self.assertIn("Evidence block", structuring)
         self.assertIn("A previous formatting attempt failed", structuring)
         self.assertIn('"buyer_intent_keywords"', structuring)
+
+    def test_keyword_record_normalization_preserves_existing_input_rules(self):
+        self.assertEqual(
+            normalize_keyword_records("  query one, query two ,, QUERY ONE "),
+            [
+                {"keyword": "query one", "intent": "commercial", "rationale": ""},
+                {"keyword": "query two", "intent": "commercial", "rationale": ""},
+            ],
+        )
+        self.assertEqual(
+            normalize_keyword_records([
+                {"query": "  Query A ", "intent": "  informational ", "reason": "  why "},
+                {"term": "Query B", "rationale": " evidence "},
+                {"keyword": "query a", "intent": "ignored duplicate"},
+                {"keyword": ""},
+                7,
+            ]),
+            [
+                {"keyword": "Query A", "intent": "informational", "rationale": "why"},
+                {"keyword": "Query B", "intent": "commercial", "rationale": "evidence"},
+            ],
+        )
+        self.assertEqual(normalize_keyword_records({"keyword": "not a list"}), [])
+
+    def test_generated_notebook_has_one_shared_keyword_normalizer(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        definitions = []
+        for notebook_cell in notebook["cells"]:
+            try:
+                tree = ast.parse("".join(notebook_cell.get("source", [])))
+            except SyntaxError:
+                continue
+            definitions.extend(
+                node.name for node in tree.body
+                if isinstance(node, ast.FunctionDef)
+                and node.name == "normalize_keyword_records"
+            )
+        self.assertEqual(definitions, ["normalize_keyword_records"])
 
     def test_research_structuring_retry_and_scope_are_shared(self):
         ports, client, prompts, completions, proofreads = self.make_ports()
