@@ -13,10 +13,24 @@ from audit_core.company_analysis import (
     prepare_company_intake_payload,
     run_company_analysis_core,
 )
+from audit_core.company_models import (
+    BrandAnalysis,
+    BuyerIntentKeyword,
+    CompanyIntake,
+)
+from pydantic import ValidationError
+from audit_core.company_models import (
+    BrandAnalysis,
+    BuyerIntentKeyword,
+    CompanyIntake,
+)
+from pydantic import ValidationError
 from notebook_builder import (
     COMPANY_ANALYSIS_PROVIDER_END,
     COMPANY_ANALYSIS_PROVIDER_START,
     COMPANY_ANALYSIS_SOURCE,
+    COMPANY_MODELS_END,
+    COMPANY_MODELS_START,
     _without_service_imports,
 )
 
@@ -271,6 +285,51 @@ class CompanyAnalysisTests(unittest.TestCase):
         }
         self.assertIn("prepare_company_intake_payload", calls)
         self.assertIn("validate_model", calls)
+
+    def test_shared_company_models_preserve_nested_defaults_and_validation(self):
+        brand = BrandAnalysis(
+            brand_name="Example", official_url="https://example.com/",
+            domain="example.com",
+        )
+        intake = CompanyIntake(
+            brand=brand,
+            buyer_intent_keywords=[BuyerIntentKeyword(keyword="buy an oven")],
+        )
+        self.assertEqual(intake.brand.primary_market_role, "other")
+        self.assertEqual(intake.brand.target_customers, [])
+        self.assertEqual(intake.buyer_intent_keywords[0].intent, "commercial")
+        self.assertEqual(intake.buyer_intent_keywords[0].rationale, "")
+        with self.assertRaises(ValidationError):
+            validate = getattr(CompanyIntake, "model_validate", CompanyIntake.parse_obj)
+            validate({"brand": {"brand_name": "Missing fields"}})
+
+    def test_generated_notebook_embeds_the_shared_company_models(self):
+        root = Path(__file__).resolve().parents[1]
+        notebook = json.loads((root / "competitive_visibility_audit_bd.ipynb").read_text(encoding="utf-8"))
+        core_cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "final-core"
+        )
+        source = "".join(core_cell["source"])
+        embedded = source.split(COMPANY_MODELS_START, 1)[1].split(
+            COMPANY_MODELS_END, 1
+        )[0].strip()
+        self.assertEqual(
+            embedded,
+            (root / "audit_core" / "company_models.py").read_text(encoding="utf-8").strip(),
+        )
+        names = []
+        for cell in notebook["cells"]:
+            try:
+                tree = ast.parse("".join(cell.get("source", [])))
+            except SyntaxError:
+                continue
+            names.extend(
+                node.name for node in tree.body
+                if isinstance(node, ast.ClassDef)
+                and node.name in {"BuyerIntentKeyword", "BrandAnalysis", "CompanyIntake"}
+            )
+        self.assertEqual(names, ["BuyerIntentKeyword", "BrandAnalysis", "CompanyIntake"])
 
     def test_research_structuring_retry_and_scope_are_shared(self):
         ports, client, prompts, completions, proofreads = self.make_ports()

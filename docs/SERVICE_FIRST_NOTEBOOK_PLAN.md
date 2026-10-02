@@ -19,6 +19,13 @@ then validates the payload with `CompanyIntake`. This preserves the schema and
 the AI-driven completion/placeholder-filtering stages while making input
 normalization shared and independently testable.
 
+Schema checkpoint: `audit_core.company_models` owns the Pydantic models for
+buyer keywords, brand analysis, and company intake. The notebook builder embeds
+that exact source in its core cell in place of duplicate class definitions;
+the hosted adapter uses the same importable classes by default while retaining
+injection points for tests and transition fixtures. Company-intake payload
+preparation and AI completion remain separate from schema validation.
+
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports
 the same functions during migration. A representative generated runner was

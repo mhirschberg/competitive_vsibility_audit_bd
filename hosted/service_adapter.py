@@ -29,6 +29,9 @@ from audit_core.company_analysis import (
     run_company_analysis_core,
     select_relevant_company_research,
 )
+from audit_core.company_models import (
+    BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
+)
 from audit_core.competitor_scope import (
     build_locked_target_scope as build_locked_target_scope_core,
     locked_scope_brand_family,
@@ -516,6 +519,9 @@ def build_runtime_ports(runtime):
     success = need('print_stage_success')
     warning = need('print_stage_warning')
     format_duration_fn = format_duration
+    intake_model = runtime.get('CompanyIntake', CompanyIntake)
+    brand_model = runtime.get('BrandAnalysis', BrandAnalysis)
+    keyword_model = runtime.get('BuyerIntentKeyword', BuyerIntentKeyword)
     analyze_company = _service_company_analyzer(runtime, client)
     company_scope = {'value': None}
 
@@ -585,8 +591,6 @@ def build_runtime_ports(runtime):
     def preflight():
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
-            'CompanyIntake', 'BrandAnalysis',
-            'BuyerIntentKeyword',
             'CompetitorCandidate', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
             'SelectedCompetitor', 'BrightDataAPIError',
@@ -621,9 +625,9 @@ def build_runtime_ports(runtime):
     return AuditPipelinePorts(
         company_stage=CompanyStagePorts(
             analyze=analyze_company,
-            intake_factory=need('CompanyIntake'),
-            brand_factory=need('BrandAnalysis'),
-            keyword_factory=need('BuyerIntentKeyword'),
+            intake_factory=intake_model,
+            brand_factory=brand_model,
+            keyword_factory=keyword_model,
             get_locked_scope=lambda: None,
             set_locked_scope=lambda scope: company_scope.__setitem__(
                 'value', dict(scope) if isinstance(scope, dict) else scope
