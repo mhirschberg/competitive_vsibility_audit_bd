@@ -37,6 +37,8 @@ from audit_core.audit_models import (
     BrandProfile, CompetitorCandidate, SelectedCompetitor,
 )
 from audit_core.competitor_scope import (
+    LOCKED_SCOPE_VALIDATION_LIMIT,
+    LOCKED_SCOPE_VALIDATION_WORKERS,
     locked_scope_brand_family,
     locked_scope_local_domain_bonus,
     restore_locked_target_scope,
@@ -580,8 +582,8 @@ def build_runtime_ports(runtime):
                 locked_scope_local_domain_bonus,
             ),
             local_domain_bonus=locked_scope_local_domain_bonus,
-            validation_workers=need('LOCKED_SCOPE_VALIDATION_WORKERS'),
-            validation_limit=need('LOCKED_SCOPE_VALIDATION_LIMIT'),
+            validation_workers=LOCKED_SCOPE_VALIDATION_WORKERS,
+            validation_limit=LOCKED_SCOPE_VALIDATION_LIMIT,
             only_reuse=runtime.get('_GOOGLE_AI_ONLY_REUSE', False),
             cached_snapshot_ids=need('cached_research_snapshot_ids'),
             brand_family=locked_scope_brand_family,
@@ -595,8 +597,7 @@ def build_runtime_ports(runtime):
     def preflight():
         # Missing bindings must fail before canonical-site resolution or paid work.
         for name in (
-            'LOCKED_SCOPE_VALIDATION_WORKERS',
-            'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
+            'cached_research_snapshot_ids',
             'resolve_google_goto_url',
             'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',

@@ -22,6 +22,9 @@ from audit_core.company_models import (
     BrandAnalysis, BuyerIntentKeyword, CompanyIntake,
 )
 from audit_core.audit_models import CompetitorCandidate
+from audit_core.competitor_scope import (
+    LOCKED_SCOPE_VALIDATION_LIMIT, LOCKED_SCOPE_VALIDATION_WORKERS,
+)
 from runner_builder import _build_service_runner_script
 from tests.test_audit_pipeline import AuditPipelineTests, Model
 
@@ -164,8 +167,6 @@ class ServiceAdapterTests(unittest.TestCase):
             'select_competitors_stage': competitor.select_competitors,
             '_competitor_decision_ports': lambda: object(),
             'locked_scope_local_domain_bonus': lambda *_args: 0,
-            'LOCKED_SCOPE_VALIDATION_WORKERS': 3,
-            'LOCKED_SCOPE_VALIDATION_LIMIT': 12,
             'cached_research_snapshot_ids': lambda _prompt: [],
             'locked_scope_brand_family': lambda value: value,
             'start_reddit_discovery_prefetch': competitor.start_reddit_prefetch,
@@ -556,6 +557,31 @@ class ServiceAdapterTests(unittest.TestCase):
         self.assertIs(ports.company_stage.brand_factory, BrandAnalysis)
         self.assertIs(ports.company_stage.keyword_factory, BuyerIntentKeyword)
         self.assertIs(ports.search_stage.candidate_factory, CompetitorCandidate)
+
+    def test_competitor_validation_defaults_are_shared_not_runtime_bindings(self):
+        runtime = self.runtime([])
+        runtime.pop('LOCKED_SCOPE_VALIDATION_WORKERS', None)
+        runtime.pop('LOCKED_SCOPE_VALIDATION_LIMIT', None)
+
+        ports = build_runtime_ports(runtime)
+
+        with patch(
+            'hosted.service_adapter.select_competitors_with_provider',
+            return_value='selected',
+        ) as select:
+            result = ports.competitor_stage.select_competitors(
+                'Example', [], [], {'target_domain': 'example.com'},
+            )
+
+        self.assertEqual(result, 'selected')
+        self.assertEqual(
+            select.call_args.kwargs['validation_workers'],
+            LOCKED_SCOPE_VALIDATION_WORKERS,
+        )
+        self.assertEqual(
+            select.call_args.kwargs['validation_limit'],
+            LOCKED_SCOPE_VALIDATION_LIMIT,
+        )
 
     def test_worker_images_copy_the_importable_reddit_module(self):
         root = Path(__file__).resolve().parents[1]
