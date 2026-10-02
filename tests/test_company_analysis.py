@@ -14,14 +14,10 @@ from audit_core.company_analysis import (
     normalize_keyword_records,
     normalize_company_intake_core,
     prepare_company_intake_payload,
+    proofread_buyer_keywords_core,
+    keyword_proofreading_is_safe,
     run_company_analysis_core,
 )
-from audit_core.company_models import (
-    BrandAnalysis,
-    BuyerIntentKeyword,
-    CompanyIntake,
-)
-from pydantic import ValidationError
 from audit_core.company_models import (
     BrandAnalysis,
     BuyerIntentKeyword,
@@ -314,6 +310,118 @@ class CompanyAnalysisTests(unittest.TestCase):
         self.assertEqual(result["snapshot_id"], "fixture-snapshot")
         self.assertEqual(result["record"]["answer_text"], "fixture completion")
 
+    def test_keyword_proofreading_applies_safe_edits_and_preserves_provenance(self):
+        original_queries = [
+            "premium espresso machine", "compact coffee grinder",
+            "coffee machine for office", "automatic espresso machine",
+            "espresso machine with grinder", "quiet burr coffee grinder",
+            "best coffee machine for home", "commercial espresso machine",
+        ]
+        originals = [
+            BuyerIntentKeyword(keyword=value, rationale=f"reason {index}")
+            for index, value in enumerate(original_queries)
+        ]
+        corrected = [
+            "Premium espresso machines", "Compact coffee grinders",
+            "Coffee machines for office", "Automatic espresso machines",
+            "Espresso machines with grinder", "Quiet burr coffee grinders",
+            "Best coffee machines for home", "Commercial espresso machines",
+        ]
+        prompts = []
+
+        def run_utility(prompt, *, timeout_seconds):
+            prompts.append((prompt, timeout_seconds))
+            return {
+                "answer": json.dumps({"buyer_intent_keywords": [
+                    {"keyword": value} for value in corrected
+                ]}),
+                "record": {"answer_text": "fixture proofread"},
+                "snapshot_id": "proofread-snapshot",
+            }
+
+        result = proofread_buyer_keywords_core(
+            {"country": "DE", "audit_focus": "premium coffee machines"},
+            BrandAnalysis(
+                brand_name="CoffeeLab", official_url="https://coffeelab.example/",
+                domain="coffeelab.example", category="coffee machines",
+            ),
+            originals,
+            run_utility=run_utility,
+            parse_json=json.loads,
+            model_to_dict=lambda item: item.model_dump(),
+            market_language_fn=lambda country: f"German ({country})",
+        )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(len(result["keywords"]), 8)
+        self.assertEqual(result["keywords"][0].keyword, corrected[0])
+        self.assertEqual(result["keywords"][0].rationale, "reason 0")
+        self.assertIn("Required search language: German (DE)", prompts[0][0])
+        self.assertEqual(prompts[0][1], 900)
+        self.assertEqual(result["snapshot_id"], "proofread-snapshot")
+        self.assertEqual(result["original_keywords"], original_queries)
+
+    def test_keyword_proofreading_skip_reject_and_failure_keep_originals(self):
+        originals = [BuyerIntentKeyword(keyword="espresso machine")]
+        skipped = proofread_buyer_keywords_core(
+            {"country": "US"}, Model(brand_name="Acme", category="coffee"), originals,
+            run_utility=lambda *_args, **_kwargs: self.fail("must skip"),
+            parse_json=json.loads,
+            model_to_dict=lambda item: item.model_dump(),
+        )
+        self.assertEqual(skipped["status"], "skipped")
+        self.assertIs(skipped["keywords"], originals)
+
+        original_eight = [f"espresso machine option {index}" for index in range(8)]
+        original_models = [BuyerIntentKeyword(keyword=item) for item in original_eight]
+        result_record = {"answer_text": "fixture"}
+        rejected = proofread_buyer_keywords_core(
+            {"company_name": "Acme", "country": "US"},
+            Model(brand_name="Acme", category="coffee"), original_models,
+            run_utility=lambda *_args, **_kwargs: {
+                "answer": json.dumps({"keywords": [{"keyword": "espresso machine"}]}),
+                "record": result_record, "snapshot_id": "rejected-snapshot",
+            },
+            parse_json=json.loads,
+            model_to_dict=lambda item: item.model_dump(),
+            market_language_fn=lambda _country: "English",
+        )
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertIs(rejected["keywords"], original_models)
+        self.assertEqual(rejected["record"], result_record)
+        self.assertEqual(rejected["snapshot_id"], "rejected-snapshot")
+
+        failed = proofread_buyer_keywords_core(
+            {"company_name": "Acme", "country": "US"},
+            Model(brand_name="Acme", category="coffee"), original_models,
+            run_utility=lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("late")),
+            parse_json=json.loads,
+            model_to_dict=lambda item: item.model_dump(),
+            market_language_fn=lambda _country: "English",
+        )
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["snapshot_id"], None)
+        self.assertIs(failed["keywords"], original_models)
+
+    def test_keyword_proofreading_safety_rejects_brand_generic_and_changed_intent(self):
+        original = [f"espresso machine option {index}" for index in range(8)]
+        branded = keyword_proofreading_is_safe(
+            original, [{"keyword": f"Acme espresso machine {index}"} for index in range(8)], "Acme",
+        )
+        generic = keyword_proofreading_is_safe(
+            original,
+            [{"keyword": "products"}] + [{"keyword": f"oven query {index}"} for index in range(7)],
+            "Acme",
+        )
+        changed = keyword_proofreading_is_safe(
+            original,
+            [{"keyword": "electric bike accessories"}] + [{"keyword": value} for value in original[1:]],
+            "Acme",
+        )
+        self.assertFalse(branded["valid"])
+        self.assertFalse(generic["valid"])
+        self.assertFalse(changed["valid"])
+
     def test_generated_notebook_has_one_shared_keyword_normalizer(self):
         notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -371,6 +479,27 @@ class CompanyAnalysisTests(unittest.TestCase):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
         self.assertEqual(calls, {"complete_company_keywords_core"})
+
+    def test_notebook_keyword_proofreading_is_a_shared_core_adapter(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        utility_cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "runtime-utilities-merged"
+        )
+        tree = ast.parse("".join(utility_cell["source"]))
+        adapters = [
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "proofread_buyer_keywords"
+        ]
+        self.assertEqual(len(adapters), 1)
+        calls = {
+            node.func.id
+            for node in ast.walk(adapters[0])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        self.assertEqual(calls, {"proofread_buyer_keywords_core"})
 
     def test_shared_company_models_preserve_nested_defaults_and_validation(self):
         brand = BrandAnalysis(

@@ -9,6 +9,7 @@ from .company_models import BuyerIntentKeyword, CompanyIntake
 from .domains import get_root_domain
 from .domains import normalize_public_url
 from .primitives import ensure_string_list, normalize_confidence
+from .ai_localization import market_language
 # SERVICE-ONLY-IMPORTS: end
 
 
@@ -238,6 +239,203 @@ def complete_company_keywords_core(
         "record": result["record"],
         "snapshot_id": result["snapshot_id"],
     }
+
+
+GENERIC_KEYWORD_PLACEHOLDERS = {
+    "primary offering", "main offering", "core offering",
+    "products and services", "product and service", "product options",
+    "service options", "offering options", "buy products",
+    "purchase products", "purchase services", "buy services",
+    "best product options", "best service options", "best products",
+    "best services", "company products", "company services",
+    "business solutions", "available products", "available services",
+}
+
+KEYWORD_PROOFREADING_STOPWORDS = {
+    "a", "an", "and", "der", "die", "das", "den", "dem", "des",
+    "ein", "eine", "einer", "einem", "einen", "für", "im", "in",
+    "mit", "of", "on", "or", "the", "to", "und", "von", "zu",
+}
+
+
+def normalize_keyword_for_quality(keyword):
+    return re.sub(r"\s+", " ", str(keyword or "").strip().lower())
+
+
+def is_generic_placeholder_keyword(keyword):
+    normalized = normalize_keyword_for_quality(keyword)
+    if not normalized or normalized in GENERIC_KEYWORD_PLACEHOLDERS:
+        return True
+    return normalized in {
+        "products", "services", "solutions", "offerings", "options",
+        "companies", "providers", "suppliers",
+    } if len(normalized.split()) == 1 else False
+
+
+def keyword_meaningful_tokens(keyword):
+    return {
+        token for token in re.findall(r"[a-zA-ZÀ-ÿ0-9]+", str(keyword or "").lower())
+        if len(token) >= 3 and token not in KEYWORD_PROOFREADING_STOPWORDS
+    }
+
+
+def keyword_proofreading_is_safe(original_keywords, corrected_records, company_name):
+    if len(corrected_records) != 8:
+        return {"valid": False, "reason": "Proofreader did not return exactly eight keywords."}
+
+    corrected_keywords = [
+        str(item.get("keyword", "")).strip() for item in corrected_records
+    ]
+    normalized = [
+        re.sub(r"\s+", " ", keyword.lower()).strip()
+        for keyword in corrected_keywords
+    ]
+    if any(not keyword for keyword in normalized):
+        return {"valid": False, "reason": "Proofreader returned an empty keyword."}
+    if len(set(normalized)) != 8:
+        return {"valid": False, "reason": "Proofreader returned duplicate keywords."}
+
+    company_name = str(company_name or "").strip().lower()
+    if company_name and any(company_name in keyword for keyword in normalized):
+        return {"valid": False, "reason": "Proofreader inserted the audited brand name."}
+
+    generic = [keyword for keyword in normalized if is_generic_placeholder_keyword(keyword)]
+    if generic:
+        return {
+            "valid": False,
+            "reason": "Proofreader returned generic keywords: " + ", ".join(generic),
+        }
+
+    for original, corrected in zip(original_keywords, corrected_keywords):
+        original_tokens = keyword_meaningful_tokens(original)
+        corrected_tokens = keyword_meaningful_tokens(corrected)
+        if original_tokens and corrected_tokens and not (original_tokens & corrected_tokens):
+            return {
+                "valid": False,
+                "reason": (
+                    "Proofreading changed query intent too much: "
+                    f"{original!r} -> {corrected!r}"
+                ),
+            }
+    return {
+        "valid": True,
+        "reason": "Eight unique, non-branded, intent-preserving keywords.",
+    }
+
+
+def build_buyer_keyword_proofreading_prompt(
+    settings, brand, original_records, *, market_language_fn,
+):
+    country_code = str(settings.get("country", "") or "").upper()
+    language = market_language_fn(country_code)
+    return f"""
+Proofread these eight buyer search queries.
+
+Target country: {country_code}
+Required search language: {language}
+Category: {brand.category}
+Audit focus: {settings.get("audit_focus", "") or "primary offering"}
+
+Current queries:
+
+{json.dumps(original_records, ensure_ascii=False)}
+
+Rules:
+
+- Return exactly eight queries in the same order.
+- Preserve the commercial intent and meaning of each query.
+- Correct spelling, grammar, malformed words, and unnatural phrasing.
+- Make each query sound like something a real customer would search.
+- Do not add the audited brand or competitor names.
+- Do not broaden, replace, merge, or split query intents.
+- Keep rationales concise and in English.
+
+Return only JSON:
+
+{{
+  "buyer_intent_keywords": [
+    {{
+      "keyword": "proofread buyer query",
+      "intent": "commercial",
+      "rationale": "short English rationale"
+    }}
+  ]
+}}
+""".strip()
+
+
+def proofread_buyer_keywords_core(
+    settings, brand, current_keywords, *, run_utility, parse_json,
+    model_to_dict, market_language_fn=None, keyword_model=None,
+):
+    """Proofread buyer keywords, applying changes only after safety checks."""
+    original_records = [model_to_dict(item) for item in current_keywords]
+    original_keywords = [item["keyword"] for item in original_records]
+    if len(original_keywords) != 8:
+        return {
+            "keywords": current_keywords,
+            "status": "skipped",
+            "reason": "Keyword set did not contain exactly eight items.",
+            "record": None,
+            "snapshot_id": None,
+        }
+
+    market_language_fn = market_language_fn or market_language
+    prompt = build_buyer_keyword_proofreading_prompt(
+        settings,
+        brand,
+        original_records,
+        market_language_fn=market_language_fn,
+    )
+    try:
+        result = run_utility(prompt, timeout_seconds=900)
+        parsed = parse_json(result["answer"])
+        corrected_records = normalize_keyword_records(
+            parsed.get("buyer_intent_keywords") or parsed.get("keywords") or []
+        )
+        validation = keyword_proofreading_is_safe(
+            original_keywords, corrected_records, brand.brand_name,
+        )
+        if not validation["valid"]:
+            return {
+                "keywords": current_keywords,
+                "status": "rejected",
+                "reason": validation["reason"],
+                "record": result.get("record"),
+                "snapshot_id": result.get("snapshot_id"),
+            }
+
+        model = keyword_model or BuyerIntentKeyword
+        corrected_models = []
+        for original, corrected in zip(original_records, corrected_records):
+            corrected_item = dict(corrected)
+            if not corrected_item.get("intent"):
+                corrected_item["intent"] = original.get("intent", "commercial")
+            if not corrected_item.get("rationale"):
+                corrected_item["rationale"] = original.get("rationale", "")
+            validator = getattr(model, "model_validate", None)
+            corrected_models.append(
+                validator(corrected_item)
+                if callable(validator) else model.parse_obj(corrected_item)
+            )
+
+        return {
+            "keywords": corrected_models,
+            "status": "applied",
+            "reason": validation["reason"],
+            "record": result.get("record"),
+            "snapshot_id": result.get("snapshot_id"),
+            "original_keywords": original_keywords,
+            "corrected_keywords": [item.keyword for item in corrected_models],
+        }
+    except Exception as exc:
+        return {
+            "keywords": current_keywords,
+            "status": "failed",
+            "reason": f"{type(exc).__name__}: {exc}",
+            "record": None,
+            "snapshot_id": None,
+        }
 
 
 def build_company_research_prompt(settings):

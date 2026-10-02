@@ -38,8 +38,16 @@ of branded/duplicate results, Pydantic keyword creation, and retention of the
 provider record/snapshot ID now live in `audit_core.company_analysis`. Both
 the hosted adapter and generated notebook supply only the utility-AI call and
 small serialization/parser ports; neither needs the notebook's former
-`complete_company_keywords` implementation. Keyword proofreading is still
-bound to its notebook callback and remains a separate extraction target.
+`complete_company_keywords` implementation.
+
+Proofreading checkpoint: its prompt builder, eight-query safety checks,
+placeholder/brand/meaning-preservation filters, Pydantic reconstruction, and
+applied/rejected/failed result handling now also live in
+`audit_core.company_analysis`. The hosted path no longer requires the
+notebook's `proofread_buyer_keywords` callback; only utility execution,
+JSON parsing/serialization, and target-language selection are supplied as
+ports. The generated notebook wraps the same core, with its safety helpers
+removed from the legacy cells.
 
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports

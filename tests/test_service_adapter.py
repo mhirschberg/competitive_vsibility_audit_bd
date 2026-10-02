@@ -258,7 +258,6 @@ class ServiceAdapterTests(unittest.TestCase):
                 'record': {'answer_text': 'fixture'},
                 'snapshot_id': 'fixture-snapshot',
             },
-            'proofread_buyer_keywords': lambda **kwargs: kwargs,
             'BrightDataAPIError': RuntimeError,
         }
         client = object()
@@ -286,6 +285,13 @@ class ServiceAdapterTests(unittest.TestCase):
             current_keywords=[],
         )
         self.assertEqual(completion['keywords'][0].keyword, 'buy an oven')
+        self.assertNotIn('proofread_buyer_keywords', runtime)
+        proofreading = ports.proofread_keywords(
+            settings={'company_name': 'Acme', 'country': 'US'},
+            brand=Model(brand_name='Acme', category='ovens'),
+            current_keywords=[BuyerIntentKeyword(keyword='buy an oven')],
+        )
+        self.assertEqual(proofreading['status'], 'skipped')
         from audit_core.company_analysis import select_relevant_company_research
         self.assertIs(ports.select_relevant_research, select_relevant_company_research)
 
