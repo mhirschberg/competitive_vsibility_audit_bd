@@ -25,6 +25,9 @@ from audit_core.company_models import (
     BuyerIntentKeyword,
     CompanyIntake,
 )
+from audit_core.audit_models import (
+    BrandProfile, CompetitorCandidate, SelectedCompetitor,
+)
 from audit_core.brightdata_transport import BrightDataAPIError
 from pydantic import ValidationError
 from notebook_builder import (
@@ -33,6 +36,8 @@ from notebook_builder import (
     COMPANY_ANALYSIS_SOURCE,
     COMPANY_MODELS_END,
     COMPANY_MODELS_START,
+    AUDIT_MODELS_END,
+    AUDIT_MODELS_START,
     _without_service_imports,
 )
 
@@ -504,6 +509,27 @@ class CompanyAnalysisTests(unittest.TestCase):
             validate = getattr(CompanyIntake, "model_validate", CompanyIntake.parse_obj)
             validate({"brand": {"brand_name": "Missing fields"}})
 
+    def test_shared_audit_models_keep_report_defaults(self):
+        candidate = CompetitorCandidate(
+            domain="example.com", preferred_hostname="example.com",
+            homepage_url="https://example.com/", frequency=1,
+            keyword_coverage=0.5, best_rank=1, average_rank=1.0,
+            rank_score=1.0, total_score=1.0,
+        )
+        selected = SelectedCompetitor(
+            brand_name="Example", domain="example.com",
+            official_url="https://example.com/",
+        )
+        profile = BrandProfile(
+            brand_name="Example", official_url="https://example.com/",
+            domain="example.com",
+        )
+        self.assertEqual(candidate.matched_keywords, [])
+        self.assertEqual(selected.confidence, 0.0)
+        self.assertEqual(profile.pricing_model, "unknown")
+        self.assertTrue(profile.direct_competitor)
+        self.assertEqual(profile.evidence, [])
+
     def test_generated_notebook_embeds_the_shared_company_models(self):
         root = Path(__file__).resolve().parents[1]
         notebook = json.loads((root / "competitive_visibility_audit_bd.ipynb").read_text(encoding="utf-8"))
@@ -518,6 +544,26 @@ class CompanyAnalysisTests(unittest.TestCase):
         self.assertEqual(
             embedded,
             (root / "audit_core" / "company_models.py").read_text(encoding="utf-8").strip(),
+        )
+
+    def test_generated_notebook_embeds_shared_audit_models(self):
+        root = Path(__file__).resolve().parents[1]
+        notebook = json.loads((root / "competitive_visibility_audit_bd.ipynb").read_text(encoding="utf-8"))
+        core_cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "final-core"
+        )
+        source = "".join(core_cell["source"])
+        embedded = source.split(AUDIT_MODELS_START, 1)[1].split(
+            AUDIT_MODELS_END, 1
+        )[0].strip()
+        self.assertEqual(
+            embedded,
+            (root / "audit_core" / "audit_models.py").read_text(encoding="utf-8").strip(),
+        )
+        self.assertEqual(
+            {BrandProfile.__name__, CompetitorCandidate.__name__, SelectedCompetitor.__name__},
+            {"BrandProfile", "CompetitorCandidate", "SelectedCompetitor"},
         )
         names = []
         for cell in notebook["cells"]:
