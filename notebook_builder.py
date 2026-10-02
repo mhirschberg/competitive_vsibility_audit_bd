@@ -1271,6 +1271,16 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         primitives_cell,
         {"is_google_goto_url": [1]},
     )
+    primitive_tree = ast.parse("".join(primitives_cell["source"]))
+    if sum(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "model_to_dict"
+        for node in primitive_tree.body
+    ) > 1:
+        _remove_python_function_occurrences(
+            primitives_cell,
+            {"model_to_dict": [0]},
+        )
     _remove_shadowed_python_functions(
         primitives_cell,
         {
