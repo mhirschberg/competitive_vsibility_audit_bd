@@ -92,7 +92,7 @@ from audit_core.ai_localization import (
 )
 from audit_core.brightdata_transport import (
     CHATGPT_DATASET_ID, GEMINI_DATASET_ID, FAILED_STATUSES,
-    BrightDataAPIError,
+    BrightDataAPIError, SnapshotTimeoutError,
 )
 
 
@@ -100,7 +100,7 @@ _RESEARCH_BINDINGS = (
     'RESEARCH_PROVIDERS', 'cached_google_ai_snapshot_ids',
     'remember_google_ai_snapshot',
     'FAILED_STATUSES',
-    '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError', 'BrightDataAPIError',
+    '_GOOGLE_AI_ONLY_REUSE', 'ResearchRaceTimeoutError',
 )
 
 
@@ -112,12 +112,7 @@ def _bind_research_provider_adapter(client, runtime):
     rather than the notebook's monkey-patched ``google_ai_mode`` function.
     Measured Google AI Mode is intentionally untouched.
     """
-    # BrightDataAPIError is also used by unrelated provider adapters, so it
-    # must not by itself opt a small runtime into the complete research race.
-    research_markers = tuple(
-        name for name in _RESEARCH_BINDINGS if name != 'BrightDataAPIError'
-    )
-    present = [name for name in research_markers if name in runtime]
+    present = [name for name in _RESEARCH_BINDINGS if name in runtime]
     if not present:
         # Small stage-fixture runtimes may not model any research provider.
         return None
@@ -150,7 +145,7 @@ def _bind_research_provider_adapter(client, runtime):
         semaphore=runtime.get('_RESEARCH_RACE_SEMAPHORE')
         or threading.BoundedSemaphore(3),
         poll_seconds=runtime.get('RESEARCH_POLL_SECONDS', 5),
-        error_type=runtime['BrightDataAPIError'],
+        error_type=BrightDataAPIError,
         timeout_type=runtime['ResearchRaceTimeoutError'],
         legacy_snapshot_ids=runtime['cached_google_ai_snapshot_ids'],
     )
@@ -293,7 +288,7 @@ def _service_profile_runner(runtime):
             client=runtime['bd_client'],
             parse_ai_json=parse_ai_json,
             normalize_profile=normalize_profile,
-            snapshot_timeout_error=runtime['SnapshotTimeoutError'],
+            snapshot_timeout_error=SnapshotTimeoutError,
         )
 
     def recover_profile(task_result):
@@ -397,7 +392,7 @@ def _service_search_runner(runtime, client):
                 country_details_fn=country_details,
                 market_language_fn=market_language,
                 acknowledge_market_fn=answer_acknowledges_target_market,
-                timeout_error_type=runtime['SnapshotTimeoutError'],
+                timeout_error_type=SnapshotTimeoutError,
             )
 
         return await run_search_discovery_core(
@@ -564,7 +559,7 @@ def build_runtime_ports(runtime):
 
     def select_competitors(target_brand, candidates, keywords, scope):
         if not isinstance(scope, dict) or not scope:
-            raise need('BrightDataAPIError')(
+            raise BrightDataAPIError(
                 'Target scope was not locked during Stage 1.'
             )
         return select_competitors_with_provider(
@@ -588,7 +583,7 @@ def build_runtime_ports(runtime):
             cached_snapshot_ids=need('cached_research_snapshot_ids'),
             brand_family=locked_scope_brand_family,
             selected_factory=need('SelectedCompetitor'),
-            error_type=need('BrightDataAPIError'),
+            error_type=BrightDataAPIError,
             output_dir=runtime.get('CURRENT_AUDIT_OUTPUT_DIRECTORY'),
             write_json=write_json,
             clean_record=clean_record,
@@ -599,9 +594,8 @@ def build_runtime_ports(runtime):
         for name in (
             'CompetitorCandidate', 'LOCKED_SCOPE_VALIDATION_WORKERS',
             'LOCKED_SCOPE_VALIDATION_LIMIT', 'cached_research_snapshot_ids',
-            'SelectedCompetitor', 'BrightDataAPIError',
+            'SelectedCompetitor',
             'BrandProfile', 'resolve_google_goto_url',
-            'SnapshotTimeoutError',
             'create_styled_pdf_report',
             'BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD',
         ):
