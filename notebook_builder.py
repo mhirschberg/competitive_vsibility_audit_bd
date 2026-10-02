@@ -93,16 +93,9 @@ COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
 COMPANY_MODELS_START = "# AUDIT-COMPANY-MODELS: start"
 COMPANY_MODELS_END = "# AUDIT-COMPANY-MODELS: end"
 COMPANY_INTAKE_ADAPTER_SOURCE = '''def normalize_company_intake(data, company_name, company_url):
-    normalized = prepare_company_intake_payload(
-        data,
-        company_name,
-        company_url,
-        normalize_public_url=normalize_public_url,
-        get_root_domain=get_root_domain,
-        ensure_string_list=ensure_string_list,
-        normalize_confidence=normalize_confidence,
+    return normalize_company_intake_core(
+        data, company_name, company_url, intake_model=CompanyIntake,
     )
-    return validate_model(CompanyIntake, normalized)
 '''
 SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"

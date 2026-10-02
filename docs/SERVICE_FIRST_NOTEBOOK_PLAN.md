@@ -26,6 +26,13 @@ the hosted adapter uses the same importable classes by default while retaining
 injection points for tests and transition fixtures. Company-intake payload
 preparation and AI completion remain separate from schema validation.
 
+Service detachment checkpoint: `hosted.service_adapter` now supplies
+`normalize_company_intake_core` directly to the shared analysis pipeline. The
+hosted path no longer requires or calls the notebook's `normalize_company_intake`
+runtime binding; the notebook keeps a thin same-named wrapper that calls the
+shared normalizer with its embedded Pydantic model. Schema parsing and legacy
+model injection tests remain supported.
+
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports
 the same functions during migration. A representative generated runner was

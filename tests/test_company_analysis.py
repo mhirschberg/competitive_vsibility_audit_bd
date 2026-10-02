@@ -4,12 +4,14 @@ import ast
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from audit_core.company_analysis import (
     CompanyAnalysisPorts,
     build_company_research_prompt,
     build_company_structuring_prompt,
     normalize_keyword_records,
+    normalize_company_intake_core,
     prepare_company_intake_payload,
     run_company_analysis_core,
 )
@@ -248,6 +250,28 @@ class CompanyAnalysisTests(unittest.TestCase):
                 normalize_confidence=lambda value: value,
             )
 
+    def test_shared_company_normalizer_returns_the_shared_pydantic_model(self):
+        with patch("audit_core.company_analysis.get_root_domain", return_value="example.com"):
+            intake = normalize_company_intake_core(
+                {
+                    "brand": {
+                        "brand_name": " Example ",
+                        "official_url": "example.com",
+                        "confidence": 0.8,
+                    },
+                    "buyer_intent_keywords": [" buy an oven "],
+                },
+                "Fallback",
+                "example.com",
+            )
+
+        self.assertIsInstance(intake, CompanyIntake)
+        self.assertIsInstance(intake.brand, BrandAnalysis)
+        self.assertIsInstance(intake.buyer_intent_keywords[0], BuyerIntentKeyword)
+        self.assertEqual(intake.brand.brand_name, "Example")
+        self.assertEqual(intake.brand.domain, "example.com")
+        self.assertEqual(intake.buyer_intent_keywords[0].keyword, "buy an oven")
+
     def test_generated_notebook_has_one_shared_keyword_normalizer(self):
         notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -283,8 +307,7 @@ class CompanyAnalysisTests(unittest.TestCase):
             for node in ast.walk(adapters[0])
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
-        self.assertIn("prepare_company_intake_payload", calls)
-        self.assertIn("validate_model", calls)
+        self.assertIn("normalize_company_intake_core", calls)
 
     def test_shared_company_models_preserve_nested_defaults_and_validation(self):
         brand = BrandAnalysis(
