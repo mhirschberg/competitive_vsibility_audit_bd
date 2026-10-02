@@ -11,6 +11,14 @@ definition from its legacy analysis cell. Pydantic `CompanyIntake` and
 adapter boundary for now; this extraction does not change AI completion,
 placeholder filtering, or schema behavior.
 
+Following checkpoint: the same module now prepares a plain company-intake
+payload: legacy flat brand fields, normalized URL/domain, trimmed text, capped
+string lists, confidence values, and buyer-keyword records. The notebook keeps
+a small adapter that supplies its established URL/list/confidence helpers and
+then validates the payload with `CompanyIntake`. This preserves the schema and
+the AI-driven completion/placeholder-filtering stages while making input
+normalization shared and independently testable.
+
 First checkpoint: the runner builder now lives in `runner_builder.py`, and the
 worker imports it without loading `app.py` or Gradio. The old app re-exports
 the same functions during migration. A representative generated runner was

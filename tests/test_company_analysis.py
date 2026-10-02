@@ -10,6 +10,7 @@ from audit_core.company_analysis import (
     build_company_research_prompt,
     build_company_structuring_prompt,
     normalize_keyword_records,
+    prepare_company_intake_payload,
     run_company_analysis_core,
 )
 from notebook_builder import (
@@ -172,6 +173,67 @@ class CompanyAnalysisTests(unittest.TestCase):
         )
         self.assertEqual(normalize_keyword_records({"keyword": "not a list"}), [])
 
+    def test_company_payload_is_normalized_before_the_pydantic_boundary(self):
+        from audit_core.domains import normalize_public_url
+
+        def ensure_string_list(value):
+            if value is None:
+                return []
+            if isinstance(value, str):
+                value = value.strip()
+                return [value] if value else []
+            if isinstance(value, list):
+                return [str(item).strip() for item in value if item is not None and str(item).strip()]
+            return [str(value).strip()]
+
+        def normalize_confidence(value):
+            try:
+                number = float(value)
+                if 1 < number <= 100:
+                    number /= 100
+                return max(0.0, min(1.0, number))
+            except (TypeError, ValueError):
+                return 0.0
+
+        original = {
+            "brand_name": "  Example Co  ",
+            "official_url": " example.com/about ",
+            "category": "  appliances ",
+            "target_customers": [" homeowners ", None, "retailers"],
+            "evidence": list(range(10)),
+            "confidence": 85,
+            "keywords": ["buy an oven"],
+        }
+        payload = prepare_company_intake_payload(
+            original,
+            "Fallback name",
+            "fallback.example",
+            normalize_public_url=normalize_public_url,
+            get_root_domain=lambda _value: "example.com",
+            ensure_string_list=ensure_string_list,
+            normalize_confidence=normalize_confidence,
+        )
+
+        self.assertEqual(payload["brand"]["brand_name"], "Example Co")
+        self.assertEqual(payload["brand"]["official_url"], "https://example.com/about")
+        self.assertEqual(payload["brand"]["domain"], "example.com")
+        self.assertEqual(payload["brand"]["category"], "appliances")
+        self.assertEqual(payload["brand"]["target_customers"], ["homeowners", "retailers"])
+        self.assertEqual(payload["brand"]["evidence"], [str(value) for value in range(8)])
+        self.assertEqual(payload["brand"]["confidence"], 0.85)
+        self.assertEqual(payload["buyer_intent_keywords"][0]["keyword"], "buy an oven")
+        self.assertIn("brand", original)  # Preserve the notebook's prior mutation.
+
+    def test_company_payload_rejects_non_object_before_schema_validation(self):
+        with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+            prepare_company_intake_payload(
+                [], "Example", "example.com",
+                normalize_public_url=lambda value: value,
+                get_root_domain=lambda value: value,
+                ensure_string_list=lambda value: value,
+                normalize_confidence=lambda value: value,
+            )
+
     def test_generated_notebook_has_one_shared_keyword_normalizer(self):
         notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
         notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -187,6 +249,28 @@ class CompanyAnalysisTests(unittest.TestCase):
                 and node.name == "normalize_keyword_records"
             )
         self.assertEqual(definitions, ["normalize_keyword_records"])
+
+    def test_company_intake_notebook_adapter_keeps_schema_validation_explicit(self):
+        notebook_path = Path(__file__).resolve().parents[1] / "competitive_visibility_audit_bd.ipynb"
+        notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+        analysis_cell = next(
+            item for item in notebook["cells"]
+            if item.get("metadata", {}).get("id") == "final-analysis"
+        )
+        tree = ast.parse("".join(analysis_cell["source"]))
+        adapters = [
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "normalize_company_intake"
+        ]
+        self.assertEqual(len(adapters), 2)  # Base adapter plus placeholder filter.
+        calls = {
+            node.func.id
+            for node in ast.walk(adapters[0])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        self.assertIn("prepare_company_intake_payload", calls)
+        self.assertIn("validate_model", calls)
 
     def test_research_structuring_retry_and_scope_are_shared(self):
         ports, client, prompts, completions, proofreads = self.make_ports()
