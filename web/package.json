@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node scripts/build-config.mjs && vite --host 127.0.0.1",
     "build": "node scripts/build-config.mjs && vite build",
+    "build:home": "vite build --config vite.home.config.js",
     "test": "node --test",
     "preview": "vite preview --host 127.0.0.1"
   },

@@ -7,4 +7,5 @@ __pycache__/
 .DS_Store
 web/node_modules/
 web/dist/
+web/home-dist/
 web/public/config.json
