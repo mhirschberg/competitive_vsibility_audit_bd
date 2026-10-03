@@ -19,16 +19,9 @@ The result is a point-in-time comparison across:
 
 Bright Data supplies the live search, AI-answer and optional Reddit datasets. The engine produces a styled PDF, Markdown, structured JSON and a ZIP with evidence and diagnostics. The report keeps search coverage, answer coverage, citations and social conversations separate; it does not manufacture a single visibility score.
 
-## Choose how to try it
+## Run the notebook
 
-| Route | Best for | What you need |
-|---|---|---|
-| [Hosted web app](https://audit.qaviso.com) | Trying an audit without setup | Google sign-in for the limited personal trial, or a workshop link supplied by an organizer |
-| [Google Colab notebook](https://colab.research.google.com/github/mhirschberg/competitive_vsibility_audit_bd/blob/main/competitive_visibility_audit_bd.ipynb) | Running your own audits and inspecting the code | A Bright Data account, API token, SERP API zone and access to the selected datasets |
-
-The hosted app uses project-owned infrastructure and finite workshop/trial quotas. The notebook runs under your own Bright Data account. No Python knowledge is required for the Colab form, but you control its credentials and usage.
-
-In the hosted app, you can include or skip each AI answer source and choose a longer wait for it. ChatGPT, Gemini, and Copilot are on by default; Google AI Mode is off by default because its measured answers have recently been unreliable. This choice affects report measurements, not the internal ChatGPT/Gemini research that helps construct the audit. A longer wait may increase runtime and cost but cannot guarantee an answer.
+This repository contains the standalone Google Colab notebook. The hosted Qaviso application is maintained separately. The notebook runs under your own Bright Data account; no Python knowledge is required for its configuration form, and you control your credentials and usage.
 
 > This is a directional visibility audit, not a market-share measurement, scientific benchmark, or sentiment survey.
 
@@ -49,8 +42,6 @@ A company may:
 The audit makes those differences visible without collapsing them into one artificial score.
 
 ---
-
-## Run the notebook yourself
 
 You need:
 
@@ -182,14 +173,6 @@ When enabled, Reddit discovery starts immediately after competitor selection and
 Validated structured data is assembled deterministically. No additional AI request writes the final report, so a late formatting response cannot discard an otherwise successful audit.
 
 For the full methodology, concurrency model, validation rules, and request-volume discussion, see [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
-
-## Hosted architecture
-
-![Hosted architecture showing Firebase, Cloud Run, Supabase and Bright Data](docs/assets/hosted-architecture.svg)
-
-The browser loads the participant UI from Firebase Hosting and signs in through Supabase Auth. It sends an audit request to the Cloud Run API, which checks the applicable trial or workshop quota and records an idempotent request in Supabase Postgres. The API dispatches one Cloud Run worker job for that audit. The worker runs the same notebook engine, collects live data through Bright Data, writes stage updates to the database and saves reports in private Supabase Storage. The browser can be closed; on return, the signed-in user retrieves the audit and its files from their history.
-
-Cloud Tasks and a private watchdog check only active audits and stop when each audit reaches a terminal state. An hourly cleanup removes anonymous workshop data after the organizer's retention window; registered users and their reports are not part of that anonymous purge. The organizer panel controls workshop admission and concurrency caps. These limits constrain **how many audits start**, not the exact number of Bright Data records an individual audit may return. See [hosted deployment details](docs/HOSTED_BACKEND.md), [database and access model](docs/SUPABASE_DATABASE.md), and [cost visibility](docs/COSTS_AND_WAKEUP.md).
 
 ---
 
@@ -327,48 +310,13 @@ Unavailable values are displayed as an em dash rather than `NaN`; the correspond
 - Reddit comments dataset only when comment collection is selected
 
 Concurrent races reduce elapsed time and improve resilience, but every triggered snapshot may contribute to API usage, including snapshots that do not win a race.
-If the first Google AI Mode buyer question fails its short health check, the audit does not launch the other two questions. The already-triggered IDs remain saved. A one- or two-answer sample is marked partial and excluded from comparative visibility and source counts; it must not be interpreted as absence. The hosted “Wait longer” option deliberately raises the Google AI Mode wait, but a Cloud Run job still has a finite deadline. Automatic resume from a killed worker is not yet implemented.
+If the first Google AI Mode buyer question fails its short health check, the audit does not launch the other two questions. The already-triggered IDs remain saved. A one- or two-answer sample is marked partial and excluded from comparative visibility and source counts; it must not be interpreted as absence. The notebook's “Wait longer” option raises the Google AI Mode wait, but a longer wait cannot guarantee an answer.
 
 ### Usage and cost
 
 The report includes Bright Data operations, confirmed result records, and a **cost estimate**, not an invoice. The current estimate assumes **$1.50 per 1,000 returned result records**; a different Bright Data contract may have a different rate. Result records matter more than request count: one Reddit comment-dataset input can return hundreds of comments. The audit also records losing but accepted research-race requests. Check the Bright Data dashboard for actual billing and dataset-specific prices.
 
-For scale, a September 2026 Apple research run with the old full-comment behavior returned 1,150 confirmed records, including 1,018 Reddit records and 802 comments. That run also included debugging and reclassification, so it is **not** a typical per-audit price. It demonstrates why the new comment setting defaults to off. The hosted workshop/trial quotas bound admission, but this setting only limits how many posts are sent to the comments dataset; it cannot guarantee a fixed spend when comments are enabled.
-
-For the hosted app's report-ready email design and current verification status, see [Report-ready email notifications](docs/EMAIL_NOTIFICATIONS.md).
-
----
-
-## Local development
-
-Create an uncommitted `.env.local` file in the repository root:
-
-```text
-BRIGHTDATA_API_TOKEN=...
-SERP_ZONE=...
-```
-
-Create a virtual environment, install the requirements, and run:
-
-```text
-.venv/bin/python scripts/run_local_audit.py \
-  --company "Rayner" \
-  --domain "rayner.com" \
-  --focus "presbyopia-correcting intraocular lenses" \
-  --country "GB" \
-  --include-reddit \
-  --reddit-comment-posts-per-cohort 0
-```
-
-Omit `--include-reddit` for the faster core audit. Set `--reddit-comment-posts-per-cohort` to a value from 1 to 10 only if you want the additional comment dataset calls. Use `--dry-run` to validate settings and the generated notebook runner without making Bright Data calls.
-
-Live runs are written to timestamped directories under `local-runs/`, including `audit.log` and all report artifacts. `.env.local` and `local-runs/` are excluded from Git.
-
-Run the regression suite with:
-
-```text
-.venv/bin/python -m unittest discover -s tests -q
-```
+For scale, a September 2026 Apple research run with the old full-comment behavior returned 1,150 confirmed records, including 1,018 Reddit records and 802 comments. That run also included debugging and reclassification, so it is **not** a typical per-audit price. It demonstrates why the new comment setting defaults to off. The setting limits how many posts are sent to the comments dataset; it cannot guarantee a fixed spend when comments are enabled.
 
 ---
 
@@ -407,36 +355,9 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for diagnostic steps and 
 
 ---
 
-## Repository structure
-
-```text
-competitive_vsibility_audit_bd/
-├── competitive_visibility_audit_bd.ipynb  # primary Colab workflow
-├── app.py                                  # optional web wrapper
-├── hosted/                                 # deployed API, worker and watchdog code
-├── web/                                    # hosted participant and organizer UI
-├── supabase/migrations/                    # versioned hosted database schema
-├── reddit_social.py                        # social collection and analysis
-├── scripts/
-│   ├── embed_reddit_social.py
-│   ├── rerun_reddit_stage.py
-│   └── run_local_audit.py
-├── tests/                                  # regression suite
-├── docs/
-│   ├── METHODOLOGY.md
-│   ├── HOSTED_BACKEND.md
-│   ├── SUPABASE_DATABASE.md
-│   ├── TROUBLESHOOTING.md
-│   └── assets/                             # GitHub-rendered architecture diagrams
-├── requirements.txt
-└── README.md
-```
-
----
-
 ## Project status
 
-This is a working reference implementation and workshop tool. A separate hosted deployment is live at [audit.qaviso.com](https://audit.qaviso.com), with Supabase-backed history and per-audit Cloud Run workers. The notebook remains available for people who want to run it on their own Bright Data account. Repository changes do not reach the hosted service until a separate deployment; consult [docs/HOSTED_BACKEND.md](docs/HOSTED_BACKEND.md) for the deployed architecture and operational caveats.
+This repository contains the self-contained workshop notebook and its user-facing documentation. The hosted Qaviso application is maintained separately.
 
 It is not an official Bright Data SLA, benchmark, ranking system, or production monitoring product. Review request cost, retry behavior, data retention, and compliance requirements before adapting it for production use.
 

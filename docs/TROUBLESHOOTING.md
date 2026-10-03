@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This guide covers common notebook, local-run, collection, and reporting problems. Start with `DEBUG_MODE = True` when a normal run does not provide enough detail.
+This guide covers common notebook, collection, and reporting problems. Start with `DEBUG_MODE = True` when a normal run does not provide enough detail.
 
 ## The API token is missing
 
@@ -13,13 +13,6 @@ BRIGHTDATA_API_TOKEN
 The value must be a valid Bright Data API token and **Notebook access** must be enabled for the secret.
 
 Do not paste the token into a notebook cell or commit it to the repository.
-
-For a local run, put the token in the ignored `.env.local` file:
-
-```text
-BRIGHTDATA_API_TOKEN=...
-SERP_ZONE=...
-```
 
 ## Traditional-search requests fail
 
@@ -185,46 +178,3 @@ Runtime -> Run all
 ```
 
 The notebook contains staged definitions and embedded runtime helpers that must be loaded in order.
-
-## Validate a local setup without using Bright Data requests
-
-Run:
-
-```text
-.venv/bin/python scripts/run_local_audit.py \
-  --company "Example" \
-  --domain "example.com" \
-  --country "US" \
-  --dry-run
-```
-
-This validates local settings and the generated notebook runner without starting a live audit.
-
-## A local run fails
-
-Check the timestamped directory under `local-runs/`.
-
-Useful files include:
-
-- `audit.log`
-- Stage JSON files written before the failure
-- Raw retained records
-- Snapshot manifests
-
-The run directories and `.env.local` are excluded from Git.
-
-## The web interface returns to an empty form
-
-The web wrapper stores an active audit as a server-side job rather than relying only on browser state. Refresh the page and use the same deployed instance; the interface should reconnect to the active job.
-
-If the form remains empty, inspect the service logs for a process restart or redeploy. In-memory job state cannot survive replacement of the running service process unless an external persistent job store is added.
-
-## Run the regression suite
-
-From a configured local environment:
-
-```text
-.venv/bin/python -m unittest discover -s tests -q
-```
-
-The suite checks social query construction, cohort scope, snapshot diagnostics, notebook embedding, web configuration, and local orchestration behavior.

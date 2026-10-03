@@ -89,7 +89,7 @@ Coverage is the primary signal. Best and average position describe placement onl
 
 ### Google AI Mode questions
 
-Three neutral customer questions are asked without naming the audited brands. First, one three-snapshot Google AI Mode race acts as a bounded health check (120 seconds on a new run). If it fails, the other two questions are not triggered and Google AI Mode is marked unavailable rather than scored as zero. If it succeeds, the other two questions run normally, each retaining its first substantive response. The hosted **Wait longer** option deliberately extends this check; continuation polls previously saved snapshots.
+Three neutral customer questions are asked without naming the audited brands. First, one three-snapshot Google AI Mode race acts as a bounded health check (120 seconds on a new run). If it fails, the other two questions are not triggered and Google AI Mode is marked unavailable rather than scored as zero. If it succeeds, the other two questions run normally, each retaining its first substantive response. The notebook's **Wait longer** option deliberately extends this check; continuation polls previously saved snapshots.
 
 The retained results provide:
 
