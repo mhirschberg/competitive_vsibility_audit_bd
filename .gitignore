@@ -1,0 +1,10 @@
+.env
+.env.*
+.venv/
+local-runs/
+__pycache__/
+*.pyc
+.DS_Store
+web/node_modules/
+web/dist/
+web/public/config.json
