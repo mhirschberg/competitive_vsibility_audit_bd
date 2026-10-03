@@ -10,7 +10,6 @@ import unittest
 
 from audit_core.artifact_writes import write_json_with_scope
 from audit_core.company_stage import CompanyStagePorts, run_company_stage_core
-from notebook_builder import COMPANY_STAGE_CALL_SOURCE
 
 
 class Model:
@@ -131,76 +130,6 @@ class CompanyStageTests(unittest.TestCase):
             self.assertEqual(json.loads((raw / "01_company_ai_record.json").read_text()), {
                 "answer": "saved",
             })
-
-    def test_generated_notebook_adapter_passes_scope_and_outputs(self):
-        with tempfile.TemporaryDirectory() as root:
-            output = Path(root) / "competitive-visibility-idealista"
-            raw = output / "raw"
-            output.mkdir()
-            raw.mkdir()
-            messages = []
-            namespace = {
-                "LOCKED_TARGET_SCOPE": None,
-                "run_company_stage_core": run_company_stage_core,
-                "CompanyStagePorts": CompanyStagePorts,
-                "CompanyAnalysisPorts": lambda **kwargs: Model(**kwargs),
-                "run_company_analysis_core": lambda _settings, ports: analyze(
-                    _settings
-                ),
-                "bd_client": Model(),
-                "run_chatgpt_without_web": lambda *_args, **_kwargs: None,
-                "parse_ai_json": json.loads,
-                "normalize_company_intake": lambda **kwargs: kwargs,
-                "select_relevant_company_research": lambda **kwargs: "",
-                "complete_company_keywords": lambda **kwargs: {},
-                "proofread_buyer_keywords": lambda **kwargs: {},
-                "build_locked_target_scope": lambda *_args: {},
-                "BrightDataAPIError": RuntimeError,
-                "CompanyIntake": Model,
-                "BrandAnalysis": Model,
-                "BuyerIntentKeyword": Model,
-                "restore_locked_target_scope": lambda checkpoint, _brand, _settings:
-                    dict(checkpoint["locked_target_scope"]),
-                "model_to_dict": lambda item: vars(item).copy(),
-                "clean_record_for_storage": lambda record: dict(record),
-                "print_stage_success": messages.append,
-            }
-
-            def analyze(_settings):
-                namespace["LOCKED_TARGET_SCOPE"] = {"market": "Spanish property portals"}
-                return {
-                    "intake": Model(
-                        brand=Model(brand_name="Idealista", domain="old.example",
-                                    official_url="https://old.example/"),
-                        buyer_intent_keywords=[Model(keyword="comprar piso")],
-                    ),
-                    "record": {"answer": "saved"},
-                }
-
-            namespace["analyze_company_stage"] = analyze
-            namespace["write_json"] = lambda path, data: write_json_with_scope(
-                path, data, locked_target_scope=namespace["LOCKED_TARGET_SCOPE"]
-            )
-            script = (
-                "async def adapter(settings, continuing, output_directory, "
-                "raw_directory, run_timestamp, stage_started_at, stage_durations):\n"
-                "    global LOCKED_TARGET_SCOPE\n"
-                + COMPANY_STAGE_CALL_SOURCE
-                + "\n    return target_brand, keyword_records, keywords\n"
-            )
-            exec(compile(script, "notebook-company-adapter", "exec"), namespace)
-            durations = {}
-            brand, records, keywords = asyncio.run(namespace["adapter"](
-                self.settings, False, output, raw, self.timestamp,
-                time.monotonic(), durations,
-            ))
-            self.assertEqual(brand.domain, "idealista.com")
-            self.assertEqual([item.keyword for item in records], keywords)
-            self.assertEqual(namespace["LOCKED_TARGET_SCOPE"]["domain"], "idealista.com")
-            self.assertIn("company_analysis", durations)
-            self.assertEqual(json.loads(
-                (output / "01_company_analysis.json").read_text()
-            )["locked_target_scope"]["domain"], "idealista.com")
 
 
 if __name__ == "__main__":

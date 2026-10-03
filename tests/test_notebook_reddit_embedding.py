@@ -52,12 +52,12 @@ class NotebookEmbeddingTests(unittest.TestCase):
             3,
         )
         self.assertIn(
-            "include_reddit_analysis = bool(settings.get('include_reddit_analysis', False))",
+            'include_reddit = bool(settings.get("include_reddit_analysis", False))',
             orchestration,
         )
         self.assertIn("if include_reddit_analysis:", orchestration)
         self.assertIn('"status": "disabled"', orchestration)
-        self.assertIn("total_stages = 7 if include_reddit_analysis else 6", orchestration)
+        self.assertIn("total_stages = 7 if include_reddit else 6", orchestration)
         self.assertIn('"Reddit conversation analysis"', orchestration)
         self.assertNotIn("await asyncio.gather(\n            visibility_task", orchestration)
 

@@ -21,6 +21,7 @@ from audit_core.competitor_selection_stage import (
     CompetitorSelectionStagePorts, run_competitor_selection_stage_core,
 )
 from audit_core.profile_stage import ProfileStagePorts, run_profile_stage_core
+from audit_core.report_export import serialize_profile_task
 from audit_core.report_render_stage import ReportRenderPorts, run_report_render_stage_core
 from audit_core.search_stage import SearchStagePorts, run_search_stage_core
 from audit_core.social_completion_stage import (
@@ -42,7 +43,7 @@ def as_dict(item):
 
 
 class AuditPipelineTests(unittest.TestCase):
-    def make_ports(self, events):
+    def make_ports(self, events, *, scenario="baseline"):
         scope = {"value": {"market": "smartphones"}}
 
         def write_json(path, data):
@@ -51,6 +52,9 @@ class AuditPipelineTests(unittest.TestCase):
 
         def analyze(settings):
             events.append("analyze")
+            keywords = [Model(keyword="premium smartphone")]
+            if scenario == "partial_search":
+                keywords.append(Model(keyword="best premium smartphone"))
             return {
                 "intake": Model(
                     brand=Model(
@@ -61,13 +65,32 @@ class AuditPipelineTests(unittest.TestCase):
                         target_customers=[], products=[], key_features=[],
                         differentiators=[], confidence=0.0, evidence=[],
                     ),
-                    buyer_intent_keywords=[Model(keyword="premium smartphone")],
+                    buyer_intent_keywords=keywords,
                 ),
                 "record": {"company": "fixture"},
             }
 
         async def search(**kwargs):
             events.append("search")
+            if scenario == "partial_search":
+                return {
+                    "keyword_results": [
+                        {
+                            "keyword": "premium smartphone", "success": True,
+                            "results": [{"domain": "samsung.com"}],
+                        },
+                        {
+                            "keyword": "best premium smartphone", "success": False,
+                            "error": "fixture timeout", "results": [],
+                        },
+                    ],
+                    "candidates": [Model(
+                        brand_name="Samsung", domain="samsung.com",
+                    )],
+                    "successful": 1, "failed": 1, "ai_mode_failed": 0,
+                    "search_engine": "google", "search_status": "available",
+                    "ai_mode_discovery": None,
+                }
             return {
                 "keyword_results": [{
                     "keyword": "premium smartphone", "success": True,
@@ -81,6 +104,13 @@ class AuditPipelineTests(unittest.TestCase):
 
         def select(target, candidates, keywords, _locked_scope):
             events.append("select")
+            if scenario == "no_competitors":
+                return {
+                    "selected": [], "record": {"selection": "no-valid-candidates"},
+                    "rejected": [{"brand_name": "Samsung", "reason": "not direct"}],
+                    "validation_results": [{"status": "rejected"}],
+                    "used_fallback": False,
+                }
             return {
                 "selected": [Model(
                     brand_name="Samsung", domain="samsung.com",
@@ -109,16 +139,29 @@ class AuditPipelineTests(unittest.TestCase):
                 category="premium smartphones", positioning="Android devices",
                 differentiators=["choice"], relevant_products=["Galaxy"],
             )
+            selected = kwargs["selected_competitors"]
+            competitors = [competitor] if selected else []
             return {
                 "target_profile": target,
-                "competitor_profiles": [competitor],
-                "all_profiles": [target, competitor],
-                "task_results": [{"status": "success"}],
-                "successful": 2, "fallbacks": 0,
+                "competitor_profiles": competitors,
+                "all_profiles": [target, *competitors],
+                "task_results": [{"status": "success"} for _ in [target, *competitors]],
+                "successful": len([target, *competitors]), "fallbacks": 0,
             }
 
         async def visibility(**kwargs):
             events.append("visibility")
+            if scenario == "chatgpt_unavailable":
+                return {
+                    "prompt": "Which premium smartphone?",
+                    "engines": {
+                        "chatgpt": {
+                            "status": "failed", "engine_name": "ChatGPT",
+                            "duration_seconds": 1.0, "error": "fixture unavailable",
+                        },
+                    },
+                    "mentions": {"chatgpt": []},
+                }
             return {
                 "prompt": "Which premium smartphone?",
                 "engines": {
@@ -134,7 +177,8 @@ class AuditPipelineTests(unittest.TestCase):
             events.append("social")
             await kwargs["discovery_prefetch_task"]
             return {
-                "status": "success", "mode": "competitive",
+                "status": "partial" if scenario == "partial_reddit" else "success",
+                "mode": "competitive",
                 "comparison": [{
                     "brand": "Apple", "relevant_posts": 1,
                     "classified_posts": 1, "sample_size": 1,
@@ -142,7 +186,14 @@ class AuditPipelineTests(unittest.TestCase):
                 "unique_thread_count": 1,
                 "snapshot_manifest": [{"snapshot_id": "snap-1"}],
                 "duration_seconds": 2.0,
+                "warnings": (
+                    ["One Reddit cohort was unavailable"]
+                    if scenario == "partial_reddit" else []
+                ),
             }
+
+        def summarize_social_warning(result):
+            return "; ".join(result.get("warnings") or [])
 
         def report(*args):
             events.append("report")
@@ -199,6 +250,7 @@ class AuditPipelineTests(unittest.TestCase):
                 select_competitors=select,
                 configure_race_cache=lambda path, only_reuse: None,
                 write_json=write_json, model_to_dict=as_dict,
+                selected_factory=Model,
                 clean_record=dict,
                 stage_warning=lambda message: None,
                 print_selected=lambda competitor: None,
@@ -207,7 +259,10 @@ class AuditPipelineTests(unittest.TestCase):
             ),
             profile_stage=ProfileStagePorts(
                 run_profiles=profiles, model_to_dict=as_dict,
-                serialize_task=dict, write_json=write_json,
+                serialize_task=lambda result: serialize_profile_task(
+                    result, model_to_dict=as_dict,
+                ),
+                write_json=write_json,
                 stage_success=lambda message: None,
                 stage_warning=lambda message: None,
             ),
@@ -223,7 +278,7 @@ class AuditPipelineTests(unittest.TestCase):
                 stage_success=lambda message: None,
                 stage_warning=lambda message: None,
                 format_duration=format_duration,
-                summarize_warning=lambda result: "",
+                summarize_warning=summarize_social_warning,
                 write_json=write_json,
             ),
             report_stage=ReportRenderPorts(
@@ -261,7 +316,7 @@ class AuditPipelineTests(unittest.TestCase):
             stage_banner=lambda *args: events.append(("stage", *args)),
         )
 
-    def run_fixture(self, root, *, reddit):
+    def run_fixture(self, root, *, reddit, scenario="baseline"):
         events = []
         output = Path(root) / "competitive-visibility-apple-20260930-000000"
         context = AuditRunContext(
@@ -293,7 +348,7 @@ class AuditPipelineTests(unittest.TestCase):
             "include_copilot_visibility": False,
         }
         result = asyncio.run(run_audit_pipeline(
-            settings, context, ports=self.make_ports(events),
+            settings, context, ports=self.make_ports(events, scenario=scenario),
         ))
         return context, result, events
 
@@ -348,19 +403,31 @@ class AuditPipelineTests(unittest.TestCase):
             cell["source"] for cell in notebook["cells"]
             if cell.get("metadata", {}).get("id") == "final-orchestration"
         ))
-        markers = [
-            "AUDIT-COMPANY-STAGE-CALL: start",
-            "AUDIT-SEARCH-STAGE-CALL: start",
-            "AUDIT-COMPETITOR-SELECTION-STAGE-CALL: start",
-            "AUDIT-PROFILE-STAGE-CALL: start",
-            "AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: start",
-            "AUDIT-SOCIAL-COMPLETION-STAGE-CALL: start",
-            "AUDIT-REPORT-RENDER-STAGE-CALL: start",
-            "AUDIT-FINALIZE-STAGE-CALL: start",
+        pipeline = source.split(
+            "# AUDIT-PIPELINE: start\n", 1,
+        )[1].split("# AUDIT-PIPELINE: end", 1)[0]
+        function = source[
+            source.index("async def run_competitive_visibility_audit("):
+            source.index("# Report display")
         ]
-        self.assertEqual([source.count(marker) for marker in markers], [1] * 8)
-        self.assertEqual(sorted(source.index(marker) for marker in markers),
-                         [source.index(marker) for marker in markers])
+        self.assertIn("async def run_audit_pipeline(", pipeline)
+        self.assertEqual(function.count("run_audit_pipeline("), 1)
+        self.assertIn(
+            "return await run_audit_pipeline(settings, context, ports=ports)",
+            function,
+        )
+        self.assertIn("serialize_task=lambda result:", function)
+        self.assertIn("result, model_to_dict=model_to_dict,", function)
+        for duplicated_stage_call in (
+            "run_company_stage_core(", "run_search_stage_core(",
+            "run_competitor_selection_stage_core(",
+            "run_profile_stage_core(",
+            "run_visibility_checkpoint_stage_core(",
+            "run_social_completion_stage_core(",
+            "run_report_render_stage_core(",
+            "run_audit_finalize_stage_core(",
+        ):
+            self.assertNotIn(duplicated_stage_call, function)
 
     def test_fixture_result_matches_notebook_orchestration(self):
         notebook = json.loads(build_notebook().decode("utf-8"))
@@ -368,6 +435,9 @@ class AuditPipelineTests(unittest.TestCase):
             cell["source"] for cell in notebook["cells"]
             if cell.get("metadata", {}).get("id") == "final-orchestration"
         ))
+        pipeline_source = source.split(
+            "# AUDIT-PIPELINE: start\n", 1,
+        )[1].split("# AUDIT-PIPELINE: end", 1)[0]
         function_source = source[
             source.index("async def run_competitive_visibility_audit("):
             source.index("# Report display")
@@ -438,15 +508,25 @@ class AuditPipelineTests(unittest.TestCase):
                 return result
             return [] if left == right else [prefix]
 
-        for reddit in (False, True):
-            with self.subTest(reddit=reddit), tempfile.TemporaryDirectory() as root:
+        scenarios = (
+            ("baseline", False),
+            ("baseline_reddit", True),
+            ("partial_search", False),
+            ("chatgpt_unavailable", False),
+            ("no_competitors", False),
+            ("partial_reddit", True),
+        )
+        for scenario, reddit in scenarios:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as root:
                 service_root = Path(root) / "service"
                 notebook_root = Path(root) / "notebook"
                 service_root.mkdir()
                 notebook_root.mkdir()
-                _, service_result, _ = self.run_fixture(service_root, reddit=reddit)
+                _, service_result, _ = self.run_fixture(
+                    service_root, reddit=reddit, scenario=scenario,
+                )
                 events = []
-                fixture = self.make_ports(events)
+                fixture = self.make_ports(events, scenario=scenario)
                 final_ports = fixture.finalize_stage_factory()
                 client = Model(
                     configure_usage_checkpoint=lambda path, restore: None,
@@ -515,12 +595,13 @@ class AuditPipelineTests(unittest.TestCase):
                     "CompetitorCandidate": Model,
                     "run_competitor_selection_stage_core": run_competitor_selection_stage_core,
                     "CompetitorSelectionStagePorts": CompetitorSelectionStagePorts,
+                    "SelectedCompetitor": Model,
                     "select_competitors_stage": fixture.competitor_stage.select_competitors,
                     "start_reddit_discovery_prefetch": fixture.competitor_stage.start_reddit_prefetch,
                     "run_profile_stage_core": run_profile_stage_core,
                     "ProfileStagePorts": ProfileStagePorts,
                     "run_profile_stage": fixture.profile_stage.run_profiles,
-                    "serialize_profile_task": dict,
+                    "serialize_profile_task": serialize_profile_task,
                     "run_visibility_checkpoint_stage_core": run_visibility_checkpoint_stage_core,
                     "VisibilityCheckpointPorts": VisibilityCheckpointPorts,
                     "run_visibility_stage": fixture.visibility_stage.run_visibility,
@@ -528,7 +609,9 @@ class AuditPipelineTests(unittest.TestCase):
                     "serialize_engine_result": dict,
                     "run_social_completion_stage_core": run_social_completion_stage_core,
                     "SocialCompletionPorts": SocialCompletionPorts,
-                    "summarize_reddit_audit_warning": lambda result: "",
+                    "summarize_reddit_audit_warning": lambda result: "; ".join(
+                        result.get("warnings") or []
+                    ),
                     "run_report_render_stage_core": run_report_render_stage_core,
                     "ReportRenderPorts": ReportRenderPorts,
                     "generate_report_stage": fixture.report_stage.generate_report,
@@ -546,8 +629,10 @@ class AuditPipelineTests(unittest.TestCase):
                 rendered_source = function_source.replace(
                     "Path('/content')", f"Path({str(notebook_root)!r})"
                 )
-                exec(compile(rendered_source, "notebook-audit-function", "exec"),
-                     namespace)
+                executable_source = pipeline_source + "\n\n" + rendered_source
+                exec(compile(
+                    executable_source, "notebook-audit-function", "exec",
+                ), namespace)
                 settings = {
                     "company_name": "Apple", "company_domain": "apple.com",
                     "company_url": "https://apple.com/", "country": "US",
@@ -601,6 +686,21 @@ class AuditPipelineTests(unittest.TestCase):
                     service_result["usage"]["estimated_cost_usd"],
                     notebook_result["usage"]["estimated_cost_usd"],
                 )
+                if scenario == "partial_search":
+                    self.assertIn("1 SERP request(s) failed", service_result["warnings"])
+                elif scenario == "chatgpt_unavailable":
+                    self.assertTrue(any(
+                        warning.startswith("ChatGPT visibility failed")
+                        for warning in service_result["warnings"]
+                    ))
+                elif scenario == "no_competitors":
+                    self.assertEqual(service_result["selected"], [])
+                elif scenario == "partial_reddit":
+                    self.assertEqual(service_result["social_status"], "partial")
+                    self.assertIn(
+                        "One Reddit cohort was unavailable",
+                        service_result["warnings"],
+                    )
                 self.assertEqual(
                     service_result["visibility"]["chatgpt"]["engine_name"],
                     notebook_result["visibility"]["chatgpt"]["engine_name"],

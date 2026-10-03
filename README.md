@@ -439,9 +439,12 @@ competitive_vsibility_audit_bd/
 The service-first refactor is in progress. For code already extracted into
 Python sources, refresh the checked-in notebook with
 `python scripts/build_notebook.py --write` and verify it with
-`python scripts/build_notebook.py --check`. The notebook remains self-contained;
-the hosted audit still runs the notebook engine until stage-by-stage parity is
-established. See [the migration plan](docs/SERVICE_FIRST_NOTEBOOK_PLAN.md).
+`python scripts/build_notebook.py --check`. GitHub Actions runs the check for
+pull requests and pushes, so a change to shared code cannot silently leave the
+checked-in notebook stale. If it fails, regenerate the notebook and commit it
+alongside the source change. The notebook remains self-contained; the hosted
+audit still runs the notebook engine until stage-by-stage parity is established.
+See [the migration plan](docs/SERVICE_FIRST_NOTEBOOK_PLAN.md).
 
 ---
 

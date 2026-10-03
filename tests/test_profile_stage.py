@@ -9,9 +9,6 @@ import unittest
 
 from audit_core.profile_research import ProfileResearchPorts, run_profile_research_core
 from audit_core.profile_stage import ProfileStagePorts, run_profile_stage_core
-from notebook_builder import (
-    PROFILE_RESEARCH_ADAPTER_SOURCE, PROFILE_STAGE_CALL_SOURCE,
-)
 
 
 class Model:
@@ -128,57 +125,6 @@ class ProfileStageTests(unittest.TestCase):
             self.assertEqual(saved["successful_profiles"], 1)
             self.assertEqual(saved["fallback_profiles"], 1)
             self.assertEqual(len(saved["tasks"]), 2)
-
-    def test_notebook_adapters_use_shared_profile_functions(self):
-        namespace = {
-            "run_profile_research_core": run_profile_research_core,
-            "ProfileResearchPorts": ProfileResearchPorts,
-            "generate_profile_sync": lambda job, *_: {
-                "job": job, "status": "success", "profile": make_profile(job),
-            },
-            "recover_profile_sync": lambda result: result,
-            "fallback_profile": lambda job, target: make_profile(job),
-            "get_root_domain": lambda domain: domain,
-            "console": Model(print=lambda message: None),
-        }
-        exec(compile(PROFILE_RESEARCH_ADAPTER_SOURCE, "profile-adapter", "exec"),
-             namespace)
-        result = asyncio.run(namespace["run_profile_stage"](
-            self.target, self.competitors[:1], "premium smartphone",
-        ))
-        self.assertEqual(len(result["all_profiles"]), 2)
-
-        with tempfile.TemporaryDirectory() as root:
-            namespace.update({
-                "run_profile_stage_core": run_profile_stage_core,
-                "ProfileStagePorts": ProfileStagePorts,
-                "model_to_dict": lambda item: vars(item).copy(),
-                "serialize_profile_task": lambda item: {"status": item["status"]},
-                "write_json": lambda path, data: path.write_text(json.dumps(data)),
-                "print_stage_success": lambda message: None,
-                "print_stage_warning": lambda message: None,
-            })
-            script = (
-                "async def adapter(target_brand, selected_competitors, settings, "
-                "output_directory, stage_started_at, stage_durations, warnings):\n"
-                + PROFILE_STAGE_CALL_SOURCE
-                + "\n    return target_profile, competitor_profiles, all_profiles\n"
-            )
-            exec(compile(script, "profile-stage-adapter", "exec"), namespace)
-            durations, warnings = {}, []
-            target, competitors, all_profiles = asyncio.run(namespace["adapter"](
-                self.target, self.competitors[:1], {
-                    "audit_focus": "premium smartphone",
-                    "company_domain": "apple.com",
-                    "company_url": "https://apple.com/",
-                }, Path(root), time.monotonic(), durations, warnings,
-            ))
-            self.assertEqual(target.domain, "apple.com")
-            self.assertEqual(len(competitors), 1)
-            self.assertEqual(len(all_profiles), 2)
-            self.assertIn("brand_profiles", durations)
-            self.assertEqual(warnings, [])
-            self.assertTrue((Path(root) / "04_brand_profiles.json").is_file())
 
 
 if __name__ == "__main__":

@@ -18,12 +18,167 @@ own explicit approval.
 | 3. Add a native worker entry point | Run `audit_core` and hosted adapters from an ordinary Python entry point; stop generating/importing the notebook runner in the hosted worker. Keep a rollback path until parity passes. | Complete |
 | 4. Prove notebook/service parity | Run both paths against the same saved deterministic fixtures; record whether their provider data is synthetic or captured. Compare normalized audit records, candidate decisions, measured source labels, usage/cost summaries, and generated artifacts. No live calls. | Complete (synthetic fixtures) |
 | 5. Verify resource behavior locally | Measure elapsed time and process-tree peak memory on representative offline fixtures; document what these measurements can and cannot say about production. | Complete (offline fixture only) |
-| 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Requires separate approval |
+| 6. Optional live validation | If needed, request separate approval for a small paid-provider smoke test and any Cloud Run validation. Deployment remains a separate decision. | Complete for local live validation: service-native and notebook Apple audits finished under matching settings; continuation reused snapshots without duplicates. Cloud Run validation/deployment remains separate. |
 
 The finish line for the code refactor is Phase 5: the hosted worker has a
 service-native entry point, fixture parity passes, and local resource behavior
 is recorded. Phases 6 and any deployment are explicitly outside that finish
 line until separately approved.
+
+## Next execution roadmap: keep the notebook and service aligned
+
+The goal is one audit-engine source with two delivery forms: the hosted service
+imports `audit_core`, while the standalone Colab notebook embeds the same
+shared Python sources and stays self-contained. Web-only behavior (Google
+login, personal/workshop quotas, history, and admin UI) is intentionally not
+part of the notebook.
+
+Each numbered step remains approval-gated. No production deployment, paid
+provider call, or push is implied by this roadmap.
+
+| Step | Work | Exit check | Status |
+| --- | --- | --- | --- |
+| 1. Prevent notebook drift | Run `scripts/build_notebook.py --check` in GitHub Actions on pushes and pull requests; document how to regenerate the notebook. | CI passes when current and fails when a generated cell is stale. | Implemented locally; remote CI not yet observed. |
+| 2. Inventory remaining duplicate logic | Compare notebook cells, `audit_core`, and hosted engine stage by stage. Mark each behavior shared, adapter-only, or still duplicated; prioritize deterministic audit decisions. | A short inventory names exact modules/cells and the tests needed for each extraction. | Complete: [NOTEBOOK_PARITY_INVENTORY.md](NOTEBOOK_PARITY_INVENTORY.md). |
+| 3. Strengthen parity fixtures | Expand deterministic fixtures to cover partial/degraded outcomes (partial search, unavailable engines, insufficient competitors, partial Reddit, and resume) and compare normalized reports, sources, usage, warnings, and artifacts across notebook and service paths. | Tests fail on meaningful behavior drift and ignore expected PDF metadata differences. | Complete: offline parity and resume fixtures; current full suite 470 passed, 4 skipped. |
+| 4. Extract in small batches | Move only provider-neutral audit logic into `audit_core`; keep authentication, UI, storage, credentials, and external I/O in adapters. Regenerate the notebook and run parity tests after each batch. | Each batch has a green notebook-sync check and parity tests; no behavior is silently dropped. | In progress: whole-audit coordinator convergence and durable Stage 5 visibility resume are complete; next extraction batch requires approval. |
+| 5. Verify standalone notebook usability | Run the generated notebook in a clean Colab-style environment using local fixtures/dry-run paths, with no provider calls. | It imports/runs without the repository checkout and still exposes the expected workshop workflow. | Complete: isolated runtime bootstrap and adapter dry run passed; shared coordinator is covered by offline end-to-end fixtures. |
+| 6. Optional live parity smoke test | Compare one explicitly approved live run on the service and notebook, using the same settings and recording provider-result costs. | Results and any differences are reviewed before changing defaults. | Complete: both live runs finished with matching configuration and competitor domains. Differences in generated queries and provider answers are recorded below; this is not deterministic prompt-for-prompt equivalence. |
+| 7. Release decision | Prepare the branch/PR and summarize parity evidence. Decide separately whether to merge, publish the notebook, or deploy the hosted worker. | No production change occurs without an explicit release/deployment decision. | Not started. |
+
+For every extraction step, the normal cycle is: edit shared code, regenerate
+the checked-in notebook with `scripts/build_notebook.py --write`, run the
+notebook-sync and relevant parity tests, then include both source and generated
+notebook in the same change. CI is a guardrail; it does not auto-commit or
+publish notebook changes.
+
+Latest parity-fixture checkpoint: the whole-audit notebook/service fixture now
+covers a failed SERP query alongside a successful one, an unavailable ChatGPT
+answer, zero selected direct competitors, and partial Reddit coverage. The
+existing baseline still runs with Reddit both off and on. A research-race test
+also resumes from the same saved Gemini snapshot in both notebook and service
+paths and verifies that neither path starts replacement requests. Full suite:
+465 passed, 4 skipped. All checks are offline; no provider calls, push, or
+deployment were made.
+
+Coordinator convergence checkpoint: `audit_core.audit_pipeline.run_audit_pipeline`
+is now the single whole-audit stage coordinator for both execution forms. The
+hosted adapter calls it directly; the generated standalone notebook embeds the
+same source and uses a thin Colab adapter to prepare the run, bind provider and
+file/UI ports, and preserve notebook-visible progress state. This removes the
+second maintained stage sequence without moving authentication, persistence,
+credentials, or external I/O into the shared core. The notebook was regenerated;
+offline parity fixtures and the full suite pass (465 passed, 4 skipped), and
+the builder check confirms the checked-in notebook is current. Obsolete manual
+stage-call templates and their marker constants have been removed from the
+builder. Six tests that executed those retired fragments were removed; the
+stage-core tests and whole-audit parity fixtures remain. No paid calls, push,
+or deployment were made.
+
+Standalone-runtime checkpoint: loaded the generated notebook's configuration,
+core, analysis, orchestration, runtime-utility, and research-provider cells in a
+fresh Python process launched from `/private/tmp`, with no repository checkout
+on `sys.path`. The Colab secret accessor returned a dummy placeholder, all
+network sockets were blocked, and the audit wrapper handed its configured
+stage ports to a fake coordinator successfully. The notebook's final top-level
+`await` cell also compiled in notebook mode. Full coordinator behavior remains
+covered by the synthetic notebook/service end-to-end fixtures (465 passed, 4
+skipped); this was not a real Colab session or live-provider audit. No paid
+calls, push, or deployment were made.
+
+Live-parity checkpoint: with explicit approval, both execution paths were run
+on Apple / apple.com / US / premium smartphone, without Reddit, Copilot, or
+Google AI Mode. The notebook completed company analysis, all eight SERP
+searches, competitor selection, and profile generation, then exposed an adapter
+bug: `serialize_profile_task` was passed without its required keyword-only
+`model_to_dict` argument. The adapter now binds that argument and the generated
+notebook is current; 11 focused tests pass. A live continuation then reused the
+same Bright Data snapshots (not a second set of snapshot IDs) but stopped at
+competitor validation with zero valid direct competitors, so the notebook did
+not produce a live end-to-end report. Diagnosis: continuation reran Stage 3
+even though `03_competitor_selection.json` already held a successful selection.
+The research cache retained both providers' snapshot IDs, and a resumed race
+could choose another ready provider (Gemini initially, ChatGPT on continuation),
+which changed the discovered candidate set. Stage 3 now restores the saved
+selection during continuation and only then allows new research at later stages.
+An offline regression test proves this replay makes no new selection-provider
+call. The full suite now passes (465 tests, 4 skipped), the notebook is in sync,
+and no additional paid calls were made for this fix. A follow-up continuation
+then exposed a helper-script bug: it used the notebook's default Copilot setting
+instead of restoring the saved audit options. The run reached Stage 5 and queued
+three ChatGPT snapshots, three Gemini snapshots, and one unintended Copilot
+snapshot before I stopped it. The copied usage ledger currently records 30
+returned results and 23 trigger events still pending; I have not fetched any of
+the new Stage 5 results. The continuation script now restores saved engine
+flags by default, with `--no-copilot` remaining an explicit disable-only
+override. A corrected live attempt is paused until the pending tasks and spend
+are reviewed.
+
+Stage 5 result-recovery checkpoint: the seven previously queued visibility
+snapshots were later downloaded without triggering replacements: three
+ChatGPT, three Gemini, and one Copilot. They were ready, but the interrupted
+run had not saved their downloaded rows or request fingerprints, so this was a
+manual recovery rather than a complete resumed audit. The notebook-side usage
+checkpoint then showed 37 confirmed results and 16 still pending; estimated
+Bright Data spend for that run was about `$0.0795` at `$1.50 / 1,000 results`.
+This supersedes the earlier statement that those seven results had not been
+fetched. No further provider calls were made for the recovery implementation.
+
+Durable visibility-resume checkpoint: new AI-visibility race triggers now
+store a stable fingerprint of the dataset and exact request payload in the
+audit's usage journal. Downloaded rows are atomically cached as gzip JSON next
+to that journal. On continuation, the race reuses matching snapshot IDs,
+downloads only uncached ready snapshots, and triggers only missing contenders.
+If a prior trigger was journaled as started but its snapshot ID was never
+saved, continuation fails closed before starting replacements because the
+original request may already exist upstream. Legacy entries without request
+fingerprints cannot be safely matched automatically; they require recovery by
+their known snapshot IDs or a deliberate operator decision. Unit coverage
+checks full reuse, partial reuse, cached response restoration, and the
+ambiguous-trigger guard. Full suite: 470 passed, 4 skipped; notebook generation
+and sync checks pass. This was all offline; no provider calls, push, or deploy
+were made.
+
+Live resume validation: ran a fresh Apple / apple.com / US / premium smartphone
+audit with Reddit, Copilot, and Google AI Mode disabled. After Stages 1–4
+completed and all six ChatGPT/Gemini Stage 5 snapshot IDs plus request
+fingerprints were durably saved, the first process was interrupted. The
+continuation helper restored the same audit and completed the report; both AI
+visibility engines returned answers in the resumed run. The event journal
+remained at 55 operations across the interruption and continuation—no duplicate
+triggers were added—and all six original Stage 5 snapshots were eventually
+accounted as one returned result each. Final usage: 52 result records, 3 failed
+zero-result operations, estimated Bright Data cost `$0.078`. Competitors were
+Samsung Electronics and Google. The audit took about 1m 26s after continuation
+(the original process had already completed Stages 1–4). This validates the
+notebook-side Stage 5 resume path with live data; it is not a deterministic
+request-for-request parity comparison with the separate service-native run.
+No Reddit, Copilot, Google AI Mode, push, or deployment was involved.
+
+Service-native/notebook live comparison: the service-native Apple run and the
+later, fully resumed notebook Apple run used matching inputs (Apple, `apple.com`,
+US, premium smartphone, automatic Google search, same SERP zone; Reddit,
+Copilot, and Google AI Mode off; ChatGPT and Gemini on). Both completed all
+eight search queries and selected the same competitor domains: `samsung.com`
+and `google.com`. They returned 68 and 67 organic result rows respectively.
+The generated buyer keywords differed, as did live rankings: Samsung appeared
+in 2/8 searches in the service run and 0/8 in the notebook run. Since the query
+sets were generated independently and differed, this is expected live-data
+variation, not evidence of a pipeline mismatch.
+
+ChatGPT succeeded in both runs. Gemini was rejected by the service report after
+two answers failed the strict requirement to explicitly acknowledge the US
+market; it succeeded in the notebook run. This matches the intended degraded
+behavior: one unavailable or invalid answer source does not fail the whole
+audit. The profile label was `Apple` in one report and `Apple iPhone` in the
+other, another consequence of independent profile generation; raw mention
+counts therefore are not comparable. Bright Data usage was 55 returned
+results / `$0.0825` for service-native and 52 / `$0.078` for the notebook resume
+test, or `$0.1605` across these two distinct live runs. The six Stage 5
+snapshots in the notebook run were reused across interruption and continuation;
+no duplicate triggers were added. This establishes live path viability and
+resume safety, while the deterministic offline fixtures remain the evidence
+for exact behavioral parity. No Reddit calls, push, or deployment were made.
 
 Phase 1 inventory: service binding requirements for the Bing Markdown parser,
 shared failed-status policy, and default search-engine selection were removed;

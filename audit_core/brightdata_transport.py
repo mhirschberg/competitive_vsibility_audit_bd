@@ -295,6 +295,10 @@ def reliable_trigger_dataset(
     usage_operation_id = self.start_usage_operation(
         "Dataset trigger",
         dataset_id=dataset_id,
+        request_fingerprint=(
+            self.request_fingerprint(dataset_id, payload)
+            if callable(getattr(self, "request_fingerprint", None)) else None
+        ),
         input_count=(
             len(payload_items)
             if isinstance(payload_items, list)

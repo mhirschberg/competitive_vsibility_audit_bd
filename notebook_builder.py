@@ -58,6 +58,9 @@ ARTIFACT_NAMES_SOURCE = ROOT / "audit_core" / "artifact_names.py"
 UTILITY_AI_RACE_SOURCE = ROOT / "audit_core" / "utility_ai_race.py"
 COMPANY_MODELS_SOURCE = ROOT / "audit_core" / "company_models.py"
 AUDIT_MODELS_SOURCE = ROOT / "audit_core" / "audit_models.py"
+AUDIT_PIPELINE_SOURCE = ROOT / "audit_core" / "audit_pipeline.py"
+AUDIT_PIPELINE_START = "# AUDIT-PIPELINE: start"
+AUDIT_PIPELINE_END = "# AUDIT-PIPELINE: end"
 PRIMITIVES_CELL_ID = "final-core"
 PRIMITIVES_START = "# AUDIT-PRIMITIVES: start"
 PRIMITIVES_END = "# AUDIT-PRIMITIVES: end"
@@ -83,12 +86,8 @@ ARTIFACT_RESUME_START = "# AUDIT-ARTIFACT-RESUME: start"
 ARTIFACT_RESUME_END = "# AUDIT-ARTIFACT-RESUME: end"
 AUDIT_PREPARATION_START = "# AUDIT-PREPARATION: start"
 AUDIT_PREPARATION_END = "# AUDIT-PREPARATION: end"
-AUDIT_PREPARATION_CALL_START = "    # AUDIT-PREPARATION-CALL: start"
-AUDIT_PREPARATION_CALL_END = "    # AUDIT-PREPARATION-CALL: end"
 COMPANY_STAGE_START = "# AUDIT-COMPANY-STAGE: start"
 COMPANY_STAGE_END = "# AUDIT-COMPANY-STAGE: end"
-COMPANY_STAGE_CALL_START = "# AUDIT-COMPANY-STAGE-CALL: start"
-COMPANY_STAGE_CALL_END = "    # AUDIT-COMPANY-STAGE-CALL: end"
 COMPANY_ANALYSIS_PROVIDER_START = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: start"
 COMPANY_ANALYSIS_PROVIDER_END = "# AUDIT-COMPANY-ANALYSIS-PROVIDER: end"
 COMPANY_MODELS_START = "# AUDIT-COMPANY-MODELS: start"
@@ -129,12 +128,8 @@ SEARCH_DISCOVERY_START = "# AUDIT-SEARCH-DISCOVERY: start"
 SEARCH_DISCOVERY_END = "# AUDIT-SEARCH-DISCOVERY: end"
 SEARCH_STAGE_START = "# AUDIT-SEARCH-STAGE: start"
 SEARCH_STAGE_END = "# AUDIT-SEARCH-STAGE: end"
-SEARCH_STAGE_CALL_START = "# AUDIT-SEARCH-STAGE-CALL: start"
-SEARCH_STAGE_CALL_END = "    # AUDIT-SEARCH-STAGE-CALL: end"
 COMPETITOR_SELECTION_STAGE_START = "# AUDIT-COMPETITOR-SELECTION-STAGE: start"
 COMPETITOR_SELECTION_STAGE_END = "# AUDIT-COMPETITOR-SELECTION-STAGE: end"
-COMPETITOR_SELECTION_STAGE_CALL_START = "# AUDIT-COMPETITOR-SELECTION-STAGE-CALL: start"
-COMPETITOR_SELECTION_STAGE_CALL_END = "    # AUDIT-COMPETITOR-SELECTION-STAGE-CALL: end"
 PROFILE_RESEARCH_START = "# AUDIT-PROFILE-RESEARCH: start"
 PROFILE_RESEARCH_END = "# AUDIT-PROFILE-RESEARCH: end"
 PROFILE_PROVIDER_START = "# AUDIT-PROFILE-PROVIDER: start"
@@ -143,24 +138,14 @@ COMPETITOR_PROVIDER_START = "# AUDIT-COMPETITOR-PROVIDER: start"
 COMPETITOR_PROVIDER_END = "# AUDIT-COMPETITOR-PROVIDER: end"
 PROFILE_STAGE_START = "# AUDIT-PROFILE-STAGE: start"
 PROFILE_STAGE_END = "# AUDIT-PROFILE-STAGE: end"
-PROFILE_STAGE_CALL_START = "# AUDIT-PROFILE-STAGE-CALL: start"
-PROFILE_STAGE_CALL_END = "    # AUDIT-PROFILE-STAGE-CALL: end"
 VISIBILITY_CHECKPOINT_STAGE_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: start"
 VISIBILITY_CHECKPOINT_STAGE_END = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE: end"
-VISIBILITY_CHECKPOINT_STAGE_CALL_START = "# AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: start"
-VISIBILITY_CHECKPOINT_STAGE_CALL_END = "    # AUDIT-VISIBILITY-CHECKPOINT-STAGE-CALL: end"
 SOCIAL_COMPLETION_STAGE_START = "# AUDIT-SOCIAL-COMPLETION-STAGE: start"
 SOCIAL_COMPLETION_STAGE_END = "# AUDIT-SOCIAL-COMPLETION-STAGE: end"
-SOCIAL_COMPLETION_STAGE_CALL_START = "# AUDIT-SOCIAL-COMPLETION-STAGE-CALL: start"
-SOCIAL_COMPLETION_STAGE_CALL_END = "    # AUDIT-SOCIAL-COMPLETION-STAGE-CALL: end"
 REPORT_RENDER_STAGE_START = "# AUDIT-REPORT-RENDER-STAGE: start"
 REPORT_RENDER_STAGE_END = "# AUDIT-REPORT-RENDER-STAGE: end"
-REPORT_RENDER_STAGE_CALL_START = "# AUDIT-REPORT-RENDER-STAGE-CALL: start"
-REPORT_RENDER_STAGE_CALL_END = "    # AUDIT-REPORT-RENDER-STAGE-CALL: end"
 AUDIT_FINALIZE_STAGE_START = "# AUDIT-FINALIZE-STAGE: start"
 AUDIT_FINALIZE_STAGE_END = "# AUDIT-FINALIZE-STAGE: end"
-AUDIT_FINALIZE_STAGE_CALL_START = "# AUDIT-FINALIZE-STAGE-CALL: start"
-AUDIT_FINALIZE_STAGE_CALL_END = "    # AUDIT-FINALIZE-STAGE-CALL: end"
 BRIGHTDATA_TRANSPORT_START = "# AUDIT-BRIGHTDATA-TRANSPORT: start"
 BRIGHTDATA_TRANSPORT_END = "# AUDIT-BRIGHTDATA-TRANSPORT: end"
 OFFICIAL_DOMAINS_START = "# AUDIT-OFFICIAL-DOMAINS: start"
@@ -241,7 +226,15 @@ RESEARCH_HEADER = (
     "#@markdown Race ChatGPT and Gemini for internal research; "
     "keep Google AI Mode measured separately.\n\n"
 )
-AUDIT_PREPARATION_CALL_SOURCE = '''    def set_audit_output_directory(path):
+NOTEBOOK_PIPELINE_ADAPTER_SOURCE = '''async def run_competitive_visibility_audit(settings):
+    """Run the shared audit coordinator with Colab-specific adapters."""
+    global CURRENT_AUDIT_OUTPUT_DIRECTORY
+    global ACTIVE_SEARCH_ENGINE, ACTIVE_SEARCH_STATUS
+    global LAST_AI_MODE_DISCOVERY, LOCKED_TARGET_SCOPE
+    CURRENT_AUDIT_OUTPUT_DIRECTORY = None
+    LOCKED_TARGET_SCOPE = None
+
+    def set_audit_output_directory(path):
         global CURRENT_AUDIT_OUTPUT_DIRECTORY
         CURRENT_AUDIT_OUTPUT_DIRECTORY = path
 
@@ -263,28 +256,14 @@ AUDIT_PREPARATION_CALL_SOURCE = '''    def set_audit_output_directory(path):
         ),
     )
     settings = prepared['settings']
-    site_resolution = prepared['site_resolution']
-    continuing = prepared['continuing']
-    run_timestamp = prepared['run_timestamp']
-    run_id = prepared['run_id']
-    output_directory = prepared['output_directory']
-    raw_directory = prepared['raw_directory']
-    export_prefix = prepared['export_prefix']
-    audit_started_at = prepared['audit_started_at']
-    include_reddit_analysis = bool(settings.get('include_reddit_analysis', False))
-    include_copilot_visibility = bool(settings.get('include_copilot_visibility', False))
-    include_google_ai_mode = bool(settings.get('include_google_ai_mode', True))
-    include_chatgpt_visibility = bool(settings.get('include_chatgpt_visibility', True))
-    include_gemini_visibility = bool(settings.get('include_gemini_visibility', True))
-    total_stages = 7 if include_reddit_analysis else 6
-'''
-COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
+
+    def set_company_locked_scope(scope):
         global LOCKED_TARGET_SCOPE
         LOCKED_TARGET_SCOPE = scope
 
-    def run_company_analysis(settings):
+    def run_company_analysis(current_settings):
         return run_company_analysis_core(
-            settings,
+            current_settings,
             ports=CompanyAnalysisPorts(
                 client=bd_client,
                 run_utility=run_chatgpt_without_web,
@@ -293,14 +272,16 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
             ),
         )
 
-    company_stage = await run_company_stage_core(
-        settings,
-        continuing=continuing,
-        output_directory=output_directory,
-        raw_directory=raw_directory,
-        run_timestamp=run_timestamp,
-        started_at=stage_started_at,
-        ports=CompanyStagePorts(
+    def update_search_state(result):
+        global ACTIVE_SEARCH_ENGINE, ACTIVE_SEARCH_STATUS
+        global LAST_AI_MODE_DISCOVERY
+        ACTIVE_SEARCH_ENGINE = result['search_engine']
+        ACTIVE_SEARCH_STATUS = result['search_status']
+        LAST_AI_MODE_DISCOVERY = result['ai_mode_discovery']
+        bd_client.active_search_engine = ACTIVE_SEARCH_ENGINE
+
+    ports = AuditPipelinePorts(
+        company_stage=CompanyStagePorts(
             analyze=run_company_analysis,
             intake_factory=CompanyIntake,
             brand_factory=BrandAnalysis,
@@ -313,18 +294,7 @@ COMPANY_STAGE_CALL_SOURCE = '''    def set_company_locked_scope(scope):
             clean_record=clean_record_for_storage,
             stage_success=print_stage_success,
         ),
-    )
-    LOCKED_TARGET_SCOPE = company_stage["locked_scope"]
-    target_brand = company_stage["target_brand"]
-    keyword_records = company_stage["keyword_records"]
-    keywords = company_stage["keywords"]
-    stage_durations["company_analysis"] = company_stage["duration_seconds"]'''
-SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
-        keywords, target_brand.domain,
-        continuing=continuing,
-        output_directory=output_directory,
-        started_at=stage_started_at,
-        ports=SearchStagePorts(
+        search_stage=SearchStagePorts(
             run_search=run_serp_stage,
             candidate_factory=CompetitorCandidate,
             model_to_dict=model_to_dict,
@@ -333,15 +303,98 @@ SEARCH_STAGE_CALL_SOURCE = '''    search_stage = await run_search_stage_core(
             stage_warning=print_stage_warning,
             format_duration=format_duration,
         ),
+        competitor_stage=CompetitorSelectionStagePorts(
+            select_competitors=select_competitors_stage,
+            configure_race_cache=configure_google_ai_race_cache,
+            write_json=write_json,
+            model_to_dict=model_to_dict,
+            selected_factory=SelectedCompetitor,
+            clean_record=clean_record_for_storage,
+            stage_warning=print_stage_warning,
+            print_selected=lambda competitor: console.print(
+                f"      ✓ {competitor.brand_name}"
+            ),
+            social_notice=lambda: console.print(
+                "      [cyan]↗ Social discovery started in parallel; "
+                "snapshots are labelled [Social · …].[/cyan]"
+            ),
+            start_reddit_prefetch=start_reddit_discovery_prefetch,
+        ),
+        profile_stage=ProfileStagePorts(
+            run_profiles=run_profile_stage,
+            model_to_dict=model_to_dict,
+            serialize_task=lambda result: serialize_profile_task(
+                result, model_to_dict=model_to_dict,
+            ),
+            write_json=write_json,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+        ),
+        visibility_stage=VisibilityCheckpointPorts(
+            run_visibility=run_visibility_stage,
+            run_reddit_social=run_reddit_social_stage,
+            serialize_engine_result=serialize_engine_result,
+            write_json=write_json,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+        ),
+        social_stage=SocialCompletionPorts(
+            print_stage=print_stage,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+            summarize_warning=summarize_reddit_audit_warning,
+            write_json=write_json,
+        ),
+        report_stage=ReportRenderPorts(
+            generate_report=lambda *args: generate_report_stage(*args[:5]),
+            finalize_report=finalize_report,
+            insert_reddit_section=insert_reddit_report_section,
+            refresh_usage=bd_client.refresh_usage_results,
+            usage_summary=bd_client.usage_summary,
+            build_usage_section=build_bright_data_usage_section,
+            write_json=write_json,
+            write_text=write_text,
+            report_filename=report_filename,
+            create_pdf=create_styled_pdf_report,
+            clean_record=clean_record_for_storage,
+            stage_success=print_stage_success,
+            stage_warning=print_stage_warning,
+            format_duration=format_duration,
+        ),
+        finalize_stage_factory=lambda: AuditFinalizePorts(
+            build_record=build_audit_record,
+            model_to_dict=model_to_dict,
+            serialize_engine_result=serialize_engine_result,
+            generator_name=globals().get(
+                'LAST_UTILITY_REPORT_RESULT', {}
+            ).get('engine_name', 'Unknown'),
+            report_filename=report_filename,
+            write_json=write_json,
+            create_zip=create_audit_zip,
+            stage_success=print_stage_success,
+            completion_notice=lambda message: console.print(
+                f"\\n[bold green]{message}[/bold green]"
+            ),
+            format_duration=format_duration,
+        ),
+        stage_banner=print_stage,
+        price_per_1000=BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD,
+        after_search=update_search_state,
     )
-    keyword_serp_results = search_stage["keyword_results"]
-    competitor_candidates = search_stage["candidates"]
-    stage_durations["serp_discovery"] = search_stage["duration_seconds"]
-    ACTIVE_SEARCH_ENGINE = search_stage["search_engine"]
-    ACTIVE_SEARCH_STATUS = search_stage["search_status"]
-    LAST_AI_MODE_DISCOVERY = search_stage["ai_mode_discovery"]
-    bd_client.active_search_engine = ACTIVE_SEARCH_ENGINE
-    warnings.extend(search_stage["warnings"])'''
+    context = AuditRunContext(
+        run_id=prepared['run_id'],
+        run_timestamp=prepared['run_timestamp'],
+        export_prefix=prepared['export_prefix'],
+        output_directory=prepared['output_directory'],
+        raw_directory=prepared['raw_directory'],
+        site_resolution=prepared['site_resolution'],
+        continuing=prepared['continuing'],
+        audit_started_at=prepared['audit_started_at'],
+    )
+    return await run_audit_pipeline(settings, context, ports=ports)
+'''
 AI_MODE_QUESTION_ADAPTER_SOURCE = '''async def run_ai_mode_question(
     question, question_index, timeout_seconds=720, max_attempts=None,
 ):
@@ -362,37 +415,6 @@ AI_MODE_QUESTION_ADAPTER_SOURCE = '''async def run_ai_mode_question(
         timeout_error_type=SnapshotTimeoutError,
     )
 '''
-COMPETITOR_SELECTION_STAGE_CALL_SOURCE = '''    competitor_stage = await run_competitor_selection_stage_core(
-        target_brand, competitor_candidates, keywords,
-        locked_scope=company_stage["locked_scope"],
-        continuing=continuing,
-        output_directory=output_directory,
-        raw_directory=raw_directory,
-        started_at=stage_started_at,
-        include_reddit_analysis=include_reddit_analysis,
-        audit_focus=settings.get("audit_focus", ""),
-        ports=CompetitorSelectionStagePorts(
-            select_competitors=select_competitors_stage,
-            configure_race_cache=configure_google_ai_race_cache,
-            write_json=write_json,
-            model_to_dict=model_to_dict,
-            clean_record=clean_record_for_storage,
-            stage_warning=print_stage_warning,
-            print_selected=lambda competitor: console.print(
-                f"      ✓ {competitor.brand_name}"
-            ),
-            social_notice=lambda: console.print(
-                "      [cyan]↗ Social discovery started in parallel; "
-                "snapshots are labelled [Social · …].[/cyan]"
-            ),
-            start_reddit_prefetch=start_reddit_discovery_prefetch,
-        ),
-    )
-    selected_competitors = competitor_stage["selected_competitors"]
-    selection_result = competitor_stage["selection_result"]
-    stage_durations["competitor_selection"] = competitor_stage["duration_seconds"]
-    warnings.extend(competitor_stage["warnings"])
-    reddit_prefetch_task = competitor_stage["reddit_prefetch_task"]'''
 PROFILE_RESEARCH_ADAPTER_SOURCE = '''async def run_profile_stage(
     target_brand, selected_competitors, audit_focus="",
 ):
@@ -476,156 +498,6 @@ COMPETITOR_PROVIDER_ADAPTER_SOURCE = '''def select_competitors_stage(
         output_dir=globals().get("CURRENT_AUDIT_OUTPUT_DIRECTORY"),
         write_json=write_json,
         clean_record=clean_record_for_storage,
-    )'''
-PROFILE_STAGE_CALL_SOURCE = '''    profile_stage = await run_profile_stage_core(
-        target_brand, selected_competitors,
-        audit_focus=settings.get("audit_focus", ""),
-        company_domain=settings["company_domain"],
-        company_url=settings["company_url"],
-        output_directory=output_directory,
-        started_at=stage_started_at,
-        ports=ProfileStagePorts(
-            run_profiles=run_profile_stage,
-            model_to_dict=model_to_dict,
-            serialize_task=serialize_profile_task,
-            write_json=write_json,
-            stage_success=print_stage_success,
-            stage_warning=print_stage_warning,
-        ),
-    )
-    target_profile = profile_stage["target_profile"]
-    competitor_profiles = profile_stage["competitor_profiles"]
-    all_profiles = profile_stage["all_profiles"]
-    stage_durations["brand_profiles"] = profile_stage["duration_seconds"]
-    warnings.extend(profile_stage["warnings"])'''
-VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE = '''    visibility_stage = await run_visibility_checkpoint_stage_core(
-        target_profile, competitor_profiles, all_profiles, keywords,
-        keyword_serp_results,
-        include_copilot=include_copilot_visibility,
-        include_google_ai_mode=include_google_ai_mode,
-        include_chatgpt=include_chatgpt_visibility,
-        include_gemini=include_gemini_visibility,
-        wait_longer_for_chatgpt=bool(settings.get("wait_longer_for_chatgpt", False)),
-        wait_longer_for_gemini=bool(settings.get("wait_longer_for_gemini", False)),
-        wait_longer_for_copilot=bool(settings.get("wait_longer_for_copilot", False)),
-        include_reddit_analysis=include_reddit_analysis,
-        audit_focus=settings.get("audit_focus", ""),
-        reddit_prefetch_task=reddit_prefetch_task,
-        output_directory=output_directory,
-        started_at=stage_started_at,
-        ports=VisibilityCheckpointPorts(
-            run_visibility=run_visibility_stage,
-            run_reddit_social=run_reddit_social_stage,
-            serialize_engine_result=serialize_engine_result,
-            write_json=write_json,
-            stage_success=print_stage_success,
-            stage_warning=print_stage_warning,
-            format_duration=format_duration,
-        ),
-    )
-    visibility_result = visibility_stage["visibility_result"]
-    reddit_task = visibility_stage["reddit_task"]
-    reddit_social_result = visibility_stage["reddit_social_result"]
-    stage_durations["ai_visibility"] = visibility_stage["duration_seconds"]
-    warnings.extend(visibility_stage["warnings"])'''
-SOCIAL_COMPLETION_STAGE_CALL_SOURCE = '''    social_stage = await run_social_completion_stage_core(
-        reddit_task, reddit_social_result,
-        include_reddit_analysis=include_reddit_analysis,
-        total_stages=total_stages,
-        output_directory=output_directory,
-        ports=SocialCompletionPorts(
-            print_stage=print_stage,
-            stage_success=print_stage_success,
-            stage_warning=print_stage_warning,
-            format_duration=format_duration,
-            summarize_warning=summarize_reddit_audit_warning,
-            write_json=write_json,
-        ),
-    )
-    reddit_social_result = social_stage["reddit_social_result"]
-    stage_durations["reddit_social"] = social_stage["duration_seconds"]
-    warnings.extend(social_stage["warnings"])'''
-REPORT_RENDER_STAGE_CALL_SOURCE = '''    rendered_report = await run_report_render_stage_core(
-        target_profile, competitor_profiles, keywords, keyword_serp_results,
-        visibility_result, reddit_social_result,
-        locked_scope=company_stage["locked_scope"],
-        site_resolution=site_resolution,
-        country=settings["country"],
-        run_timestamp=run_timestamp,
-        export_prefix=export_prefix,
-        output_directory=output_directory,
-        raw_directory=raw_directory,
-        started_at=stage_started_at,
-        price_per_1000=BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD,
-        ports=ReportRenderPorts(
-            generate_report=lambda *args: generate_report_stage(*args[:5]),
-            finalize_report=finalize_report,
-            insert_reddit_section=insert_reddit_report_section,
-            refresh_usage=bd_client.refresh_usage_results,
-            usage_summary=bd_client.usage_summary,
-            build_usage_section=build_bright_data_usage_section,
-            write_json=write_json,
-            write_text=write_text,
-            report_filename=report_filename,
-            create_pdf=create_styled_pdf_report,
-            clean_record=clean_record_for_storage,
-            stage_success=print_stage_success,
-            stage_warning=print_stage_warning,
-            format_duration=format_duration,
-        ),
-    )
-    report_result = rendered_report["report_result"]
-    final_report = rendered_report["final_report"]
-    final_sources = rendered_report["final_sources"]
-    bright_data_usage = rendered_report["bright_data_usage"]
-    report_markdown_path = rendered_report["markdown_path"]
-    report_pdf_path = rendered_report["pdf_path"]
-    stage_durations["final_report"] = rendered_report["duration_seconds"]
-    warnings.extend(rendered_report["warnings"])'''
-AUDIT_FINALIZE_STAGE_CALL_SOURCE = '''    audit_data = run_audit_finalize_stage_core(
-        {
-            "run_id": run_id,
-            "run_timestamp": run_timestamp,
-            "settings": settings,
-            "include_reddit_analysis": include_reddit_analysis,
-            "target_profile": target_profile,
-            "competitor_profiles": competitor_profiles,
-            "keyword_records": keyword_records,
-            "keyword_serp_results": keyword_serp_results,
-            "competitor_candidates": competitor_candidates,
-            "selected_competitors": selected_competitors,
-            "selection_result": selection_result,
-            "visibility_result": visibility_result,
-            "reddit_social_result": reddit_social_result,
-            "bright_data_usage": bright_data_usage,
-            "report_result": report_result,
-            "final_report": final_report,
-            "final_sources": final_sources,
-            "warnings": warnings,
-            "stage_durations": stage_durations,
-        },
-        audit_started_at=audit_started_at,
-        site_resolution=site_resolution,
-        output_directory=output_directory,
-        export_prefix=export_prefix,
-        markdown_path=report_markdown_path,
-        pdf_path=report_pdf_path,
-        ports=AuditFinalizePorts(
-            build_record=build_audit_record,
-            model_to_dict=model_to_dict,
-            serialize_engine_result=serialize_engine_result,
-            generator_name=globals().get(
-                "LAST_UTILITY_REPORT_RESULT", {}
-            ).get("engine_name", "Unknown"),
-            report_filename=report_filename,
-            write_json=write_json,
-            create_zip=create_audit_zip,
-            stage_success=print_stage_success,
-            completion_notice=lambda message: console.print(
-                f"\\n[bold green]{message}[/bold green]"
-            ),
-            format_duration=format_duration,
-        ),
     )'''
 
 
@@ -918,6 +790,30 @@ def _without_service_imports(source):
     return before.rstrip("\n") + "\n\n" + after.lstrip("\n")
 
 
+def _without_package_imports(source):
+    """Remove relative imports when embedding sibling definitions in Colab."""
+    tree = ast.parse(source)
+    removed = set()
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.level:
+            removed.update(range(node.lineno - 1, node.end_lineno))
+    return "".join(
+        line for index, line in enumerate(source.splitlines(keepends=True))
+        if index not in removed
+    )
+
+
+def _append_or_replace_embedded_source(cell, start, end, source):
+    text = "".join(cell["source"])
+    if start in text or end in text:
+        _replace_embedded_source(cell, start, end, source)
+        return
+    cell["source"] = (
+        text.rstrip() + "\n\n" + start + "\n"
+        + source.rstrip("\n") + "\n" + end + "\n"
+    ).splitlines(keepends=True)
+
+
 def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    research_source=RESEARCH_SOURCE,
                    research_race_source=RESEARCH_RACE_SOURCE,
@@ -944,6 +840,7 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
                    social_completion_stage_source=SOCIAL_COMPLETION_STAGE_SOURCE,
                    report_render_stage_source=REPORT_RENDER_STAGE_SOURCE,
                    audit_finalize_stage_source=AUDIT_FINALIZE_STAGE_SOURCE,
+                   audit_pipeline_source=AUDIT_PIPELINE_SOURCE,
                    brightdata_transport_source=BRIGHTDATA_TRANSPORT_SOURCE,
                    official_domains_source=OFFICIAL_DOMAINS_SOURCE,
                    brightdata_usage_source=BRIGHTDATA_USAGE_SOURCE,
@@ -1262,12 +1159,6 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
-        AUDIT_PREPARATION_CALL_START,
-        AUDIT_PREPARATION_CALL_END,
-        AUDIT_PREPARATION_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         COMPANY_STAGE_START,
         COMPANY_STAGE_END,
         Path(company_stage_source).read_text(encoding="utf-8").rstrip()
@@ -1280,21 +1171,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
-        COMPANY_STAGE_CALL_START,
-        COMPANY_STAGE_CALL_END,
-        COMPANY_STAGE_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         SEARCH_STAGE_START,
         SEARCH_STAGE_END,
         Path(search_stage_source).read_text(encoding="utf-8"),
-    )
-    _replace_embedded_source(
-        orchestration_cell,
-        SEARCH_STAGE_CALL_START,
-        SEARCH_STAGE_CALL_END,
-        SEARCH_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
@@ -1304,21 +1183,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
-        COMPETITOR_SELECTION_STAGE_CALL_START,
-        COMPETITOR_SELECTION_STAGE_CALL_END,
-        COMPETITOR_SELECTION_STAGE_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         PROFILE_STAGE_START,
         PROFILE_STAGE_END,
         Path(profile_stage_source).read_text(encoding="utf-8"),
-    )
-    _replace_embedded_source(
-        orchestration_cell,
-        PROFILE_STAGE_CALL_START,
-        PROFILE_STAGE_CALL_END,
-        PROFILE_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
@@ -1328,21 +1195,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
-        VISIBILITY_CHECKPOINT_STAGE_CALL_START,
-        VISIBILITY_CHECKPOINT_STAGE_CALL_END,
-        VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         SOCIAL_COMPLETION_STAGE_START,
         SOCIAL_COMPLETION_STAGE_END,
         Path(social_completion_stage_source).read_text(encoding="utf-8"),
-    )
-    _replace_embedded_source(
-        orchestration_cell,
-        SOCIAL_COMPLETION_STAGE_CALL_START,
-        SOCIAL_COMPLETION_STAGE_CALL_END,
-        SOCIAL_COMPLETION_STAGE_CALL_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
@@ -1352,27 +1207,29 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
     )
     _replace_embedded_source(
         orchestration_cell,
-        REPORT_RENDER_STAGE_CALL_START,
-        REPORT_RENDER_STAGE_CALL_END,
-        REPORT_RENDER_STAGE_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         AUDIT_FINALIZE_STAGE_START,
         AUDIT_FINALIZE_STAGE_END,
         Path(audit_finalize_stage_source).read_text(encoding="utf-8"),
     )
     _replace_embedded_source(
         orchestration_cell,
-        AUDIT_FINALIZE_STAGE_CALL_START,
-        AUDIT_FINALIZE_STAGE_CALL_END,
-        AUDIT_FINALIZE_STAGE_CALL_SOURCE,
-    )
-    _replace_embedded_source(
-        orchestration_cell,
         REPORT_EXPORT_START,
         REPORT_EXPORT_END,
         Path(report_export_source).read_text(encoding="utf-8"),
+    )
+    _append_or_replace_embedded_source(
+        orchestration_cell,
+        AUDIT_PIPELINE_START,
+        AUDIT_PIPELINE_END,
+        _without_package_imports(
+            Path(audit_pipeline_source).read_text(encoding="utf-8")
+        ),
+    )
+    _replace_python_function_occurrence(
+        orchestration_cell,
+        "run_competitive_visibility_audit",
+        0,
+        NOTEBOOK_PIPELINE_ADAPTER_SOURCE,
     )
     reddit_cell = _unique_cell(notebook, REDDIT_CELL_ID)
     _replace_embedded_source(

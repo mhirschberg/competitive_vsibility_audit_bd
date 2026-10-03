@@ -93,6 +93,93 @@ class VisibilityRaceTests(unittest.TestCase):
         with self.assertRaisesRegex(BrightDataAPIError, "returned no answer"):
             race(FakeClient({"answer_text": "unused"}, status="failed"), "gemini")
 
+    def test_resume_uses_cached_snapshot_without_trigger_or_download(self):
+        class ResumedClient(FakeClient):
+            def __init__(self):
+                super().__init__({})
+                self.cached = {
+                    "snapshot-chatgpt": [{
+                        "answer_text": "Recovered answer.",
+                        "citations": [{"url": "https://source.example/recovered"}],
+                    }]
+                }
+
+            def find_reusable_snapshot(self, dataset_id, payload):
+                self.asserted_payload = (dataset_id, payload)
+                return "snapshot-chatgpt"
+
+            def cached_snapshot_records(self, snapshot_id):
+                return self.cached.get(snapshot_id)
+
+            def cache_snapshot_records(self, snapshot_id, records):
+                self.cached[snapshot_id] = records
+
+            def trigger_dataset(self, *_args):
+                raise AssertionError("resume must not trigger a duplicate")
+
+            def snapshot_status(self, *_args):
+                raise AssertionError("cached rows need no status request")
+
+            def download_snapshot(self, *_args):
+                raise AssertionError("cached rows need no download request")
+
+        client = ResumedClient()
+        result = race(client, "chatgpt")
+        self.assertEqual(result["winner_snapshot_id"], "snapshot-chatgpt")
+        self.assertEqual(result["answer"], "Recovered answer.")
+        self.assertEqual(client.counted, [("snapshot-chatgpt", 1)])
+
+    def test_partial_resume_only_triggers_missing_race_contenders(self):
+        class PartiallyResumedClient(FakeClient):
+            def __init__(self):
+                super().__init__({"answer_text": "New answer."})
+                self.cached = {
+                    "saved-chatgpt-1": [{"answer_text": "Saved answer."}]
+                }
+
+            def _engine_payload(self, engine, prompt, request_index, web_search):
+                self.asserted_indexes = getattr(self, "asserted_indexes", [])
+                self.asserted_indexes.append(request_index)
+                return engine, [{"prompt": prompt, "index": request_index}]
+
+            def find_reusable_snapshot(self, _dataset_id, payload):
+                return (
+                    "saved-chatgpt-1"
+                    if payload[0]["index"] == 1 else None
+                )
+
+            def cached_snapshot_records(self, snapshot_id):
+                return self.cached.get(snapshot_id)
+
+            def cache_snapshot_records(self, snapshot_id, records):
+                self.cached[snapshot_id] = records
+
+            def trigger_dataset(self, dataset_id, payload):
+                self.triggers.append((dataset_id, payload))
+                return f"new-chatgpt-{payload[0]['index']}"
+
+        client = PartiallyResumedClient()
+        result = race_ai_visibility_core(
+            client, "chatgpt", "neutral buyer question", redundancy=3,
+            timeout_seconds=10, failed_statuses={"failed"},
+            canonical_source_url=lambda url: url,
+        )
+        self.assertEqual(len(client.triggers), 2)
+        self.assertEqual(result["winner_snapshot_id"], "saved-chatgpt-1")
+        self.assertEqual(result["resumed_snapshot_ids"], ["saved-chatgpt-1"])
+        self.assertEqual(len(result["all_snapshot_ids"]), 3)
+
+    def test_ambiguous_resume_does_not_start_any_replacement_request(self):
+        class AmbiguousClient(FakeClient):
+            def find_reusable_snapshot(self, _dataset_id, _payload):
+                raise RuntimeError("possible duplicate request")
+
+            def trigger_dataset(self, *_args):
+                raise AssertionError("ambiguous resume must fail before triggering")
+
+        with self.assertRaisesRegex(BrightDataAPIError, "no replacement requests were started"):
+            race(AmbiguousClient({"answer_text": "unused"}), "gemini")
+
     def test_notebook_embeds_core_and_calls_it_from_client(self):
         notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
         cell = next(

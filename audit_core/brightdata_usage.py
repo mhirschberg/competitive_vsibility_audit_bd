@@ -5,9 +5,13 @@ one billable result. It has no HTTP or notebook dependency; its owner supplies
 snapshot status and download methods when refreshing pending operations.
 """
 
+import gzip
+import hashlib
 import json
 from pathlib import Path
+import re
 from threading import Lock
+import zlib
 
 
 FAILED_STATUSES = {"failed", "error", "canceled", "cancelled", "aborted"}
@@ -20,6 +24,7 @@ class BrightDataUsageLedger:
         self._usage_events = []
         self._usage_event_counter = 0
         self._usage_checkpoint_path = None
+        self._snapshot_cache_directory = None
         self._usage_history_complete = True
 
     def configure_usage_checkpoint(self, path, restore=False):
@@ -27,6 +32,7 @@ class BrightDataUsageLedger:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._usage_lock:
             self._usage_checkpoint_path = path
+            self._snapshot_cache_directory = path.parent / "provider_snapshots"
             if restore and path.exists():
                 events = json.loads(path.read_text(encoding="utf-8"))
                 if not isinstance(events, list):
@@ -58,6 +64,7 @@ class BrightDataUsageLedger:
 
     def start_usage_operation(
         self, operation, dataset_id="", input_count=1, expected_result_count=None,
+        request_fingerprint=None,
     ):
         with self._usage_lock:
             self._usage_event_counter += 1
@@ -65,6 +72,7 @@ class BrightDataUsageLedger:
                 "operation_id": self._usage_event_counter,
                 "operation": str(operation or "Bright Data operation"),
                 "dataset_id": str(dataset_id or ""),
+                "request_fingerprint": str(request_fingerprint or "") or None,
                 "input_count": max(0, int(input_count or 0)),
                 "expected_result_count": (
                     max(0, int(expected_result_count))
@@ -77,6 +85,80 @@ class BrightDataUsageLedger:
             self._usage_events.append(event)
             self._save_usage_checkpoint_unlocked()
             return event["operation_id"]
+
+    @staticmethod
+    def request_fingerprint(dataset_id, payload):
+        """Return a stable key for matching a retried provider request."""
+        encoded = json.dumps(
+            {"dataset_id": str(dataset_id or ""), "payload": payload},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def find_reusable_snapshot(self, dataset_id, payload):
+        """Find a prior snapshot for this exact request without triggering it."""
+        fingerprint = self.request_fingerprint(dataset_id, payload)
+        with self._usage_lock:
+            matches = [
+                item for item in self._usage_events
+                if item.get("dataset_id") == str(dataset_id or "")
+                and item.get("request_fingerprint") == fingerprint
+            ]
+        ambiguous = [
+            item for item in matches
+            if item.get("status") == "started" and not item.get("snapshot_id")
+        ]
+        if ambiguous:
+            raise RuntimeError(
+                "A matching provider trigger was interrupted before its snapshot ID "
+                "was saved; refusing to create a possible duplicate request."
+            )
+        reusable = [item for item in matches if item.get("snapshot_id")]
+        if not reusable:
+            return None
+        reusable.sort(key=lambda item: int(item.get("operation_id") or 0))
+        return str(reusable[0]["snapshot_id"])
+
+    def cached_snapshot_records(self, snapshot_id):
+        """Load already-downloaded snapshot data from the audit's raw cache."""
+        if self._snapshot_cache_directory is None:
+            return None
+        snapshot_id = str(snapshot_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", snapshot_id):
+            return None
+        path = self._snapshot_cache_directory / f"{snapshot_id}.json.gz"
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
+        except (
+            OSError, EOFError, UnicodeDecodeError, json.JSONDecodeError, zlib.error,
+        ):
+            return None
+        return data if isinstance(data, list) else None
+
+    def cache_snapshot_records(self, snapshot_id, records):
+        """Persist downloaded rows atomically so a resumed audit needs no fetch."""
+        if self._snapshot_cache_directory is None:
+            return False
+        snapshot_id = str(snapshot_id or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", snapshot_id):
+            return False
+        if not isinstance(records, list):
+            return False
+        directory = self._snapshot_cache_directory
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{snapshot_id}.json.gz"
+        temporary = path.with_name(path.name + ".tmp")
+        payload = json.dumps(
+            records, ensure_ascii=False, separators=(",", ":"), default=str,
+        ).encode("utf-8")
+        temporary.write_bytes(gzip.compress(payload))
+        temporary.replace(path)
+        return True
 
     def update_usage_operation(
         self, operation_id, snapshot_id=None, status=None, result_count=None,
