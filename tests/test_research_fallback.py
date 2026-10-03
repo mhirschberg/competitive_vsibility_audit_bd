@@ -3,6 +3,7 @@
 import json
 import inspect
 from pathlib import Path
+import threading
 import unittest
 
 from audit_core.research_race import ResearchProviderAdapter
@@ -106,6 +107,61 @@ class ResearchFallbackTests(unittest.TestCase):
         self.assertEqual(
             namespace["cached_research_snapshot_ids"]("research"),
             {"gemini": ["snapshot-gemini"]},
+        )
+
+    def test_resumed_provider_race_matches_service_and_notebook_paths(self):
+        prompt = "research"
+        localized = localize_google_ai_prompt_core(
+            prompt, country_details("DE"),
+        )
+        cache_key = f"research-provider-v1:gemini:{localized}"
+
+        notebook = load_runtime(
+            cache={cache_key: ["snapshot-gemini"]}, only_reuse=True,
+        )
+        notebook_client = FakeClient()
+        notebook_result = notebook_client.google_ai_mode(
+            prompt, timeout_seconds=3,
+        )
+
+        service_cache = {cache_key: ["snapshot-gemini"]}
+        service = ResearchProviderAdapter(
+            providers=("chatgpt", "gemini"),
+            cached_snapshot_ids=lambda key: service_cache.get(key, []),
+            remember_snapshot=lambda *_args: None,
+            localize_prompt=lambda value: localize_google_ai_prompt_core(
+                value, country_details("DE"),
+            ),
+            identify_task=notebook["identify_research_task"],
+            validate_answer=lambda answer, source_prompt:
+                notebook["validate_research_answer"](
+                    answer, source_prompt,
+                    parse_json=json.loads,
+                    remove_boilerplate=lambda value: value,
+                ),
+            is_materializing=notebook["snapshot_is_materializing"],
+            failed_statuses={"failed", "canceled"},
+            only_reuse=True,
+            semaphore=threading.BoundedSemaphore(3),
+            poll_seconds=5,
+            error_type=RuntimeError,
+            timeout_type=SnapshotTimeoutError,
+        )
+        service_client = FakeClient()
+        service_result = service.race(service_client, prompt, timeout_seconds=3)
+
+        self.assertEqual(notebook_client.triggers, [])
+        self.assertEqual(service_client.triggers, [])
+        self.assertEqual(
+            notebook_result["_research_race"]["provider"],
+            service_result["_research_race"]["provider"],
+        )
+        self.assertEqual(
+            notebook_result["_research_race"]["winner_snapshot_id"],
+            service_result["_research_race"]["winner_snapshot_id"],
+        )
+        self.assertEqual(
+            notebook_result["answer_text"], service_result["answer_text"],
         )
 
     def test_legacy_google_research_checkpoint_remains_resumable(self):

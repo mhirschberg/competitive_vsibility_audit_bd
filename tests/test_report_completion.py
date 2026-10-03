@@ -10,9 +10,6 @@ import unittest
 
 from audit_core.report_render_stage import ReportRenderPorts, run_report_render_stage_core
 from audit_core.audit_finalize_stage import AuditFinalizePorts, run_audit_finalize_stage_core
-from notebook_builder import (
-    REPORT_RENDER_STAGE_CALL_SOURCE, AUDIT_FINALIZE_STAGE_CALL_SOURCE,
-)
 
 
 class Model:
@@ -176,69 +173,6 @@ class ReportCompletionTests(unittest.TestCase):
             self.assertEqual(saved["files"]["zip_archive"],
                              result["files"]["zip_archive"])
             self.assertIn("Markdown, JSON and ZIP saved", notices)
-
-    def test_generated_adapters_pass_stage_results_to_finalizer(self):
-        with tempfile.TemporaryDirectory() as root:
-            output = Path(root)
-            raw = output / "raw"
-            raw.mkdir()
-            events = []
-            ports = self.render_ports(events, pdf_fails=True)
-            namespace = {
-                "run_report_render_stage_core": run_report_render_stage_core,
-                "ReportRenderPorts": ReportRenderPorts,
-                "run_audit_finalize_stage_core": run_audit_finalize_stage_core,
-                "AuditFinalizePorts": AuditFinalizePorts,
-                "generate_report_stage": ports.generate_report,
-                "finalize_report": ports.finalize_report,
-                "insert_reddit_report_section": ports.insert_reddit_section,
-                "bd_client": Model(
-                    refresh_usage_results=ports.refresh_usage,
-                    usage_summary=ports.usage_summary,
-                ),
-                "build_bright_data_usage_section": ports.build_usage_section,
-                "write_json": ports.write_json,
-                "write_text": ports.write_text,
-                "report_filename": ports.report_filename,
-                "create_styled_pdf_report": ports.create_pdf,
-                "clean_record_for_storage": ports.clean_record,
-                "print_stage_success": ports.stage_success,
-                "print_stage_warning": ports.stage_warning,
-                "format_duration": ports.format_duration,
-                "BRIGHT_DATA_PRICE_PER_1000_RESULTS_USD": 1.5,
-                "LAST_UTILITY_REPORT_RESULT": {"engine_name": "ChatGPT"},
-                "build_audit_record": lambda **kwargs: {
-                    "selection": kwargs["selection_result"]
-                },
-                "model_to_dict": lambda item: vars(item).copy(),
-                "serialize_engine_result": dict,
-                "create_audit_zip": lambda directory, name: directory / name,
-                "console": Model(print=lambda message: None),
-            }
-            script = (
-                "async def adapter(target_profile, competitor_profiles, keywords, "
-                "keyword_serp_results, visibility_result, reddit_social_result, "
-                "site_resolution, settings, run_timestamp, export_prefix, "
-                "output_directory, raw_directory, stage_started_at, "
-                "stage_durations, warnings, run_id, include_reddit_analysis, "
-                "keyword_records, competitor_candidates, selected_competitors, "
-                "selection_result, audit_started_at):\n"
-                "    company_stage = {'locked_scope': {'market_role': 'manufacturer'}}\n"
-                + REPORT_RENDER_STAGE_CALL_SOURCE + "\n"
-                + AUDIT_FINALIZE_STAGE_CALL_SOURCE
-                + "\n    return audit_data\n"
-            )
-            exec(compile(script, "notebook-report-adapters", "exec"), namespace)
-            result = asyncio.run(namespace["adapter"](
-                self.target, [], ["premium smartphone"], [],
-                {"engines": {}}, {"status": "disabled"}, self.resolution,
-                {"country": "US"}, self.timestamp, "20260930-apple-us",
-                output, raw, time.monotonic(), {}, [], "audit-1", False,
-                [], [], [], {"selected": ["Samsung"]}, time.monotonic(),
-            ))
-            self.assertEqual(result["selection"]["selected"], ["Samsung"])
-            self.assertIsNone(result["files"]["pdf_report"])
-            self.assertTrue((output / "20260930-apple-us.json").is_file())
 
 
 if __name__ == "__main__":

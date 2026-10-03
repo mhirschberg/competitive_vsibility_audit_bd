@@ -56,6 +56,7 @@ class CopilotVisibilityTests(unittest.TestCase):
         }
         exec(definition("BrightDataClient"), namespace)
         client = object.__new__(namespace["BrightDataClient"])
+        BrightDataUsageLedger.__init__(client)
         client.country = "US"
         client.log = lambda *_args: None
         client.snapshot_status = lambda _snapshot_id: {"status": "ready"}
@@ -147,6 +148,7 @@ class CopilotVisibilityTests(unittest.TestCase):
         exec(definition("BrightDataClient"), namespace)
         client_type = namespace["BrightDataClient"]
         client = object.__new__(client_type)
+        BrightDataUsageLedger.__init__(client)
         client.country = "US"
         submitted = []
 

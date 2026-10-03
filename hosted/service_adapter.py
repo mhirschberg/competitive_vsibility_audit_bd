@@ -726,6 +726,7 @@ def build_runtime_ports(runtime, *, client=None):
             select_competitors=select_competitors,
             configure_race_cache=need('configure_google_ai_race_cache'),
             write_json=write_json, model_to_dict=model_to_dict,
+            selected_factory=SelectedCompetitor,
             clean_record=clean_record, stage_warning=warning,
             print_selected=lambda competitor: _runtime_notice(
                 runtime, f'      ✓ {competitor.brand_name}',

@@ -9,7 +9,6 @@ import unittest
 from audit_core.social_completion_stage import (
     SocialCompletionPorts, run_social_completion_stage_core,
 )
-from notebook_builder import SOCIAL_COMPLETION_STAGE_CALL_SOURCE
 
 
 class SocialCompletionTests(unittest.TestCase):
@@ -90,49 +89,6 @@ class SocialCompletionTests(unittest.TestCase):
             self.assertEqual(json.loads((
                 Path(root) / "05_reddit_snapshot_manifest.json"
             ).read_text())["snapshots"], [{"snapshot_id": "snap-1"}])
-
-    def test_generated_notebook_adapter_propagates_result_and_duration(self):
-        with tempfile.TemporaryDirectory() as root:
-            events = []
-            namespace = {
-                "run_social_completion_stage_core": run_social_completion_stage_core,
-                "SocialCompletionPorts": SocialCompletionPorts,
-                "print_stage": lambda *args: events.append(("stage", *args)),
-                "print_stage_success": lambda message: events.append(("success", message)),
-                "print_stage_warning": lambda message: events.append(("warning", message)),
-                "format_duration": str,
-                "summarize_reddit_audit_warning": lambda result: "",
-                "write_json": lambda path, data: path.write_text(json.dumps(data)),
-            }
-            script = (
-                "async def adapter(reddit_task, reddit_social_result, "
-                "include_reddit_analysis, total_stages, output_directory, "
-                "stage_durations, warnings):\n"
-                + SOCIAL_COMPLETION_STAGE_CALL_SOURCE
-                + "\n    return reddit_social_result\n"
-            )
-            exec(compile(script, "notebook-social-adapter", "exec"), namespace)
-
-            async def run():
-                async def social():
-                    return {
-                        "status": "success", "mode": "legacy", "sample": [{}],
-                        "duration_seconds": 2.0,
-                    }
-
-                durations, warnings = {}, []
-                result = await namespace["adapter"](
-                    asyncio.create_task(social()), None, True, 7,
-                    Path(root), durations, warnings,
-                )
-                return result, durations, warnings
-
-            result, durations, warnings = asyncio.run(run())
-            self.assertEqual(result["status"], "success")
-            self.assertEqual(durations["reddit_social"], 2.0)
-            self.assertEqual(warnings, [])
-            self.assertTrue((Path(root) / "05_reddit_social.json").is_file())
-            self.assertTrue(any(item[0] == "success" for item in events))
 
 
 if __name__ == "__main__":

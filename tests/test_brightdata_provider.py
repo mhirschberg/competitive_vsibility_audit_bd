@@ -117,9 +117,11 @@ class BrightDataProviderTests(unittest.TestCase):
                 "audit_core.brightdata_transport.requests.post",
                 return_value=FakeResponse({"snapshot_id": "snapshot-1"}),
             ) as post:
+                dataset_id, payload = client._engine_payload(
+                    "chatgpt", "neutral question", 1, web_search=True,
+                )
                 snapshot_id = client.trigger_dataset(
-                    CHATGPT_DATASET_ID,
-                    [{"prompt": "neutral question"}],
+                    dataset_id, payload,
                 )
             self.assertEqual(snapshot_id, "snapshot-1")
             self.assertEqual(
@@ -140,6 +142,12 @@ class BrightDataProviderTests(unittest.TestCase):
 
             self.assertEqual(
                 client.answer_text(records[0]), "A measured answer."
+            )
+            self.assertEqual(
+                client.find_reusable_snapshot(
+                    CHATGPT_DATASET_ID, payload,
+                ),
+                "snapshot-1",
             )
             summary = client.usage_summary()
             self.assertEqual(summary["accepted_operations"], 1)

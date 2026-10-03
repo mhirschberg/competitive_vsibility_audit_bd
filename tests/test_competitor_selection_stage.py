@@ -10,7 +10,6 @@ import unittest
 from audit_core.competitor_selection_stage import (
     CompetitorSelectionStagePorts, run_competitor_selection_stage_core,
 )
-from notebook_builder import COMPETITOR_SELECTION_STAGE_CALL_SOURCE
 
 
 class Model:
@@ -45,6 +44,7 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             ),
             write_json=write,
             model_to_dict=lambda item: vars(item).copy(),
+            selected_factory=Model,
             clean_record=lambda record: dict(record),
             stage_warning=warnings.append,
             print_selected=lambda competitor: calls.append(
@@ -121,50 +121,47 @@ class CompetitorSelectionStageTests(unittest.TestCase):
             self.assertIsNone(result["reddit_prefetch_task"])
             self.assertFalse(any(call[0] == "social" for call in calls))
 
-    def test_generated_notebook_adapter_passes_duration_warnings_and_task(self):
+    def test_continuation_reuses_saved_selection_without_rerunning_ai_race(self):
         with tempfile.TemporaryDirectory() as root:
             output = Path(root)
             raw = output / "raw"
             raw.mkdir()
-            calls, displayed = [], []
-            namespace = {
-                "run_competitor_selection_stage_core": run_competitor_selection_stage_core,
-                "CompetitorSelectionStagePorts": CompetitorSelectionStagePorts,
-                "select_competitors_stage": lambda *_: {
-                    "selected": [Model(brand_name="Samsung")],
+            (output / "03_competitor_selection.json").write_text(
+                json.dumps({
+                    "selected_competitors": [
+                        {"brand_name": "Samsung", "domain": "samsung.com"},
+                        {"brand_name": "Google", "domain": "google.com"},
+                    ],
+                    "rejected_candidates": [{"brand_name": "Publisher"}],
                     "used_fallback": False,
-                },
-                "configure_google_ai_race_cache": lambda *args, **kwargs: None,
-                "write_json": lambda path, data: path.write_text(json.dumps(data)),
-                "model_to_dict": lambda item: vars(item).copy(),
-                "clean_record_for_storage": lambda record: dict(record),
-                "print_stage_warning": displayed.append,
-                "console": Model(print=displayed.append),
-                "start_reddit_discovery_prefetch": lambda **kwargs: None,
-            }
-            script = (
-                "async def adapter(settings, target_brand, competitor_candidates, "
-                "keywords, continuing, output_directory, raw_directory, "
-                "stage_started_at, include_reddit_analysis, stage_durations, "
-                "warnings):\n"
-                "    company_stage = {'locked_scope': {'market_role': 'manufacturer'}}\n"
-                + COMPETITOR_SELECTION_STAGE_CALL_SOURCE
-                + "\n    return selected_competitors, selection_result, reddit_prefetch_task\n"
+                    "validation_results": [{"status": "success"}],
+                    "duration_seconds": 42.5,
+                }),
+                encoding="utf-8",
             )
-            exec(compile(script, "notebook-competitor-adapter", "exec"), namespace)
-            durations, warnings = {}, []
-            selected, selection, task = asyncio.run(namespace["adapter"](
-                {"audit_focus": "premium smartphone"}, Model(brand_name="Apple"),
-                [], ["premium smartphone"], False, output, raw,
-                time.monotonic(), False, durations, warnings,
+            calls, warnings = [], []
+            result = asyncio.run(run_competitor_selection_stage_core(
+                Model(brand_name="Apple"), ["new candidate"], ["premium phone"],
+                locked_scope={"market_role": "manufacturer"},
+                continuing=True, output_directory=output, raw_directory=raw,
+                started_at=time.monotonic(), include_reddit_analysis=False,
+                audit_focus="premium smartphone",
+                ports=self.make_ports(calls, warnings),
             ))
-            self.assertEqual(selected[0].brand_name, "Samsung")
-            self.assertEqual(selection["selected"][0].brand_name, "Samsung")
-            self.assertIsNone(task)
-            self.assertIn("competitor_selection", durations)
+
+            self.assertEqual(
+                [item.brand_name for item in result["selected_competitors"]],
+                ["Samsung", "Google"],
+            )
+            self.assertTrue(result["selection_result"]["resumed_from_checkpoint"])
+            self.assertEqual(result["selection_result"]["rejected"],
+                             [{"brand_name": "Publisher"}])
+            self.assertEqual(result["duration_seconds"], 42.5)
             self.assertEqual(warnings, [])
-            self.assertTrue((output / "03_competitor_selection.json").is_file())
-            self.assertTrue(any("Samsung" in item for item in displayed))
+            self.assertFalse(any(call[0] == "select" for call in calls))
+            self.assertIn(
+                ("cache", "google_ai_snapshot_cache.json", False), calls,
+            )
 
 
 if __name__ == "__main__":

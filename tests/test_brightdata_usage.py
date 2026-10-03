@@ -117,6 +117,44 @@ class BrightDataUsageTests(unittest.TestCase):
             self.assertEqual(summary["confirmed_result_records"], 1)
             self.assertTrue(summary["checkpoint_history_complete"])
 
+    def test_trigger_fingerprint_and_snapshot_rows_survive_restore(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "raw" / "bright_data_usage_events.json"
+            first = BrightDataUsageLedger()
+            first.configure_usage_checkpoint(path)
+            payload = [{"prompt": "neutral question", "index": 2}]
+            fingerprint = first.request_fingerprint("dataset", payload)
+            operation = first.start_usage_operation(
+                "Dataset trigger", dataset_id="dataset",
+                request_fingerprint=fingerprint, expected_result_count=1,
+            )
+            first.update_usage_operation(
+                operation, snapshot_id="snapshot-2", status="triggered"
+            )
+            records = [{"answer_text": "already downloaded"}]
+            self.assertTrue(first.cache_snapshot_records("snapshot-2", records))
+
+            restored = BrightDataUsageLedger()
+            restored.configure_usage_checkpoint(path, restore=True)
+            self.assertEqual(
+                restored.find_reusable_snapshot("dataset", payload), "snapshot-2"
+            )
+            self.assertIsNone(restored.find_reusable_snapshot(
+                "dataset", [{"prompt": "different question", "index": 2}]
+            ))
+            self.assertEqual(restored.cached_snapshot_records("snapshot-2"), records)
+
+    def test_ambiguous_started_trigger_fails_closed(self):
+        ledger = BrightDataUsageLedger()
+        payload = [{"prompt": "question", "index": 1}]
+        fingerprint = ledger.request_fingerprint("dataset", payload)
+        ledger.start_usage_operation(
+            "Dataset trigger", dataset_id="dataset",
+            request_fingerprint=fingerprint,
+        )
+        with self.assertRaisesRegex(RuntimeError, "refusing to create a possible duplicate"):
+            ledger.find_reusable_snapshot("dataset", payload)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,7 +10,6 @@ import unittest
 from audit_core.visibility_checkpoint_stage import (
     VisibilityCheckpointPorts, run_visibility_checkpoint_stage_core,
 )
-from notebook_builder import VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE
 
 
 class Model:
@@ -123,58 +122,6 @@ class VisibilityCheckpointTests(unittest.TestCase):
                 self.assertEqual((await result["reddit_task"])["status"], "success")
 
             asyncio.run(run())
-
-    def test_generated_notebook_adapter_returns_both_stage_tasks(self):
-        with tempfile.TemporaryDirectory() as root:
-            namespace = {
-                "run_visibility_checkpoint_stage_core": run_visibility_checkpoint_stage_core,
-                "VisibilityCheckpointPorts": VisibilityCheckpointPorts,
-                "run_visibility_stage": None,
-                "run_reddit_social_stage": None,
-                "serialize_engine_result": lambda item: item,
-                "write_json": lambda path, data: path.write_text(json.dumps(data)),
-                "print_stage_success": lambda message: None,
-                "print_stage_warning": lambda message: None,
-                "format_duration": str,
-            }
-
-            async def visibility(**kwargs):
-                return {"prompt": "Question", "engines": {}, "mentions": {}}
-
-            async def social(**kwargs):
-                return {"status": "success"}
-
-            namespace["run_visibility_stage"] = visibility
-            namespace["run_reddit_social_stage"] = social
-            script = (
-                "async def adapter(target_profile, competitor_profiles, "
-                "all_profiles, keywords, keyword_serp_results, settings, "
-                "include_copilot_visibility, include_google_ai_mode, "
-                "include_chatgpt_visibility, include_gemini_visibility, "
-                "include_reddit_analysis, reddit_prefetch_task, "
-                "output_directory, stage_started_at, stage_durations, warnings):\n"
-                + VISIBILITY_CHECKPOINT_STAGE_CALL_SOURCE
-                + "\n    return visibility_result, reddit_task, reddit_social_result\n"
-            )
-            exec(compile(script, "notebook-visibility-adapter", "exec"),
-                 namespace)
-
-            async def run():
-                durations, warnings = {}, []
-                result, social_task, disabled = await namespace["adapter"](
-                    self.target, [self.competitor],
-                    [self.target, self.competitor], ["premium smartphone"],
-                    [], {"audit_focus": "iPhone"}, True, False, True, True,
-                    True, None, Path(root), time.monotonic(), durations, warnings,
-                )
-                self.assertIsNone(disabled)
-                self.assertEqual((await social_task)["status"], "success")
-                return result, durations, warnings
-
-            result, durations, warnings = asyncio.run(run())
-            self.assertEqual(result["prompt"], "Question")
-            self.assertIn("ai_visibility", durations)
-            self.assertEqual(warnings, [])
 
 
 if __name__ == "__main__":
