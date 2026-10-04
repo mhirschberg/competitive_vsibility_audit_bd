@@ -119,6 +119,38 @@ class GoogleAITimeoutSafetyTests(unittest.TestCase):
         self.assertEqual(triggers, [1, 2, 3])
         self.assertEqual(caught.exception.snapshot_ids, ["snap-1", "snap-2", "snap-3"])
 
+    def test_keyword_site_scope_mismatch_is_not_retried(self):
+        class Client:
+            def __init__(self):
+                self.calls = 0
+
+            def search_serp(self, *_args):
+                self.calls += 1
+                error = RuntimeError("site scope mismatch")
+                error.scope_mismatch = True
+                raise error
+
+            def log(self, *_args):
+                pass
+
+        client = Client()
+        namespace = {
+            "asyncio": asyncio,
+            "bd_client": client,
+            "search_result_quality": lambda *_args: "unavailable",
+        }
+        exec(definition("run_keyword_serp_task", last=True), namespace)
+        result = asyncio.run(namespace["run_keyword_serp_task"](
+            "site:cerave.com buyer query",
+            asyncio.Semaphore(1),
+            search_engine="google",
+        ))
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["attempt"], 1)
+        self.assertIn("site scope mismatch", result["error"])
+        self.assertEqual(client.calls, 1)
+
     def test_market_retry_stops_after_pending_race(self):
         class GoogleAIRaceTimeoutError(SnapshotTimeoutError):
             def __init__(self, snapshot_ids, timeout_seconds):

@@ -1,7 +1,8 @@
 """Shared Bright Data SERP request and coverage decisions."""
 
+import re
 import time
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit
 
 import requests
 
@@ -12,14 +13,37 @@ from .brightdata_transport import (
 # SERVICE-ONLY-IMPORTS: end
 
 
+def site_scope_from_query(query):
+    """Return the host requested by a Google/Bing ``site:`` operator."""
+    match = re.search(r"(?i)(?<!\S)site:([^\s\"]+)", str(query or ""))
+    if not match:
+        return ""
+    value = match.group(1).strip().rstrip(".,;)")
+    if not value:
+        return ""
+    parsed = urlsplit(value if "://" in value else f"https://{value}")
+    return (parsed.hostname or "").lower().rstrip(".")
+
+
+def result_is_in_site_scope(result, scope):
+    """Validate a result against the host named by a search operator."""
+    if not scope or not isinstance(result, dict):
+        return not scope
+    host = (urlsplit(str(result.get("url") or "")).hostname or "").lower().rstrip(".")
+    return host == scope or host.endswith(f".{scope}")
+
+
 def run_resilient_serp_request(
     client, query, engine, language="en", num_results=20, *,
-    normalize_serp_records, parse_bing_markdown,
+    normalize_serp_records, parse_bing_markdown, max_attempts=3,
 ):
     """Use parsed Google or Markdown Bing results; retry empty responses."""
     engine = str(engine or "").strip().lower()
     if engine not in {"google", "bing"}:
         raise ValueError(f"Unsupported search engine: {engine}")
+    max_attempts = int(max_attempts)
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
 
     country = str(client.country or "US").strip().lower()
     language = str(language or "en").strip().lower()
@@ -27,9 +51,10 @@ def run_resilient_serp_request(
         f"https://www.{engine}.com/search"
         f"?q={quote_plus(query)}&hl={language}&gl={country}"
     )
+    site_scope = site_scope_from_query(query)
     last_error = None
 
-    for attempt in range(1, 4):
+    for attempt in range(1, max_attempts + 1):
         operation_id = client.start_usage_operation(
             f"{engine.title()} SERP", input_count=1
         )
@@ -82,14 +107,29 @@ def run_resilient_serp_request(
                     num_results=num_results,
                     requested_country=country.upper(),
                 )
-            parsed["results"] = [
+            usable_results = [
                 item for item in parsed["results"]
                 if item.get("domain")
                 and str(item.get("url") or "").startswith(("https://", "http://"))
                 and item["domain"] not in {
                     "google.com", "bing.com", "microsoft.com"
                 }
-            ][:num_results]
+            ]
+            if site_scope:
+                scoped_results = [
+                    item for item in usable_results
+                    if result_is_in_site_scope(item, site_scope)
+                ]
+                if usable_results and not scoped_results:
+                    provider_error = BrightDataAPIError(
+                        f"{engine.title()} SERP returned {len(usable_results)} "
+                        f"organic results outside requested site scope "
+                        f"{site_scope!r}; this search is unusable."
+                    )
+                    provider_error.scope_mismatch = True
+                    raise provider_error
+                usable_results = scoped_results
+            parsed["results"] = usable_results[:num_results]
             if not parsed["results"]:
                 raise BrightDataAPIError(
                     f"{engine.title()} SERP returned no usable organic results."
@@ -97,17 +137,20 @@ def run_resilient_serp_request(
         except (BrightDataAPIError, requests.RequestException) as exc:
             client.update_usage_operation(operation_id, status="failed")
             last_error = exc
-            if getattr(exc, "selector_timeout", False):
+            if (
+                getattr(exc, "selector_timeout", False)
+                or getattr(exc, "scope_mismatch", False)
+            ):
                 break
             if response is not None and not response.ok and (
                 response.status_code < 500 and response.status_code != 429
             ):
                 raise
-            if attempt == 3:
+            if attempt == max_attempts:
                 break
             if client.debug:
                 client.log(
-                    f"{engine.title()} SERP attempt {attempt}/3 failed: "
+                    f"{engine.title()} SERP attempt {attempt}/{max_attempts} failed: "
                     f"{exc}; retrying.",
                     "yellow",
                 )
@@ -125,9 +168,11 @@ def run_resilient_serp_request(
 
     if getattr(last_error, "selector_timeout", False):
         raise last_error
+    if getattr(last_error, "scope_mismatch", False):
+        raise last_error
 
     raise BrightDataAPIError(
-        f"{engine.title()} SERP failed after 3 attempts: {last_error}"
+        f"{engine.title()} SERP failed after {max_attempts} attempts: {last_error}"
     )
 
 

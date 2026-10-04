@@ -67,6 +67,7 @@ def choose_search_engine_core(
         "google",
     }:
         total_attempts = 2
+        site_scope_mismatch = False
 
         for attempt in range(
             1,
@@ -145,6 +146,9 @@ def choose_search_engine_core(
                     f"{exc}",
                     "yellow",
                 )
+                if getattr(exc, "scope_mismatch", False):
+                    site_scope_mismatch = True
+                    break
 
             if attempt < total_attempts:
                 self.log(
@@ -154,7 +158,7 @@ def choose_search_engine_core(
 
                 time.sleep(5)
 
-        if requested_engine == "google":
+        if requested_engine == "google" or site_scope_mismatch:
             state["engine"] = None
             state["status"] = (
                 "unavailable"
@@ -164,12 +168,19 @@ def choose_search_engine_core(
                 None
             )
 
-            self.log(
-                "Google unavailable after "
-                "two health checks. Continuing without "
-                "traditional search.",
-                "yellow",
-            )
+            if site_scope_mismatch:
+                self.log(
+                    "Google returned results outside the requested site scope. "
+                    "Stopping without retrying or changing search engine.",
+                    "yellow",
+                )
+            else:
+                self.log(
+                    "Google unavailable after "
+                    "two health checks. Continuing without "
+                    "traditional search.",
+                    "yellow",
+                )
 
             return None
 
