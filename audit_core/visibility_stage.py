@@ -21,13 +21,11 @@ async def run_visibility_stage_core(
     bd_client,
     prompt_builder,
     ai_mode_discovery=None,
-    include_copilot=False,
     include_google_ai_mode=True,
     include_chatgpt=True,
     include_gemini=True,
     wait_longer_for_chatgpt=False,
     wait_longer_for_gemini=False,
-    wait_longer_for_copilot=False,
 ):
     """Measure real provider answers; unavailable answers remain unknown."""
     prompt = prompt_builder(target_profile=target_profile, keywords=keywords)
@@ -43,9 +41,7 @@ async def run_visibility_stage_core(
         except Exception as exc:
             return {
                 "engine": engine,
-                "engine_name": {
-                    "chatgpt": "ChatGPT", "gemini": "Gemini", "copilot": "Copilot",
-                }[engine],
+                "engine_name": {"chatgpt": "ChatGPT", "gemini": "Gemini"}[engine],
                 "status": "failed",
                 "answer": "",
                 "citations": [],
@@ -63,13 +59,6 @@ async def run_visibility_stage_core(
         scheduled.append(("gemini", run_engine(
             "gemini", timeout_seconds=1800 if wait_longer_for_gemini else 600,
         )))
-    if include_copilot:
-        # A single Copilot snapshot is an optional measurement, not a race.
-        scheduled.append(("copilot", run_engine(
-            "copilot", redundancy=1,
-            timeout_seconds=900 if wait_longer_for_copilot else 360,
-        )))
-
     completed = await asyncio.gather(*(task for _, task in scheduled))
     engine_results = {
         engine: result for (engine, _), result in zip(scheduled, completed)
@@ -158,9 +147,7 @@ async def run_visibility_stage_core(
         # An unavailable sample is unknown, not three measured absences.
         mentions["google_ai_mode"] = []
 
-    for engine in (
-        item for item in ("chatgpt", "gemini", "copilot") if item in engine_results
-    ):
+    for engine in (item for item in ("chatgpt", "gemini") if item in engine_results):
         result = engine_results[engine]
         if result.get("status") != "success":
             mentions[engine] = []

@@ -4,7 +4,6 @@ Redirect resolution is an optional caller-supplied port: a report can be built
 from saved answers without making a new network request.
 """
 
-import re
 from urllib.parse import urlparse
 
 # SERVICE-ONLY-IMPORTS: start
@@ -19,7 +18,7 @@ SOCIAL_DOMAINS = {
 RETAILER_DOMAINS = {
     "amazon.com", "walmart.com", "target.com", "sephora.com",
     "ulta.com", "ebay.com", "etsy.com", "medicalexpo.com",
-    "directindustry.com",
+    "directindustry.com", "argos.co.uk",
 }
 SCIENTIFIC_DOMAINS = {
     "nature.com", "sciencedirect.com", "springer.com", "wiley.com",
@@ -35,16 +34,12 @@ KNOWN_PUBLISHERS = {
     "reviewofophthalmology.com", "forbes.com", "techcrunch.com",
     "businessinsider.com", "allure.com", "vogue.com", "byrdie.com",
 }
-OFFICIAL_PATH_TERMS = (
-    "/product", "/products", "/professional", "/professionals",
-    "/media-release", "/press-release", "/press-releases", "/investor",
-    "/news-release", "/our-products",
-)
-MARKET_RESEARCH_TITLE_PATTERNS = (
-    r"\bmarket size\b", r"\bmarket report\b", r"\bmarket forecast\b",
-    r"\bindustry report\b", r"\btop \d+ companies\b",
-    r"\bleading companies\b", r"\bcompanies in\b",
-)
+# Explicit ownership registry. Extend only after checking the domain owner;
+# URL paths and article titles are not evidence of publisher ownership.
+OFFICIAL_COMPANY_DOMAINS = {
+    "ghdhair.com": "ghd",
+}
+UNCLASSIFIED_SOURCE = "Unclassified or unverified"
 VISIBILITY_SOURCE_ENGINE_NAMES = (
     ("google_ai_mode", "Google AI Mode"), ("chatgpt", "ChatGPT"),
     ("gemini", "Gemini"), ("copilot", "Copilot"),
@@ -52,13 +47,17 @@ VISIBILITY_SOURCE_ENGINE_NAMES = (
 
 
 def classify_visibility_source(final_url, title, audited_domains):
-    parsed = urlparse(final_url)
-    hostname = (parsed.hostname or "").lower().removeprefix("www.")
+    try:
+        parsed = urlparse(final_url)
+        hostname = (parsed.hostname or "").lower().removeprefix("www.")
+    except (ValueError, UnicodeError):
+        return UNCLASSIFIED_SOURCE
     root_domain = get_root_domain(hostname)
-    path = (parsed.path or "").lower()
-    title_lower = (title or "").lower()
+    audited_roots = {
+        get_root_domain(domain) for domain in audited_domains if domain
+    }
 
-    if root_domain in audited_domains:
+    if root_domain and root_domain in audited_roots:
         return "Official audited brand"
     if root_domain.endswith(".gov") or hostname.endswith(".gov"):
         return "Government or regulator"
@@ -72,16 +71,13 @@ def classify_visibility_source(final_url, title, audited_domains):
         return "Social or community"
     if root_domain in RETAILER_DOMAINS:
         return "Retailer or marketplace"
-    if root_domain in MARKET_RESEARCH_DOMAINS or any(
-        re.search(pattern, title_lower)
-        for pattern in MARKET_RESEARCH_TITLE_PATTERNS
-    ):
+    if root_domain in MARKET_RESEARCH_DOMAINS:
         return "Market research or directory"
-    if any(term in path for term in OFFICIAL_PATH_TERMS):
+    if root_domain in OFFICIAL_COMPANY_DOMAINS:
         return "Official company or product"
     if root_domain in KNOWN_PUBLISHERS:
         return "Publisher or editorial"
-    return "Publisher or other source"
+    return UNCLASSIFIED_SOURCE
 
 
 def collect_visibility_sources_core(

@@ -31,11 +31,17 @@ def normalize_public_url(value):
     if not value.lower().startswith(("http://", "https://")):
         value = f"https://{value}"
 
-    parsed = urlparse(value)
-    if not parsed.hostname:
+    try:
+        parsed = urlparse(value)
+        hostname = parsed.hostname
+    except (ValueError, UnicodeError):
+        # Provider-generated URLs are untrusted input. In particular,
+        # urlparse raises ValueError for malformed bracketed IPv6 hosts.
+        return ""
+    if not hostname:
         return ""
     scheme = parsed.scheme or "https"
-    hostname = parsed.hostname.lower()
+    hostname = hostname.lower()
     path = parsed.path or "/"
     return f"{scheme}://{hostname}{path}"
 

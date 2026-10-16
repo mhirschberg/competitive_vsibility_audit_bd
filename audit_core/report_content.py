@@ -5,6 +5,12 @@ outside this module. Country and search availability are explicit inputs.
 """
 
 import re
+from urllib.parse import urlparse
+
+# SERVICE-ONLY-IMPORTS: start
+from .domains import canonical_source_url, get_root_domain
+from .serp_metrics import serp_result_matches_profile
+# SERVICE-ONLY-IMPORTS: end
 
 from collections import (
     Counter as DeterministicCounter,
@@ -245,7 +251,7 @@ def deterministic_source_counts(
     counts = DeterministicCounter(
         source.get(
             "source_type",
-            "Other source",
+            "Unclassified or unverified",
         )
         for source in sources
     )
@@ -305,6 +311,102 @@ def deterministic_search_summary(
     return records
 
 
+def deterministic_serp_diagnostics(profiles, keyword_serp_results):
+    """Keep exact audited-domain hits separate from unverified alias clues."""
+    rows = []
+    for query_result in keyword_serp_results:
+        if not query_result.get("success"):
+            continue
+        results = [
+            result for result in query_result.get("results", [])
+            if isinstance(result, dict)
+        ]
+        exact = [
+            profile.brand_name for profile in profiles
+            if any(serp_result_matches_profile(
+                profile.domain, profile.brand_name, result,
+            ) for result in results)
+        ]
+        observed = []
+        aliases = []
+        for position, result in enumerate(results, start=1):
+            url = str(result.get("url") or "").strip()
+            try:
+                parsed_url = urlparse(url)
+            except ValueError:
+                continue
+            if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+                continue
+            domain = get_root_domain(result.get("domain") or url)
+            if not domain:
+                continue
+            try:
+                rank = int(result.get("rank", position))
+            except (TypeError, ValueError):
+                rank = position
+            page = {
+                "domain": domain,
+                "url": canonical_source_url(url),
+                "rank": rank,
+            }
+            if len(observed) < 3:
+                observed.append(page)
+            domain_label = re.sub(r"[^a-z0-9]", "", domain.split(".", 1)[0])
+            for profile in profiles:
+                brand_label = re.sub(r"[^a-z0-9]", "", profile.brand_name.lower())
+                if (
+                    brand_label and domain_label == brand_label
+                    and get_root_domain(profile.domain) != domain
+                    and not any(alias["brand"] == profile.brand_name for alias in aliases)
+                ):
+                    aliases.append({"brand": profile.brand_name, **page})
+        rows.append({
+            "keyword": str(query_result.get("keyword") or ""),
+            "target_exact": profiles[0].brand_name in exact,
+            "exact": exact,
+            "observed": observed,
+            "possible_aliases": aliases,
+        })
+    return rows
+
+
+def deterministic_source_link(page):
+    return (
+        f"[{deterministic_markdown_text(page['domain'])} "
+        f"(#{page['rank']})]({page['url']})"
+    )
+
+
+def deterministic_localization_line(item, requested_country):
+    result = item["result"]
+    mode = result.get("country_transport_mode")
+    requested = result.get("requested_country") or requested_country
+    reported = result.get("reported_country")
+    acknowledged = result.get("market_acknowledged")
+    if mode == "country_field_and_prompt":
+        method = "country field and prompt"
+    elif mode == "prompt_only":
+        method = "prompt only"
+    else:
+        method = "request method not recorded"
+    if reported:
+        status = f"scraper record country field contains {reported}"
+        if result.get("country_verified") is False:
+            status += " (different from requested country)"
+        elif result.get("country_verified") is True:
+            status += " (matches requested country)"
+    else:
+        status = "no provider country metadata recorded"
+    if acknowledged is True:
+        status += "; answer acknowledged the requested market"
+    elif acknowledged is False:
+        status += "; answer did not acknowledge the requested market"
+    return (
+        f"- **Localization:** requested {requested or 'unknown'} via {method}; "
+        f"{status}. This does not verify the buyer's physical location."
+    )
+
+
 def deterministic_ai_engine_summary(
     visibility,
     engine,
@@ -331,6 +433,7 @@ def deterministic_ai_engine_summary(
 
     return {
         "engine": engine,
+        "result": result,
         "engine_name": (
             DETERMINISTIC_ENGINE_NAMES.get(
                 engine,
@@ -799,6 +902,10 @@ def build_deterministic_report(
         0
     ]["metric"]
 
+    serp_diagnostics = deterministic_serp_diagnostics(
+        [target_profile, *competitor_profiles], keyword_serp_results,
+    )
+
     ai_summaries = [
         deterministic_ai_engine_summary(
             visibility,
@@ -945,13 +1052,28 @@ def build_deterministic_report(
     )
 
     if search_measured:
+        reported_locations = DeterministicCounter(
+            str(result.get("observed_country")).upper()
+            for result in keyword_serp_results
+            if result.get("success") and result.get("observed_country")
+        )
+        if reported_locations:
+            location_note = (
+                "Result records reported "
+                + ", ".join(
+                    f"{code} on {count}/{total_keywords} searches"
+                    for code, count in reported_locations.items()
+                )
+                + ". This is provider metadata, not independent proof of buyer location."
+            )
+        else:
+            location_note = "No observed-country field was returned."
         report.extend(
             [
                 (
                     f"Search was measured using "
                     f"**{search_engine}**, requesting "
-                    f"**{country}** localization. The returned "
-                    "location was not independently verified."
+                    f"**{country}** localization. {location_note}"
                 ),
                 "",
                 (
@@ -1013,6 +1135,31 @@ def build_deterministic_report(
             f"{index}. `{keyword}`"
         )
 
+    if serp_diagnostics:
+        report.extend(["", "### Observed SERP evidence by question", ""])
+        for row in serp_diagnostics:
+            exact = ", ".join(row["exact"]) or "none"
+            pages = ", ".join(
+                deterministic_source_link(page) for page in row["observed"]
+            ) or "none retained"
+            report.append(
+                f"- `{deterministic_markdown_text(row['keyword'])}` — "
+                f"exact audited-domain matches: {deterministic_markdown_text(exact)}; "
+                f"observed pages: {pages}."
+            )
+            for alias in row["possible_aliases"]:
+                report.append(
+                    f"  - Possible domain alias for "
+                    f"{deterministic_markdown_text(alias['brand'])}: "
+                    f"{deterministic_source_link(alias)}. Ownership is unverified; "
+                    "this result is excluded from audited-domain coverage."
+                )
+        report.extend([
+            "",
+            "Observed pages outside the validated comparison set are search "
+            "results only; they are not classified as direct competitors.",
+        ])
+
     report.extend(
         [
             "",
@@ -1037,6 +1184,38 @@ def build_deterministic_report(
             f"### {item['engine_name']}"
         )
 
+        report.append("")
+        report.append(deterministic_localization_line(item, country))
+        if item["engine"] == "google_ai_mode":
+            report.append(
+                f"- **Question coverage:** {item['successful_questions']}/"
+                f"{item['question_count']} returned usable answers."
+            )
+            discovery = visibility.get("ai_mode_discovery") or {}
+            question_results = discovery.get("results") or []
+            if question_results:
+                for question_result in question_results:
+                    if not isinstance(question_result, dict):
+                        continue
+                    question = deterministic_markdown_text(
+                        question_result.get("question")
+                    )
+                    status = (
+                        "usable answer" if question_result.get("success")
+                        else "no usable answer"
+                    )
+                    report.append(f"  - `{question}`: {status}.")
+            elif item["question_count"]:
+                report.append(
+                    "  - Individual question text was not retained in this "
+                    "report input."
+                )
+        else:
+            report.append(
+                f"- **Sample size:** {item['answer_total']} usable answer(s) "
+                "from one measurement prompt spanning the buyer questions; "
+                "there is no per-question attribution."
+            )
         report.append("")
 
         if item["status"] != "success":
@@ -1232,93 +1411,54 @@ def build_deterministic_report(
         source_counts.values()
     )
 
-    external_sources = max(
-        0,
-        total_sources
-        - official_sources,
-    )
+    unclassified_sources = source_counts.get("Unclassified or unverified", 0)
+    external_sources = max(0, total_sources - official_sources - unclassified_sources)
 
     report.append(
         f"- **Source composition:** "
         f"{official_sources} official source(s) "
-        f"and {external_sources} external source(s) "
+        f"{external_sources} classified external source(s), "
+        f"and {unclassified_sources} unclassified source(s) "
         f"were observed."
     )
 
     report.extend(
         [
             "",
-            "## Prioritized Recommendations",
+            "## Evidence-led follow-up",
+            "",
+            "These review steps are derived after measurement; they were not "
+            "part of the neutral answer-engine prompts. Optional post-audit "
+            "recommendations are generated separately.",
             "",
         ]
     )
-
-    search_one, search_two = (
-        deterministic_search_recommendations(
-            target_profile,
-            competitor_profiles,
-            serp_metrics,
-            total_keywords,
-            search_measured,
-        )
-    )
-
-    recommendations = [
-        search_one,
-        search_two,
-        deterministic_ai_recommendation(
-            ai_summaries
-        ),
-        deterministic_source_recommendation(
-            source_counts
-        ),
-        deterministic_competitor_recommendation(
-            competitor_profiles,
-            serp_metrics,
-            total_keywords,
-            search_measured,
-        ),
-        {
-            "priority": "Low",
-            "action": (
-                "Repeat the audit using the same "
-                "locked scope, country, competitors, "
-                "and buyer searches."
-            ),
-            "evidence": (
-                "Search and AI answers are "
-                "point-in-time measurements."
-            ),
-            "impact": (
-                "Creates comparable observations "
-                "for identifying changes over time."
-            ),
-        },
+    gaps_with_pages = [
+        row for row in serp_diagnostics
+        if not row["target_exact"] and row["observed"]
     ]
-
-    for index, item in enumerate(
-        recommendations,
-        start=1,
-    ):
-        report.append(
-            deterministic_recommendation(
-                number=index,
-                priority=item[
-                    "priority"
-                ],
-                action=item[
-                    "action"
-                ],
-                evidence=item[
-                    "evidence"
-                ],
-                expected_impact=item[
-                    "impact"
-                ],
+    if search_measured and gaps_with_pages:
+        for row in gaps_with_pages[:3]:
+            report.append(
+                f"- For `{deterministic_markdown_text(row['keyword'])}`, "
+                f"the target's exact audited domain was absent. Identify the "
+                f"corresponding target page and compare it with the observed "
+                f"{deterministic_source_link(row['observed'][0])} result. "
+                "No target page was observed for this query, so this audit "
+                "does not prescribe a page edit or predict its effect."
             )
+        remaining = len(gaps_with_pages) - 3
+        if remaining > 0:
+            report.append(
+                f"- {remaining} further missed question(s) have observed pages "
+                "in the question-level evidence above."
+            )
+    else:
+        report.append(
+            "Insufficient evidence for a page-level recommendation from this "
+            "snapshot."
         )
-
-        report.append("")
+    report.append("")
 
     report.extend(
         [
@@ -1329,9 +1469,9 @@ def build_deterministic_report(
                 f"scope and validated competitor set. "
                 f"Traditional search was "
                 f"{'measured on ' + search_engine if search_measured else 'not measured'} "
-                f"in {country or 'the selected country'} "
-                f"across {total_keywords} buyer "
-                f"searches."
+                f"across {total_keywords} buyer searches, "
+                f"with {country or 'the selected country'} requested "
+                "as the market."
             ),
             "",
             (

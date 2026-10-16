@@ -126,13 +126,11 @@ async def run_audit_pipeline(settings, context, *, ports):
     visibility = await run_visibility_checkpoint_stage_core(
         target_profile, competitor_profiles, all_profiles, keywords,
         keyword_serp_results,
-        include_copilot=bool(settings.get("include_copilot_visibility", False)),
         include_google_ai_mode=bool(settings.get("include_google_ai_mode", True)),
         include_chatgpt=bool(settings.get("include_chatgpt_visibility", True)),
         include_gemini=bool(settings.get("include_gemini_visibility", True)),
         wait_longer_for_chatgpt=bool(settings.get("wait_longer_for_chatgpt", False)),
         wait_longer_for_gemini=bool(settings.get("wait_longer_for_gemini", False)),
-        wait_longer_for_copilot=bool(settings.get("wait_longer_for_copilot", False)),
         include_reddit_analysis=include_reddit,
         audit_focus=settings.get("audit_focus", ""),
         reddit_prefetch_task=selection["reddit_prefetch_task"],

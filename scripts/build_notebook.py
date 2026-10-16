@@ -16,18 +16,25 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true", help="Fail if notebook is stale")
     mode.add_argument("--write", action="store_true", help="Update generated cells")
+    parser.add_argument(
+        "--notebook",
+        type=Path,
+        default=NOTEBOOK,
+        help="Notebook template and output path (defaults to the repository copy)",
+    )
     args = parser.parse_args(argv)
 
-    expected = build_notebook()
+    notebook_path = args.notebook
+    expected = build_notebook(notebook_path=notebook_path)
     if args.check:
-        if NOTEBOOK.read_bytes() != expected:
+        if notebook_path.read_bytes() != expected:
             print("Notebook is stale; run scripts/build_notebook.py --write", file=sys.stderr)
             return 1
         print("Notebook generated cells are in sync")
         return 0
 
-    if NOTEBOOK.read_bytes() != expected:
-        NOTEBOOK.write_bytes(expected)
+    if notebook_path.read_bytes() != expected:
+        notebook_path.write_bytes(expected)
         print("Updated generated notebook cells")
     else:
         print("Notebook already in sync")

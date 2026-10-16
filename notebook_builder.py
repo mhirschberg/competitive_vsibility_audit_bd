@@ -6,11 +6,15 @@ until their logic has been extracted into service modules.
 
 import ast
 import json
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-NOTEBOOK = ROOT / "competitive_visibility_audit_bd.ipynb"
+NOTEBOOK = Path(os.environ.get(
+    "QAVISO_NOTEBOOK_TEMPLATE",
+    ROOT / "competitive_visibility_audit_bd.ipynb",
+))
 REDDIT_SOURCE = ROOT / "reddit_social.py"
 RESEARCH_SOURCE = ROOT / "research_fallback.py"
 RESEARCH_RACE_SOURCE = ROOT / "audit_core" / "research_race.py"
@@ -1026,7 +1030,9 @@ def build_notebook(notebook_path=NOTEBOOK, reddit_source=REDDIT_SOURCE,
         scope_cell,
         REPORT_CONTENT_START,
         REPORT_CONTENT_END,
-        Path(report_content_source).read_text(encoding="utf-8"),
+        _without_service_imports(
+            Path(report_content_source).read_text(encoding="utf-8")
+        ),
     )
     _replace_embedded_source(
         scope_cell,

@@ -26,10 +26,6 @@ GEMINI_DATASET_ID = (
     "gd_mbz66arm2mf9cu856y"
 )
 
-COPILOT_DATASET_ID = (
-    "gd_m7di5jy6s9geokz8w"
-)
-
 BD_REQUEST_URL = (
     "https://api.brightdata.com/request"
 )
@@ -312,7 +308,6 @@ def reliable_trigger_dataset(
                     GOOGLE_AI_MODE_DATASET_ID,
                     CHATGPT_DATASET_ID,
                     GEMINI_DATASET_ID,
-                    COPILOT_DATASET_ID,
                 }
             )
             else (
@@ -321,7 +316,6 @@ def reliable_trigger_dataset(
                     GOOGLE_AI_MODE_DATASET_ID,
                     CHATGPT_DATASET_ID,
                     GEMINI_DATASET_ID,
-                    COPILOT_DATASET_ID,
                 }
                 else None
             )
@@ -410,7 +404,6 @@ def reliable_scrape_dataset(
                     GOOGLE_AI_MODE_DATASET_ID,
                     CHATGPT_DATASET_ID,
                     GEMINI_DATASET_ID,
-                    COPILOT_DATASET_ID,
                 }
             )
             else (
@@ -419,7 +412,6 @@ def reliable_scrape_dataset(
                     GOOGLE_AI_MODE_DATASET_ID,
                     CHATGPT_DATASET_ID,
                     GEMINI_DATASET_ID,
-                    COPILOT_DATASET_ID,
                 }
                 else None
             )

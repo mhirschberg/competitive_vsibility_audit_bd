@@ -180,12 +180,11 @@ def extract_reported_ai_country(record):
     if not isinstance(record, dict):
         return None
     values = [
-        record.get("country"), record.get("country_code"),
-        record.get("requested_country"), record.get("location_country"),
+        record.get("location_country"), record.get("country"),
+        record.get("country_code"),
     ]
-    input_value = record.get("input")
-    if isinstance(input_value, dict):
-        values.extend((input_value.get("country"), input_value.get("country_code")))
+    # Request/input fields describe what we asked for, not what the scraper
+    # observed. Never promote them to reported-country evidence.
     for value in values:
         value = str(value or "").strip()
         if value:
@@ -324,7 +323,7 @@ def apply_compatible_country_payload(payload, engine, country_code):
     engine = str(engine or "").strip().lower()
     code = normalize_ai_country_code(country_code)
     for item in country_payload_items(payload):
-        if engine not in {"chatgpt", "gemini", "copilot"}:
+        if engine not in {"chatgpt", "gemini"}:
             continue
         if code and country_transport_mode(engine, code) != "prompt_only":
             item["country"] = code

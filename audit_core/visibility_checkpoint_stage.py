@@ -21,9 +21,9 @@ class VisibilityCheckpointPorts:
 
 async def run_visibility_checkpoint_stage_core(
     target_profile, competitor_profiles, all_profiles, keywords,
-    keyword_serp_results, *, include_copilot, include_google_ai_mode,
+    keyword_serp_results, *, include_google_ai_mode,
     include_chatgpt, include_gemini, wait_longer_for_chatgpt,
-    wait_longer_for_gemini, wait_longer_for_copilot,
+    wait_longer_for_gemini,
     include_reddit_analysis, audit_focus, reddit_prefetch_task,
     output_directory, started_at, ports,
 ):
@@ -31,13 +31,11 @@ async def run_visibility_checkpoint_stage_core(
         target_profile=target_profile,
         all_profiles=all_profiles,
         keywords=keywords,
-        include_copilot=include_copilot,
         include_google_ai_mode=include_google_ai_mode,
         include_chatgpt=include_chatgpt,
         include_gemini=include_gemini,
         wait_longer_for_chatgpt=wait_longer_for_chatgpt,
         wait_longer_for_gemini=wait_longer_for_gemini,
-        wait_longer_for_copilot=wait_longer_for_copilot,
     ))
 
     reddit_task = None
@@ -62,7 +60,7 @@ async def run_visibility_checkpoint_stage_core(
     duration_seconds = time.monotonic() - started_at
     warnings = []
     for engine in (
-        item for item in ("chatgpt", "gemini", "copilot")
+        item for item in ("chatgpt", "gemini")
         if item in visibility_result["engines"]
     ):
         engine_result = visibility_result["engines"][engine]

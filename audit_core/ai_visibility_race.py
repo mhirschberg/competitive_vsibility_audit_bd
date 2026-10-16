@@ -1,4 +1,4 @@
-"""The measured ChatGPT/Gemini/Copilot answer race shared with the notebook."""
+"""The measured ChatGPT/Gemini answer race shared by audit runners."""
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -9,7 +9,7 @@ from .brightdata_transport import BrightDataAPIError
 
 
 AI_VISIBILITY_RACE_ENGINE_NAMES = {
-    "chatgpt": "ChatGPT", "gemini": "Gemini", "copilot": "Copilot",
+    "chatgpt": "ChatGPT", "gemini": "Gemini",
 }
 
 
@@ -105,8 +105,6 @@ def race_ai_visibility_core(
             f"{trigger_failures[0][:500] if trigger_failures else 'unknown'}"
         )
 
-    if engine == "copilot":
-        client.log(f"Copilot snapshot: {trigger_results[0]['snapshot_id']}", "cyan")
     for item in trigger_results:
         if item.get("resumed"):
             client.log(
@@ -165,34 +163,11 @@ def race_ai_visibility_core(
                     )
             client.record_snapshot_results(snapshot_id, len(records))
             for record in records:
-                answer = (
-                    str(record.get("answer_text") or "").strip()
-                    if engine == "copilot" and isinstance(record, dict)
-                    else client.answer_text(record)
-                )
+                answer = client.answer_text(record)
                 if not answer:
                     continue
-                citations = (
-                    [
-                        {**source, "url": canonical_source_url(source.get("url"))}
-                        for source in (record.get("sources") or [])
-                        if isinstance(source, dict) and source.get("url")
-                        and source.get("cited") is not False
-                    ]
-                    if engine == "copilot"
-                    else (record.get("citations") or record.get("search_sources") or [])
-                )
-                stored_record = (
-                    {
-                        key: record[key]
-                        for key in (
-                            "url", "prompt", "answer_text", "sources",
-                            "timestamp", "index", "input",
-                        )
-                        if key in record
-                    }
-                    if engine == "copilot" else record
-                )
+                citations = record.get("citations") or record.get("search_sources") or []
+                stored_record = record
                 return {
                     "engine": engine,
                     "engine_name": engine_name,

@@ -15,9 +15,9 @@ RUN_SETTINGS_KEYS = (
     'country', 'search_engine', 'serp_zone',
     'include_reddit_analysis', 'reddit_comment_posts_per_cohort',
     'include_google_ai_mode', 'include_chatgpt_visibility',
-    'include_gemini_visibility', 'include_copilot_visibility',
+    'include_gemini_visibility',
     'wait_longer_for_chatgpt', 'wait_longer_for_gemini',
-    'wait_longer_for_copilot', 'wait_longer_for_google_ai_mode',
+    'wait_longer_for_google_ai_mode',
 )
 
 
